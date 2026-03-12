@@ -118,16 +118,29 @@ def add_vwap(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 #Attach every indicator the strategy might need
-def add_all_indicators(df: pd.DataFrame, params: dict) -> pd.DataFrame:
+def add_all_indicators(df: pd.DataFrame, params: dict, strategy_type=None) -> pd.DataFrame:
+    from schemas import StrategyType
+
     fast       = params.get("fast_period", 9)
     slow       = params.get("slow_period", 21)
     rsi_period = params.get("rsi_period", 14)
     bb_period  = params.get("bb_period", 20)
     bb_std     = params.get("std_dev", 2.0)
 
-    df = add_moving_averages(df, fast=fast, slow=slow)
-    df = add_ema(df, fast=fast, slow=slow)
-    df = add_rsi(df, period=rsi_period)
-    df = add_bollinger_bands(df, period=bb_period, std_dev=bb_std)
-    df = df.groupby(df.index.date, group_keys=False).apply(add_vwap) #Reset VWAP per session
+    # Compute only what the strategy needs, or everything if unspecified
+    if strategy_type in (None, StrategyType.MA_CROSSOVER):
+        df = add_moving_averages(df, fast=fast, slow=slow)
+
+    if strategy_type in (None, StrategyType.EMA_CROSSOVER):
+        df = add_ema(df, fast=fast, slow=slow)
+
+    if strategy_type in (None, StrategyType.RSI_OVERBOUGHT):
+        df = add_rsi(df, period=rsi_period)
+
+    if strategy_type in (None, StrategyType.BOLLINGER_BANDS):
+        df = add_bollinger_bands(df, period=bb_period, std_dev=bb_std)
+
+    # VWAP always — useful for context even across strategies
+    df = df.groupby(df.index.date, group_keys=False).apply(add_vwap)
+
     return df
