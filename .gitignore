@@ -3,3 +3,17 @@ __pycache__/
 *.pyc
 .env
 .env.local
+# C++ build outputs
+backend/services/cpp/build/
+backend/services/*.so
+backend/services/*.dylib
+backend/services/*.pyd
+#OS 
+.DS_Store
+Thumbs.db
+# IDE 
+.vscode/
+.idea/
+# Node / Next.js 
+node_modules/
+.next/
