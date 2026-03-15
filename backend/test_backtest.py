@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 #Quick test for the  backtesting pipeline 
-
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))       
-
 from services.data_loader      import generate_sample_data, get_dataset
 from services.indicators       import add_all_indicators
 from services.strategy         import generate_signals
 from services.backtest_engine  import run_backtest
 from services.metrics          import calculate_metrics
 from services.prop_firm_eval   import evaluate_prop_firm
-
 
 def main():
     print("=" * 60)
@@ -98,7 +95,6 @@ def main():
     print("\n" + "=" * 60)
     print(" Smoke test complete ✅")
     print("=" * 60)
-
 
 if __name__ == "__main__":
     main()
