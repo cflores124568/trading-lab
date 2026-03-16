@@ -45,7 +45,7 @@ def main():
         position_size=1.0,
         commission=5.0,
     )
-    trades       = result["trades"]
+    trades = result["trades"]
     equity_curve = result["equity_curve"]
     print(f"      Trades executed: {len(trades)}")
     print(f"      Final equity:    ${equity_curve[-1]:,.2f}")

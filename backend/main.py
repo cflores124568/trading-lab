@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from routers import data
+from routers import data, prop_firms
 
 app = FastAPI(
     title="Trading Lab API",
@@ -8,6 +8,7 @@ app = FastAPI(
 )
 
 app.include_router(data.router, prefix="api/data", tags=["Market Data"])
+app.include_router(prop_firms.router, prefix="/api/prop-firms", tags=["Prop Firms"])
 
 @app.get("/health")
 async def health():
