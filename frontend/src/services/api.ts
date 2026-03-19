@@ -1,4 +1,5 @@
 
+import type { UTCTimestamp } from "lightweight-charts";
 /*Base API path for backend requests.
 
   If the backend route changes later (for example /v1/api),
@@ -37,7 +38,7 @@ async function api<T>(url: string, options?: RequestInit): Promise<T> {
 
 // Candlestick data used by chart compoent 
 export interface Candle {
-  time: number; //Unix timestamp required by Lightweight Charts
+  time: UTCTimestamp; 
   open: number;
   high: number;
   low: number;
