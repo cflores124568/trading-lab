@@ -1,26 +1,18 @@
-# Trading Lab
+# Trading Lab 
 
-Full-stack futures trading backtesting platform focused on  
-prop firm challenge simulation (FTMO, TopStep, Apex).
+A high-performance futures trading simulator and backtesting engine. Built to simulate prop firm evaluation rules (Apex, Topstep) with zero-latency visual feedback.
 
-Replay historical data bar-by-bar, test manual strategies in real-time,  
-and run algorithmic backtests against real prop firm rules — without spending money on failed challenges.
+## Tech Stack
+- **Frontend:** SolidJS (Fine-grained reactivity for 60fps chart updates)
+- **Styling:** Tailwind CSS v4 (Rust-based engine)
+- **Backend:** FastAPI (Python 3.12)
+- **Calculations:** NumPy / Pandas (Vectorized backtesting)
+- **Data:** yfinance API integration
 
-## Current status
+## Project Structure
+- `/backend`: FastAPI server, trading logic, and data providers.
+- `/frontend`: SolidJS dashboard and TradingView charting.
 
-Backend only (FastAPI + in-memory storage)
-
-## Tech stack (so far)
-
-- **Backend**: Python, FastAPI, pandas, pandas-ta
-- **Future**: Next.js + TypeScript (frontend)
-
-## Quick start (backend)
-
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate    # or venv\Scripts\activate on Windows
-pip install -r requirements.txt
-cp .env.example .env
-uvicorn main:app --reload
+## Getting Started
+1. **Backend:** Install `requirements.txt` and run `uvicorn main:app --reload`
+2. **Frontend:** Run `npm install` and `npm run dev` in the frontend folder.
