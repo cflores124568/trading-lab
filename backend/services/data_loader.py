@@ -4,12 +4,60 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 from services.dataset_store import dataset_store
+import yfinance as yf
+from fastapi import HTTPException
 
 #The columns every OHLCV dataset must have to be usable by our strategies
 REQUIRED_COLUMNS = {"open", "high", "low", "close", "volume"}
 VALID_INTERVALS = {"1min", "5min", "15min", "1h"}
 FREQ_MAP = {"1min": "1min", "5min": "5min", "15min": "15min", "1h": "1h"}
 
+FUTURES_SYMBOLS = { #Bread and butter pairs
+    "NQ": "NQ=F",
+    "MNQ": "MNQ=F",
+    "GC": "GC=F",
+    "MGC": "MGC=F",
+}
+
+def _extract_arrays(df: pd.DataFrame) -> dict:
+    return {    #Convert candle columns to numpy arrays to avoid repeated function calls from indicators 
+        "open": np.ascontiguousarray(df["open"].to_numpy(np.float64)), #Force float64 and continguos memory for quicker C++
+        "high": np.ascontiguousarray(df["high"].to_numpy(np.float64)),
+        "low": np.ascontiguousarray(df["low"].to_numpy(np.float64)), 
+        "close": np.ascontiguousarray(df["close"].to_numpy(np.float64)),
+        "volume": np.ascontiguousarray(df["volume"].to_numpy(np.float64)),
+    }
+
+def fetch_yfinance_intraday(symbol_key: str, interval: str="5m",period: str ="60d") -> tuple[pd.DataFrame, dict]:
+    if symbol_key not in FUTURES_SYMBOLS:
+        raise HTTPException(400, f"Unsupported symbol: {symbol_key}. Use: {list(FUTURES_SYMBOLS.keys())}")
+    ticker = FUTURES_SYMBOLS[symbol_key]
+    try:
+        df = yf.download(
+            tickers=ticker,
+            period=period,
+            interval=interval,
+            progress=False,
+            repair=True,
+            auto_adjust=True,
+            prepost=False
+        )
+        if df.empty:
+            raise valueError("No data returned from Yahoo Finance!")
+        df = df[["Open", "High", "Low", "Close", "Volume"]].copy()
+        df.index.name = "timestamp"
+        df.reset_index(inplace=True)
+        df["timestamp"] = df["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
+        metadata = {
+            "source": "yfinance",
+            "symbol": ticker,
+            "interval": interval,
+            "fetched_at": datetime.utcnow().isoformat(),
+            "rows": len(df),
+        }
+        return df, metadata
+    except Exception as e:
+        raise HTTPException(503, f"yfinance fetch failed: {str(e)}")
 
 def load_csv(file_bytes: bytes, name: str) -> dict:
     if not file_bytes:
@@ -67,6 +115,8 @@ def load_csv(file_bytes: bytes, name: str) -> dict:
     #Same coerce method for numeric columns to turn bad values into NaN 
     for col in REQUIRED_COLUMNS:
         df[col] = pd.to_numeric(df[col], errors='coerce')
+        #Use float64 to prevent hidden conversipns when passing arrays to numpy or C++
+        df[list(REQUIRED_COLUMNS)] = df[list(REQUIRED_COLUMNS)].astype(np.float64)
         bad_rows = df[col].isna().sum()
         if bad_rows == len(df):
             raise ValueError(f"Column '{col}' contains no valid numeric values.")
@@ -103,7 +153,12 @@ def load_csv(file_bytes: bytes, name: str) -> dict:
         "uploaded_at": datetime.utcnow().isoformat(),
     }
 
-    dataset_store[dataset_id] = {"info": info, "df": df}
+    dataset_store[dataset_id] = {
+        "info": info, 
+        "df": df, #Convenient for pandas
+        "arrays": _extract_arrays(df) #Fasterer for indicators and my future C++ kernels 
+    }
+     
     return info
 
 
@@ -185,7 +240,11 @@ def generate_sample_data(
         "uploaded_at": datetime.utcnow().isoformat(),
     }
 
-    dataset_store[dataset_id] = {"info": info, "df": df}
+    dataset_store[dataset_id] = {
+        "info": info,
+        "df": df,
+        "arrays": _extract_arrays(df)
+    }
     return info
 
 
