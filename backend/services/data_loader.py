@@ -43,7 +43,7 @@ def fetch_yfinance_intraday(symbol_key: str, interval: str="5m",period: str ="60
             prepost=False
         )
         if df.empty:
-            raise valueError("No data returned from Yahoo Finance!")
+            raise ValueError("No data returned from Yahoo Finance!")
         df = df[["Open", "High", "Low", "Close", "Volume"]].copy()
         df.index.name = "timestamp"
         df.reset_index(inplace=True)
@@ -98,8 +98,7 @@ def load_csv(file_bytes: bytes, name: str) -> dict:
     if "date" not in df.columns and "datetime" not in df.columns:
         raise ValueError("CSV needs a 'date' or 'datetime' column.")
 
-    #errors='coerce' turns unparseable dates into NaT instead of crashing
-    #so we can count bad rows and give a helpful error message
+    #errors='coerce' turns unparseable dates into NaT, so we can count bad rows 
     time_col = "date" if "date" in df.columns else "datetime"
     df[time_col] = pd.to_datetime(df[time_col], errors='coerce')
 
@@ -115,8 +114,6 @@ def load_csv(file_bytes: bytes, name: str) -> dict:
     #Same coerce method for numeric columns to turn bad values into NaN 
     for col in REQUIRED_COLUMNS:
         df[col] = pd.to_numeric(df[col], errors='coerce')
-        #Use float64 to prevent hidden conversipns when passing arrays to numpy or C++
-        df[list(REQUIRED_COLUMNS)] = df[list(REQUIRED_COLUMNS)].astype(np.float64)
         bad_rows = df[col].isna().sum()
         if bad_rows == len(df):
             raise ValueError(f"Column '{col}' contains no valid numeric values.")
@@ -125,6 +122,9 @@ def load_csv(file_bytes: bytes, name: str) -> dict:
                 f"Column '{col}' contains {bad_rows} non-numeric value(s). "
                 "All OHLCV columns must be numeric."
             )
+        
+    #Use float64 to prevent hidden conversipns when passing arrays to numpy or C++
+    df[list(REQUIRED_COLUMNS)] = df[list(REQUIRED_COLUMNS)].astype(np.float64)
 
     if (df["high"] < df["low"]).any():
         raise ValueError("Data integrity error: some 'high' values are less than 'low' values.")
