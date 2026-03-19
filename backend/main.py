@@ -34,7 +34,7 @@ app.add_middleware(
 
 #Register API route groups
 app.include_router(backtests.router, prefix="/api/backtests", tags=["Backtests"])
-app.include_router(data.router, prefix="api/data", tags=["Market Data"])
+app.include_router(data.router, prefix="/api/data", tags=["Market Data"])
 app.include_router(prop_firms.router, prefix="/api/prop-firms", tags=["Prop Firms"])
 
 @app.get("/health") 

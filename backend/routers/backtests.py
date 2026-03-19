@@ -40,7 +40,7 @@ async def create_backtest(request: BacktestRequest):
     if df.empty:
         raise HTTPException(status_code=400, detail="Date range produced an empty dataset.")
 
-    df = add_all_indicators(df, request.strategy.params, strategy_type=request.strategy.params)
+    df = add_all_indicators(df, request.strategy.params, strategy_type=request.strategy.type)
     df = generate_signals(df, request.strategy.type, request.strategy.params)
 
     engine_result = run_backtest(

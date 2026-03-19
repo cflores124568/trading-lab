@@ -95,6 +95,7 @@ def _check_drawdown(equity_curve: List[float], account_size: float, limit_pct: f
         return False, 0.0
     
     eq = np.array(equity_curve)
+
     if drawdown_type == "eod":
         dd = (account_size - eq) / account_size
     else:
