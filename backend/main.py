@@ -1,15 +1,42 @@
+import os
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from routers import data, prop_firms
+from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+from routers import data, prop_firms, backtests
+from services.backtest_store import backtest_store
+
+load_dotenv()
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://localhost:3000").split(",")
+
+#Lifespan handler runs once on server startup and shutdown
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("Initializing Trading Lab backend... ")
+    yield
+    print("Trading Lab backend powering off...")
 
 app = FastAPI(
     title="Trading Lab API",
     description="Futures trading backtesting platform",
     version="0.1.0",
+    lifespan=lifespan
 )
 
+#Enable CORS for frontend API access
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
+
+#Register API route groups
+app.include_router(backtests.router, prefix="/api/backtests", tags=["Backtests"])
 app.include_router(data.router, prefix="api/data", tags=["Market Data"])
 app.include_router(prop_firms.router, prefix="/api/prop-firms", tags=["Prop Firms"])
 
-@app.get("/health")
+@app.get("/health") 
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "backtests_in_memory": len(backtest_store)}

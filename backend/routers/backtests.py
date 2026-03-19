@@ -5,7 +5,7 @@ from schemas import BacktestRequest, BacktestResult, BacktestSummary, BacktestCo
 from services.backtest_store import backtest_store
 from services.data_loader    import get_dataset
 from services.indicators     import add_all_indicators
-from services.strategy       import generate_signals
+from backend.services.strategy       import generate_signals
 from services.backtest_engine import run_backtest
 from services.metrics        import calculate_metrics
 from services.prop_firm_eval import evaluate_prop_firm
@@ -40,7 +40,7 @@ async def create_backtest(request: BacktestRequest):
     if df.empty:
         raise HTTPException(status_code=400, detail="Date range produced an empty dataset.")
 
-    df = add_all_indicators(df, request.strategy.params)
+    df = add_all_indicators(df, request.strategy.params, strategy_type=request.strategy.params)
     df = generate_signals(df, request.strategy.type, request.strategy.params)
 
     engine_result = run_backtest(
@@ -77,12 +77,6 @@ async def create_backtest(request: BacktestRequest):
 
     backtest_store[backtest_id] = result
     return result
-
-@router.get("/{backtest_id}", response_model=BacktestResult)
-async def get_backtest(backtest_id: str):
-    if backtest_id not in backtest_store:
-        raise HTTPException(status_code=404, detail=f"Backtest '{backtest_id}' not found.")
-    return backtest_store[backtest_id]
 
 @router.get("/", response_model=list[BacktestSummary])
 async def list_backtests():
@@ -125,3 +119,9 @@ async def compare_backtests(a: str, b: str):
         "backtest_b": bt_b,
         "comparison": comparison,
     }
+
+@router.get("/{backtest_id}", response_model=BacktestResult)
+async def get_backtest(backtest_id: str):
+    if backtest_id not in backtest_store:
+        raise HTTPException(status_code=404, detail=f"Backtest '{backtest_id}' not found.")
+    return backtest_store[backtest_id]

@@ -2,11 +2,11 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Query
 from schemas import DatasetInfo
 from services.data_loader import load_csv, generate_sample_data, get_dataset, list_datasets, fetch_yfinance_intraday
 from services.dataset_store import add_dataset
-from dateime import datetime
+from datetime import datetime
 
-router = APIRouter(prefix="/data", tags=["Market Data"])  
+router = APIRouter()  
 
-@router.post("import/yfinance")
+@router.post("/import/yfinance")
 async def import_from_yfinance(symbol:str, interval: str, dataset_id: str | None=None):
     try:
         df, metadata = fetch_yfinance_intraday(symbol, interval)

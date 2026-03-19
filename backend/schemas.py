@@ -15,6 +15,7 @@ class OrderSide(str, Enum):
 class TradeStatus(str, Enum):
     OPEN = "open"
     CLOSED = "closed"
+
 class StrategyType(str, Enum):
     MA_CROSSOVER = "ma_crossover"
     EMA_CROSSOVER = "ema_crossover"
@@ -42,46 +43,6 @@ class PropFirmRules(BaseModel):
     drawdown_type: DrawdownType = Field(default=DrawdownType.EOD)
     min_trading_days: Optional[int] = Field(default=None, ge=1)
 
-#Backtest
-class BacktestRequest(BaseModel):
-    dataset_id:      str
-    strategy:        Strategy
-    prop_firm_rules: PropFirmRules
-    start_date:      Optional[str]  = None
-    end_date:        Optional[str]  = None
-    initial_balance: float          = Field(default=100_000, gt=0)
-    position_size:   float          = Field(default=1.0, gt=0)
-    commission:      float          = Field(default=5.0, ge=0)
-
-
-class BacktestResult(BaseModel):
-    backtest_id:    str
-    dataset_id:     str
-    strategy:       Strategy
-    prop_firm_rules: PropFirmRules
-    status:         str
-    created_at:     str
-    trades:         List[Trade]
-    metrics:        PerformanceMetrics
-    prop_firm_eval: PropFirmEvaluation
-    equity_curve:   List[float]
-
-
-class BacktestSummary(BaseModel):
-    backtest_id:    str
-    dataset_id:     str
-    strategy_type:  StrategyType
-    status:         str
-    total_pnl:      float
-    win_rate:       float
-    created_at:     str
-
-
-class BacktestCompare(BaseModel):
-    backtest_a: BacktestResult
-    backtest_b: BacktestResult
-    comparison: dict[str, Any]
-
 #Trade
 class Trade (BaseModel):
     trade_id: int
@@ -105,9 +66,56 @@ class PerformanceMetrics(BaseModel):
     profit_factor: float
     max_drawdown: float
     sharpe_ratio: float
+    sortino_ratio: float
     avg_trade_duration: float
     best_trade: float
     worst_trade: float
+
+#Prop firm evals/challenges/combines
+class PropFirmEvaluation(BaseModel):
+    passed: bool
+    daily_loss_breached: bool
+    drawdown_breached: bool
+    profit_target_hit: bool
+    consistency_passed: bool
+    details: dict[str, Any]
+
+#Backtest request/response
+class BacktestRequest(BaseModel):
+    dataset_id:      str
+    strategy:        Strategy
+    prop_firm_rules: PropFirmRules
+    start_date:      Optional[str]  = None
+    end_date:        Optional[str]  = None
+    initial_balance: float          = Field(default=100_000, gt=0)
+    position_size:   float          = Field(default=1.0, gt=0)
+    commission:      float          = Field(default=5.0, ge=0)
+
+class BacktestResult(BaseModel):
+    backtest_id:    str
+    dataset_id:     str
+    strategy:       Strategy
+    prop_firm_rules: PropFirmRules
+    status:         str
+    created_at:     str
+    trades:         List[Trade]
+    metrics:        PerformanceMetrics
+    prop_firm_eval: PropFirmEvaluation
+    equity_curve:   List[float]
+
+class BacktestSummary(BaseModel):
+    backtest_id:    str
+    dataset_id:     str
+    strategy_type:  StrategyType
+    status:         str
+    total_pnl:      float
+    win_rate:       float
+    created_at:     str
+
+class BacktestCompare(BaseModel):
+    backtest_a: BacktestResult
+    backtest_b: BacktestResult
+    comparison: dict[str, Any]
 
 #Data / Upload 
 class DatasetInfo(BaseModel):
