@@ -12,10 +12,12 @@ const BASE = "/api";
   codebase and reduce typos.*/
 
 const API_ROUTES = {
-  candles: "/data/candles",
+  parquetSymbols: "/data/parquet/symbols",
+  parquetLoad: "/data/parquet/load",
+  candles: (datasetId: string) => `/data/${datasetId}/candles`,
   backtests: "/backtests",
   propFirms: "/prop-firms",
-};
+} as const;
 
 /*
   Generic API helper.
@@ -25,7 +27,6 @@ const API_ROUTES = {
 */
 async function api<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${BASE}${url}`, options);
-
   // Throw an error if the request failed
   if (!response.ok) {
     throw new Error(`API request failed (${response.status}) for ${url}`);
@@ -46,7 +47,7 @@ export interface Candle {
   volume: number;
 }
 
-//Metadata for an uploaded dataset.
+//Metadata for an uploaded/loaded dataset.
 export interface DatasetInfo {
   dataset_id: string;
   name: string;
@@ -123,6 +124,17 @@ export interface BacktestSummary {
   created_at: string;
 }
 
+// Metadata returned by GET /api/data/parquet/symbols
+export interface ParquetSymbolInfo {
+  symbol_key: string;
+  symbol: string;
+  path: string;
+  rows: number;
+  start_date: string;
+  end_date: string;
+  size_mb: number;
+}
+
 //Fetch helpers
 
 /*Fetch historical candlestick data for a symbol like so:
@@ -152,14 +164,10 @@ export const fetchBacktest = async (id: string): Promise<BacktestResult> => {
 };
 
 //Run a new backtest with a strategy configuration.
-export const runBacktest = async (
-  payload: unknown
-): Promise<BacktestResult> => {
+export const runBacktest = async (payload: unknown): Promise<BacktestResult> => {
   return api<BacktestResult>(API_ROUTES.backtests, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: {"Content-Type": "application/json"},
     body: JSON.stringify(payload),
   });
 };

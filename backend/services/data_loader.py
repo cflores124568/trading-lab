@@ -232,15 +232,15 @@ def list_parquet_symbols() -> list[dict]:
  
     results = []
     for path in sorted(_PARQUET_DIR.glob("*.parquet")):
-        slug = path.stem                            # "NQ_c_0"
-        label = _PARQUET_SYMBOLS.get(slug, slug)    # "NQ"
+        symbol_key = path.stem                            # "NQ_c_0"
+        label = _PARQUET_SYMBOLS.get(symbol_key, symbol_key)    # "NQ"
  
         try:
             # Read only the timestamp column to get range without loading all data
             meta_df = pd.read_parquet(path, columns=["ts_event"])
             ts = pd.to_datetime(meta_df["ts_event"])
             results.append({
-                "slug": slug,
+                "symbol_key": symbol_key,
                 "symbol": label,
                 "path": str(path),
                 "rows": len(meta_df),
@@ -251,7 +251,7 @@ def list_parquet_symbols() -> list[dict]:
         except Exception as exc:
             # Surface a warning but don't crash the whole list
             results.append({
-                "slug": slug,
+                "symbol_key": symbol_key,
                 "symbol": label,
                 "path": str(path),
                 "error": str(exc),
