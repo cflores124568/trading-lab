@@ -8,6 +8,7 @@ backend/services/cpp/build/
 backend/services/*.so
 backend/services/*.dylib
 backend/services/*.pyd
+backend/data/
 #OS 
 .DS_Store
 Thumbs.db

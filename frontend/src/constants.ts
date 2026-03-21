@@ -21,6 +21,7 @@ export interface DatabentoSymbol {
   parquet: string;   // filename must end in .parquet: (NQ_c_0.parquet)
   tickValue: number;   
   exchange: string;
+  note?: string;
 }
 
 export const DATABENTO_SYMBOLS: DatabentoSymbol[] = [
@@ -28,7 +29,7 @@ export const DATABENTO_SYMBOLS: DatabentoSymbol[] = [
   { label: "MNQ · Micro Nasdaq 100", key: "MNQ", continuous: "MNQ.c.0", parquet: "MNQ_c_0.parquet", tickValue:  2.00, exchange: "CME"},
   { label: "ES  · S&P 500", key: "ES",  continuous: "ES.c.0",  parquet: "ES_c_0.parquet", tickValue: 50.00, exchange: "CME"},
   { label: "MES · Micro S&P 500", key: "MES", continuous: "MES.c.0", parquet: "MES_c_0.parquet", tickValue:  5.00, exchange: "CME"},
-  { label: "GC  · Gold", key: "GC",  continuous: "GC.c.0",  parquet: "GC_c_0.parquet",  tickValue: 10.00, exchange: "COMEX" },
+  { label: "GC  · Gold", key: "GC",  continuous: "GC.c.0",  parquet: "GC_c_0.parquet",  tickValue: 10.00, exchange: "COMEX", note: "There are only 88,130 bars from 2019-01-02 2026-03-19 since GC volume trades on COMEX, not Globex. Ill have to find GC elsewhere"},
   { label: "MGC · Micro Gold", key: "MGC", continuous: "MGC.c.0", parquet: "MGC_c_0.parquet", tickValue:  1.00, exchange: "COMEX" },
 ];
 
