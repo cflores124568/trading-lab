@@ -126,3 +126,9 @@ class DatasetInfo(BaseModel):
     start_date: str
     end_date: str
     uploaded_at: str
+
+class ParquetLoadRequest(BaseModel):
+    symbol: str
+    interval: str = "1min"
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None

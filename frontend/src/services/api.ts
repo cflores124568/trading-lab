@@ -135,22 +135,65 @@ export interface ParquetSymbolInfo {
   size_mb: number;
 }
 
-//Fetch helpers
+// Parquet dataset_id cache
+const _datasetCache = new Map<string, string>();
+function _cacheKey(symbol: string, interval: string): string{
+  return `${symbol}:${interval}`;
+}
 
+async function loadParquetDataset(
+  symbol: string,
+  interval: string,
+  startDate?: string,
+  endDate?: string,
+): Promise<string> {
+  const key = _cacheKey(symbol, interval);
+  const cached = _datasetCache.get(key);
+
+  if(cached){
+    return cached;
+  }
+  const body: Record<string, string> = { symbol, interval };
+
+  if(startDate){
+    body.start_date = startDate;
+  }
+  if(endDate){
+    body.end_date = endDate;
+  }
+
+  const info = await api<DatasetInfo>(API_ROUTES.parquetLoad, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  _datasetCache.set(key, info.dataset_id);
+  return info.dataset_id;
+}
+
+//Fetch helpers
 /*Fetch historical candlestick data for a symbol like so:
   fetchCandles("NQ", "1h", "60d")*/
-export const fetchCandles = async (
-  symbol: string,
+export const fetchCandles = async ({
+  symbol,
   interval = "1h",
-  period = "60d"
-): Promise<Candle[]> => {
-  const params = new URLSearchParams({
-    symbol,
-    interval,
-    period,
-  });
-
-  return api<Candle[]>(`${API_ROUTES.candles}?${params}`);
+  limit = 750,
+  startDate,
+  endDate,
+}: {
+  symbol: string;
+  interval?: string;
+  limit?: number;
+  startDate?: string;
+  endDate?: string;
+}): Promise<Candle[]> => {
+  // Date-bounded requests must bypass the cache
+  if(startDate || endDate){
+    _datasetCache.delete(_cacheKey(symbol, interval));
+  }
+  const datasetId = await loadParquetDataset(symbol, interval, startDate, endDate);
+  const params = new URLSearchParams({interval, limit: String(limit)});
+return api<Candle[]>(`${API_ROUTES.candles(datasetId)}?${params}`);
 };
 
 //Fetch list of previous backtests

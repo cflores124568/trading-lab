@@ -1,26 +1,25 @@
 import { createSignal, createResource, Show, ErrorBoundary } from "solid-js";
 import PriceChart from "../components/PriceChart";
 import { fetchCandles } from "../services/api";
-import { YFINANCE_SYMBOLS, LIVE_CHART_INTERVALS, PERIODS, DEFAULT_YFINANCE_SYMBOL, DEFAULT_INTERVAL,  DEFAULT_PERIOD,
-  type YFinanceSymbol, type Interval, type Period}  from "../constants";
+import { DATABENTO_SYMBOLS, BACKTEST_INTERVALS, DEFAULT_DATABENTO_SYMBOL, DEFAULT_INTERVAL, type DatabentoSymbol, type Interval}  from "../constants";
  
 export default function Dashboard() {
-  const [symbol, setSymbol]  = createSignal<YFinanceSymbol>(DEFAULT_YFINANCE_SYMBOL);
-  const [interval, setInterval] = createSignal<Interval & {yfinanceInterval: string}>(DEFAULT_INTERVAL as Interval & {yfinanceInterval: string});
-  const [period, setPeriod]  = createSignal<Period>(DEFAULT_PERIOD);
-
-  //Yfinance's supported chosen interval
-  //maxLiveDays should always be non-null on LIVE_CHART_INTERVALS
-  const safePeriod = () => {
-    const maxDays = interval().maxLiveDays ?? 60;
-    return period().days <= maxDays ? period().value: `${maxDays}d`;
-  }
+  const [symbol, setSymbol]  = createSignal<DatabentoSymbol>(DEFAULT_DATABENTO_SYMBOL);
+  const [interval, setInterval] = createSignal<Interval>(DEFAULT_INTERVAL);
 
   // Reactive data fetch 
-  const [candles] = createResource(
-    () => ({key: symbol().key, interval: interval().yfinanceInterval, period: safePeriod() }),
-    ({ key, interval, period }) => fetchCandles(key, interval, period)
-  );
+  const resourceKey = () => {
+    const rule = interval().resampleRule;
+    if(!rule){
+      return null;
+    }
+    return{
+      symbol: symbol().key,
+      interval: rule,
+      limit: 750
+    }
+  }
+  const [candles] = createResource(resourceKey, (args) => fetchCandles(args));
 
   //Reusable tailwind classes for dropdowns (kept as string to avoid template literal issues)
   const select = "bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-sm " +
@@ -30,19 +29,18 @@ export default function Dashboard() {
     <div class="min-h-screen bg-zinc-950 text-zinc-100 p-6">
       <div class="flex items-center justify-between mb-6">
         <h1 class="text-2xl font-bold tracking-tight">Trading Lab</h1>
-
         {/* Symbol + timeframe controls */}
         <div class="flex gap-3 flex-wrap justify-end">
           <select class={`${select} min-w-52`}
             value={symbol().key}
             onChange={e => {
-              const match = YFINANCE_SYMBOLS.find(s => s.key === e.currentTarget.value);
+              const match = DATABENTO_SYMBOLS.find((s) => s.key === e.currentTarget.value);
               if(match){
                 setSymbol(match);
               }
             }}
           >
-            {YFINANCE_SYMBOLS.map(s => (
+            {DATABENTO_SYMBOLS.map((s) => (
               <option value={s.key}>{s.label}</option>
             ))}
           </select>
@@ -50,30 +48,17 @@ export default function Dashboard() {
           <select 
             class={select} 
             value={interval().value}
-            onChange={e => {
-              const match = LIVE_CHART_INTERVALS.find(i => i.value === e.currentTarget.value);
+            onChange={(e) => {
+              const match = BACKTEST_INTERVALS.find((i) => i.value === e.currentTarget.value);
               if(match){
                 setInterval(match);
               }
             }}
           >
-            {LIVE_CHART_INTERVALS.map(i => (
-              <option value={i.value}>{i.label}</option>
-            ))}
-          </select>
-
-          <select 
-            class={select} 
-            value={period().value}
-            onChange={e => {
-              const match = PERIODS.find(p => p.value === e.currentTarget.value);
-              if(match){
-                setPeriod(match);
-              }
-            }}
-          >
-            {PERIODS.map(p => (
-              <option value={p.value}>{p.label}</option>
+            {BACKTEST_INTERVALS.map((i) => (
+              <option value={i.value} disabled={i.resampleRule === null}>
+              {i.label}{i.resampleRule === null ? " (soon)": ""}
+              </option>
             ))}
           </select>
         </div>
