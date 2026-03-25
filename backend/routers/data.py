@@ -8,6 +8,7 @@ from schemas import DatasetInfo, ParquetLoadRequest
 
 router = APIRouter()  
 
+# YFinance for live chart preview 
 @router.post("/import/yfinance")
 async def import_from_yfinance(symbol:str, interval: str, dataset_id: str | None=None):
     try:
@@ -27,6 +28,7 @@ async def import_from_yfinance(symbol:str, interval: str, dataset_id: str | None
     )
     return {"dataset_id": dataset_id, "rows": len(df), "message": "Imported successfully"}
 
+#CSV Support
 @router.post("/upload", response_model=DatasetInfo)
 async def upload_csv(file: UploadFile = File(...)):
     #Upload a CSV file with OHLCV columns (date, open, high, low, close, volume)
@@ -39,6 +41,7 @@ async def upload_csv(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=str(exc))
     return info
 
+#Sample data
 @router.post("/sample", response_model=DatasetInfo)
 async def generate_sample(
     name: str = Query(default="ES_sample_1min"),
@@ -54,6 +57,7 @@ async def generate_sample(
     )
     return info
 
+# Parquet for Databento (in-memory path)
 @router.get("/parquet/symbols")
 async def get_parquet_symbols():
     # all local Databento parquet datasets
@@ -70,6 +74,7 @@ async def load_parquet_dataset(request: ParquetLoadRequest):
         raise HTTPException(status_code=400, detail=str(exc))
     return info
 
+# In-memory dataset list/inspect
 @router.get("/", response_model=list[DatasetInfo])
 async def list_all_datasets():
     #List all available datasets
@@ -111,3 +116,74 @@ async def get_dataset_candles(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return candles
+
+# TimescaleDB endpoints (DB path)
+@router.get("/db/symbols")
+async def list_db_symbols():
+    # List all symbols in TimescaleDB w/ row counts and date ranges
+    try:
+        from services.db import list_db_symbols as _list
+        return _list()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+    
+@router.get("/db/{symbol}/candles")
+async def get_db_candles(
+    symbol: str,
+    interval: str = Query(default="15min"),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    limit: int | None = Query(default=5000, ge=1, le=50_000),
+):
+    """
+    Fetch OHLCV bars from TimeScaleDB instead of parquet loading.
+    Aggregation done by time_bucket() in SQL. Returns TradingView's Lightweight Charts format.
+    """
+    try: 
+        canonical = normalise_interval(interval)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    
+    try:
+        from services.db import get_ohlcv
+        df = get_ohlcv(
+            symbol=symbol.upper(),
+            interval=canonical,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+    
+    if df.empty:
+        return []
+    
+    df = df.reset_index()
+    time_col = df.columns[0]
+    df[time_col] = pd.to_datetime(df[time_col])
+
+    return [
+        {
+            "time":   int(row[time_col].timestamp()),
+            "open":   round(float(row.open), 2),
+            "high":   round(float(row.high), 2),
+            "low":    round(float(row.low), 2),
+            "close":  round(float(row.close), 2),
+            "volume": int(row.volume),
+        }
+        for row in df.itertuples(index=False)
+    ]
+ 
+@router.get("/db/{symbol}/info")
+async def get_db_symbol_info(symbol: str):
+    """Return metadata for a single symbol from TimescaleDB."""
+    try:
+        from services.db import get_symbol_info
+        info = get_symbol_info(symbol.upper())
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+ 
+    if info is None:
+        raise HTTPException(status_code=404, detail=f"Symbol '{symbol}' not found in database.")
+    return info

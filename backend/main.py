@@ -31,7 +31,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
-
 #Register API route groups
 app.include_router(backtests.router, prefix="/api/backtests", tags=["Backtests"])
 app.include_router(data.router, prefix="/api/data", tags=["Market Data"])
@@ -39,4 +38,13 @@ app.include_router(prop_firms.router, prefix="/api/prop-firms", tags=["Prop Firm
 
 @app.get("/health") 
 async def health():
-    return {"status": "ok", "backtests_in_memory": len(backtest_store)}
+    result = {"status": "ok", "backtests_in_memory": len(backtest_store)}
+    # Show DB status; fails gracefully if not configured yet
+    try:
+        from services.db import health_check
+        result.update(health_check())
+    except Exception as exc:
+        result["db_status"] = "unavailable"
+        result["db_detail"] = str(exc)
+
+    return result 
