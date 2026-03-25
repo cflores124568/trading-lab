@@ -5,7 +5,7 @@ from schemas import BacktestRequest, BacktestResult, BacktestSummary, BacktestCo
 from services.backtest_store import backtest_store
 from services.data_loader    import get_dataset
 from services.indicators     import add_all_indicators
-from backend.services.strategy       import generate_signals
+from services.strategy       import generate_signals
 from services.backtest_engine import run_backtest
 from services.metrics        import calculate_metrics
 from services.prop_firm_eval import evaluate_prop_firm

@@ -117,6 +117,13 @@ class BacktestCompare(BaseModel):
     backtest_b: BacktestResult
     comparison: dict[str, Any]
 
+#Parquet Requets
+class ParquetLoadRequest(BaseModel):
+    symbol: str
+    interval: str = "1min"
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+
 #Data / Upload 
 class DatasetInfo(BaseModel):
     dataset_id: str

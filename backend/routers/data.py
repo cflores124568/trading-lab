@@ -4,6 +4,7 @@ from services.data_loader import(load_csv, generate_sample_data, get_dataset, li
 load_parquet, list_parquet_symbols, get_candles)
 from services.dataset_store import add_dataset
 from datetime import datetime
+from schemas import DatasetInfo, ParquetLoadRequest
 
 router = APIRouter()  
 
@@ -59,15 +60,10 @@ async def get_parquet_symbols():
     return list_parquet_symbols()
 
 @router.post("/parquet/load", response_model=DatasetInfo)
-async def load_parquet_dataset(
-    symbol: str = Query(...),
-    interval: str = Query(default="1min"),
-    start_date: str | None = Query(default=None),
-    end_date: str | None = Query(default=None),
-):
+async def load_parquet_dataset(request: ParquetLoadRequest):
     # Load a Databento parquet file and register it in the dataset store
     try:
-        info = load_parquet(symbol, interval, start_date, end_date)
+        info = load_parquet(request.symbol, request.interval, request.start_date, request.end_date)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except ValueError as exc:

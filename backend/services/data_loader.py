@@ -326,9 +326,13 @@ def load_parquet(
     df.columns = df.columns.str.lower()
  
     # Databento OHLCV-1m columns are already open/high/low/close/volume.
-    # Drop any extra columns (symbol, instrument_id, etc.) we don't need.
+    # Drop any extra columns (symbol, instrument_id, etc.) 
     ohlcv_cols = [c for c in ["open", "high", "low", "close", "volume"] if c in df.columns]
     df = df[ohlcv_cols].copy()
+    # Databento stores prices as fixed-point integers scaled by 1e9
+    # So divide OHLC back to real dollar values
+    price_cols = [c for c in ["open", "high", "low", "close"] if c in df.columns]
+    df[price_cols] = df[price_cols] / 1e9
  
     missing = REQUIRED_COLUMNS - set(df.columns)
     if missing:
