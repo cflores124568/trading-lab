@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+
+  # ── TimescaleDB ─────────────────────────────────────────────────────────────
+  db:
+    image: timescale/timescaledb:latest-pg16
+    container_name: trading_lab_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-trading}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trading}
+      POSTGRES_DB:       ${POSTGRES_DB:-trading_lab}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Run schema on first start
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trading} -d ${POSTGRES_DB:-trading_lab}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── FastAPI backend ──────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trading_lab_api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-trading}:${POSTGRES_PASSWORD:-trading}@db:5432/${POSTGRES_DB:-trading_lab}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      DEBUG: ${DEBUG:-false}
+    volumes:
+      # Mount parquet data directory so the migration script can reach it
+      # Also useful for dev: changes to .py files reload without rebuild
+      - ./data:/app/data:ro
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+    driver: local
