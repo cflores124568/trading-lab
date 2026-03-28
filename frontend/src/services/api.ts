@@ -1,6 +1,5 @@
 
 import type { UTCTimestamp } from "lightweight-charts";
-import type { DatabentoSymbol } from "../constants";
 /*Base API path for backend requests.
 
   If the backend route changes later (for example /v1/api),
