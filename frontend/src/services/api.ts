@@ -1,5 +1,6 @@
 
 import type { UTCTimestamp } from "lightweight-charts";
+import type { DatabentoSymbol } from "../constants";
 /*Base API path for backend requests.
 
   If the backend route changes later (for example /v1/api),
@@ -12,9 +13,9 @@ const BASE = "/api";
   codebase and reduce typos.*/
 
 const API_ROUTES = {
-  parquetSymbols: "/data/parquet/symbols",
-  parquetLoad: "/data/parquet/load",
-  candles: (datasetId: string) => `/data/${datasetId}/candles`,
+  dbSymbols: "/data/db/symbols", //TimescaleDB replacing parquet
+  dbCandles: (symbol: string) => `/data/db/${symbol}/candles`,
+  dbInfo: (symbol: string) => `/data/db/${symbol}/info`,
   backtests: "/backtests",
   propFirms: "/prop-firms",
 } as const;
@@ -56,6 +57,14 @@ export interface DatasetInfo {
   start_date: string;
   end_date: string;
   uploaded_at: string;
+}
+
+//Metadata returned by GET /api/data/db/symbols for a single futures contract
+export interface DbSymbolInfo {
+  symbol: string;
+  start_date: string;
+  end_date: string;
+  rows: number;
 }
 
 //A single trade produced by a backtest.
@@ -124,56 +133,19 @@ export interface BacktestSummary {
   created_at: string;
 }
 
-// Metadata returned by GET /api/data/parquet/symbols
-export interface ParquetSymbolInfo {
-  symbol_key: string;
-  symbol: string;
-  path: string;
-  rows: number;
-  start_date: string;
-  end_date: string;
-  size_mb: number;
+
+// Fetch helpers
+/* Fetch futures symbols from TimescaleDB.
+* GET /api/data/db/symbols returns metadata for every symbol migrated from Databento parquet
+*/
+export const fetchDbSymbols = async (): Promise<DbSymbolInfo[]> => {
+  return api<DbSymbolInfo[]>(API_ROUTES.dbSymbols);
 }
+/* Fetch candlestick bars from TimescaleDB using time_bucket() aggregation 
+* Replaces old parquet flow POST /data/paruqet/load -> GET /data/{dataset_id}/candles
 
-// Parquet dataset_id cache
-const _datasetCache = new Map<string, string>();
-function _cacheKey(symbol: string, interval: string): string{
-  return `${symbol}:${interval}`;
-}
-
-async function loadParquetDataset(
-  symbol: string,
-  interval: string,
-  startDate?: string,
-  endDate?: string,
-): Promise<string> {
-  const key = _cacheKey(symbol, interval);
-  const cached = _datasetCache.get(key);
-
-  if(cached){
-    return cached;
-  }
-  const body: Record<string, string> = { symbol, interval };
-
-  if(startDate){
-    body.start_date = startDate;
-  }
-  if(endDate){
-    body.end_date = endDate;
-  }
-
-  const info = await api<DatasetInfo>(API_ROUTES.parquetLoad, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  _datasetCache.set(key, info.dataset_id);
-  return info.dataset_id;
-}
-
-//Fetch helpers
-/*Fetch historical candlestick data for a symbol like so:
-  fetchCandles("NQ", "1h", "60d")*/
+Example: fetchCandles({ symbol: "NQ", interval: "15min", limit: 750 })
+*/
 export const fetchCandles = async ({
   symbol,
   interval = "1h",
@@ -188,14 +160,21 @@ export const fetchCandles = async ({
   endDate?: string;
 }): Promise<Candle[]> => {
   // Date-bounded requests must bypass the cache
-  if(startDate || endDate){
-    _datasetCache.delete(_cacheKey(symbol, interval));
-  }
-  const datasetId = await loadParquetDataset(symbol, interval, startDate, endDate);
   const params = new URLSearchParams({interval, limit: String(limit)});
-return api<Candle[]>(`${API_ROUTES.candles(datasetId)}?${params}`);
+  if(startDate){
+    params.set("start_date", startDate);
+  }
+  if(endDate){
+    params.set("end_date", endDate);
+  }
+  return api<Candle[]>(`${API_ROUTES.dbCandles(symbol)}?${params}`);
 };
 
+// Fetch metadata (row coubt, date range) for a single DB symbol using
+// GET /api/data/db/{symbol}/info
+export const fetchDbSymbolInfo = async (symbol: string): Promise<DbSymbolInfo> => {
+  return api<DbSymbolInfo>(API_ROUTES.dbInfo(symbol));
+}
 //Fetch list of previous backtests
 export const fetchBacktests = async (): Promise<BacktestSummary[]> => {
   return api<BacktestSummary[]>(API_ROUTES.backtests);

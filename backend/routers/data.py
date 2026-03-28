@@ -5,8 +5,28 @@ load_parquet, list_parquet_symbols, get_candles)
 from services.dataset_store import add_dataset
 from datetime import datetime
 from schemas import DatasetInfo, ParquetLoadRequest
+import pandas as pd
 
 router = APIRouter()  
+
+def normalise_interval(interval: str) -> str:
+    value = interval.strip().lower()
+    aliases = {
+        "1m": "1min", "1min": "1min",
+        "5m": "5min", "5min": "5min",
+        "10m": "10min", "10min": "10min",
+        "15m": "15min", "15min": "15min",
+        "30m": "30min", "30min": "30min",
+        "1h": "1h", "60m": "1h",
+        "4h": "4h", "240m": "4h",
+        "1d": "1d", "d": "1d",
+        "1w": "1w", "w": "1w",
+    }
+    canonical = aliases.get(value)
+    if canonical is None:
+        allowed = ", ".join(["1min", "5min", "10min", "15min", "30min", "1h", "4h", "1d", "1w"])
+        raise ValueError(f"Unsupported interval '{interval}'. Allowed values: {allowed}")
+    return canonical
 
 # YFinance for live chart preview 
 @router.post("/import/yfinance")
