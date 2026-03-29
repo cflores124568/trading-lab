@@ -139,3 +139,20 @@ class ParquetLoadRequest(BaseModel):
     interval: str = "1min"
     start_date: Optional[str] = None
     end_date: Optional[str] = None
+
+# DB Symbol lookup
+class LoadSymbolRequest(BaseModel):
+    symbol: str
+    interval: str = "15min"
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+
+class SymbolInfo(BaseModel):
+    symbol: str
+    full_name: str
+    exchange: str
+    tick_size: float
+    tick_value: float
+    rows: int
+    start_date: str
+    end_date: str
