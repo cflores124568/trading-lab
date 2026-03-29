@@ -1,4 +1,3 @@
-
 import type { UTCTimestamp } from "lightweight-charts";
 /*Base API path for backend requests.
 
@@ -15,6 +14,8 @@ const API_ROUTES = {
   dbSymbols: "/data/db/symbols", //TimescaleDB replacing parquet
   dbCandles: (symbol: string) => `/data/db/${symbol}/candles`,
   dbInfo: (symbol: string) => `/data/db/${symbol}/info`,
+  symbols: "/data/symbols",
+  loadSymbol: "/data/load-symbol",
   backtests: "/backtests",
   propFirms: "/prop-firms",
 } as const;
@@ -64,6 +65,25 @@ export interface DbSymbolInfo {
   start_date: string;
   end_date: string;
   rows: number;
+}
+
+//Metadata for a single symbol available for loading from external sources (yfinance, Databento parquet)
+export interface SymbolInfo {
+  symbol: string;
+  full_name: string;
+  exchange: string;
+  tick_size: number;
+  tick_value: number;
+  rows: number;
+  start_date: string;
+  end_date: string;
+}
+
+export interface LoadSymbolRequest {
+  symbol: string;
+  interval: string;
+  start_date?: string;
+  end_date?: string;
 }
 
 //A single trade produced by a backtest.
@@ -196,4 +216,23 @@ export const runBacktest = async (payload: unknown): Promise<BacktestResult> => 
 //Fetch prop firm rule presets.
 export const fetchPropPresets = async () => {
   return api(API_ROUTES.propFirms);
+};
+
+export const fetchSymbols = async (): Promise<SymbolInfo[]> => {
+  const res = await fetch(`${BASE}/data/symbols`);
+  if (!res.ok) throw new Error(`fetchSymbols failed: ${res.status}`);
+  return res.json();
+};
+
+export const loadSymbol = async (req: LoadSymbolRequest): Promise<DatasetInfo> => {
+  const res = await fetch(`${BASE}/data/load-symbol`, {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail ?? `loadSymbol failed: ${res.status}`);
+  }
+  return res.json();
 };
