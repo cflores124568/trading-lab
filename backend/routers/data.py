@@ -1,10 +1,9 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Query
-from schemas import DatasetInfo
+from schemas import DatasetInfo, LoadSymbolRequest, SymbolInfo, ParquetLoadRequest
 from services.data_loader import(load_csv, generate_sample_data, get_dataset, list_datasets, fetch_yfinance_intraday,
-load_parquet, list_parquet_symbols, get_candles)
+load_parquet, list_parquet_symbols, get_candles, load_from_db)
 from services.dataset_store import add_dataset
 from datetime import datetime
-from schemas import DatasetInfo, ParquetLoadRequest
 import pandas as pd
 
 router = APIRouter()  
@@ -94,6 +93,55 @@ async def load_parquet_dataset(request: ParquetLoadRequest):
         raise HTTPException(status_code=400, detail=str(exc))
     return info
 
+# TimescaleDB endpoints (DB path)
+@router.get("/db/symbols")
+async def list_db_symbols():
+    # List all symbols in TimescaleDB w/ row counts and date ranges
+    try:
+        from services.db import list_db_symbols as _list
+        return _list()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+    
+# TimescaleDB symbols
+@router.get("/symbols", response_model=list[SymbolInfo])
+async def list_symbols():
+    #Return all symbols avalable in TimescaleDB with metadata.  
+    try:
+        from services.db import list_db_symbols
+        return list_db_symbols()
+    except RuntimeError:
+        return []
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Database unavailable: {exc}")
+    
+@router.post("/load-symbol", response_model=DatasetInfo)
+async def load_symbol(request: LoadSymbolRequest):
+    """Load a symbol from TimescaleDB into the in-memory dataset store.
+
+    Returns a DatasetInfo with a fresh dataset_id. Pass that id directly
+    to POST /api/backtests as the dataset_id field
+    """
+    try:
+        info = load_from_db(
+            symbol=request.symbol,
+            interval=request.interval,
+            start_date=request.start_date,
+            end_date=request.end_date,
+        )
+    except RuntimeError as exc: 
+        raise HTTPException(    #DATABASE_URL missing
+            status_code=503,
+            detail=f"TimescaleDB not configured: {exc}",
+        )
+    except ValueError as exc:   # Emty result or invalid interval
+        status = 400 if "interval" in str(exc).lower() else 404
+        raise HTTPException(status_code=status, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    return info
+
 # In-memory dataset list/inspect
 @router.get("/", response_model=list[DatasetInfo])
 async def list_all_datasets():
@@ -136,16 +184,6 @@ async def get_dataset_candles(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return candles
-
-# TimescaleDB endpoints (DB path)
-@router.get("/db/symbols")
-async def list_db_symbols():
-    # List all symbols in TimescaleDB w/ row counts and date ranges
-    try:
-        from services.db import list_db_symbols as _list
-        return _list()
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
     
 @router.get("/db/{symbol}/candles")
 async def get_db_candles(
