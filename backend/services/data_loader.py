@@ -649,3 +649,40 @@ def get_dataset(dataset_id: str) -> dict:
 def list_datasets() -> list[dict]:
     #Return DatasetInfo dict for every dataset in memory
     return [v["info"] for v in _store().values()]
+
+def load_from_db(
+    symbol: str,
+    interval: str = "15min",
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> dict:
+    """Load OHLCV bars from TimescaleDB and register a clean dataset.
+
+    Raises ValueError if the query comes back empty, or RuntimeError if the DB
+    isn’t configured (propagated from the pool init).
+    """
+    try:
+        from services.db import get_ohlcv
+    except ImportError:
+        from db import get_ohlcv
+
+    interval = normalise_interval(interval)
+
+    df = get_ohlcv(
+        symbol=symbol.upper(),
+        interval=interval,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    if df.empty:
+        raise ValueError(
+            f"No data found for symbol '{symbol}' "
+            f"({start_date or 'start'} → {end_date or 'end'})."
+        )
+    # Rename the 'ts' index to 'date' so downstream code 
+    # sees  same column name it gets from every other loader.
+    df.index.name = "date"
+
+    name = f"{symbol.upper()} {interval} (TimescaleDB)"
+    return _store_dataset(df, name=name, source="timescaledb")
