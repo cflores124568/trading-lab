@@ -154,6 +154,19 @@ export interface BacktestSummary {
   created_at: string;
 }
 
+export interface PropFirmPreset {
+  key: string;
+  name: string;
+  account_size: number;
+  daily_loss_limit: number;
+  max_drawdown: number;
+  profit_target: number;
+  consistency_rule: boolean;
+  consistency_threshold: number;
+  drawdown_type: "intraday" | "eod";
+  min_trading_days: number | null;
+}
+
 
 // Fetch helpers
 /* Fetch futures symbols from TimescaleDB.
@@ -216,27 +229,20 @@ export const runBacktest = async (payload: unknown): Promise<BacktestResult> => 
 };
 
 //Fetch prop firm rule presets.
-export const fetchPropPresets = async () => {
-  return api(API_ROUTES.propFirms);
+export const fetchPropPresets = async (): Promise<PropFirmPreset[]> => {
+  return api<PropFirmPreset[]>(API_ROUTES.propFirms);
 };
 
 export const fetchSymbols = async (): Promise<SymbolInfo[]> => {
-  const res = await fetch(`${BASE}/data/symbols`);
-  if (!res.ok) throw new Error(`fetchSymbols failed: ${res.status}`);
-  return res.json();
+  return api<SymbolInfo[]>(API_ROUTES.symbols);
 };
 
 export const loadSymbol = async (req: LoadSymbolRequest): Promise<DatasetInfo> => {
-  const res = await fetch(`${BASE}/data/load-symbol`, {
-    method:  "POST",
-    headers: { "Content-Type": "application/json" },
-    body:    JSON.stringify(req),
+  return api<DatasetInfo>(API_ROUTES.loadSymbol, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(req),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail ?? `loadSymbol failed: ${res.status}`);
-  }
-  return res.json();
 };
 
 // Accepts Interval object and coverts to correct backend format using getBackendInterval() 

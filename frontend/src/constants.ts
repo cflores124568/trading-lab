@@ -134,12 +134,3 @@ export const STRATEGY_PARAMS: Record<StrategyValue, { key: string; label: string
     { key: "std_dev", label: "Std deviation", default: 2  },
   ],
 };
-
-export const PROP_PRESETS = [
-  { key: "custom", label: "Custom", name: "Custom", account_size: 100_000, daily_loss_limit: 0.04, max_drawdown: 0.08, profit_target: 0.10, consistency_rule: true,  consistency_threshold: 0.30, drawdown_type: "eod" },
-  { key: "ftmo", label: "FTMO", name: "FTMO", account_size: 100_000, daily_loss_limit: 0.05, max_drawdown: 0.10, profit_target: 0.10, consistency_rule: true,  consistency_threshold: 0.30, drawdown_type: "eod" },
-  { key: "topstep", label: "TopStep", name: "TopStep", account_size: 100_000, daily_loss_limit: 0.05, max_drawdown: 0.08, profit_target: 0.08, consistency_rule: true,  consistency_threshold: 0.35, drawdown_type: "eod" },
-  { key: "apex", label: "Apex", name: "Apex Trader Funding", account_size: 100_000, daily_loss_limit: 0.04, max_drawdown: 0.06, profit_target: 0.06, consistency_rule: false, consistency_threshold: 0.30, drawdown_type: "eod" },
-] as const;
-
-export type PropPresetKey = typeof PROP_PRESETS[number]["key"];
