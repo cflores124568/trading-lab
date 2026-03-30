@@ -1,4 +1,6 @@
 import type { UTCTimestamp } from "lightweight-charts";
+import type { Interval } from "../constants";
+import { getBackendInterval } from "../constants";
 /*Base API path for backend requests.
 
   If the backend route changes later (for example /v1/api),
@@ -235,4 +237,19 @@ export const loadSymbol = async (req: LoadSymbolRequest): Promise<DatasetInfo> =
     throw new Error(err.detail ?? `loadSymbol failed: ${res.status}`);
   }
   return res.json();
+};
+
+// Accepts Interval object and coverts to correct backend format using getBackendInterval() 
+export const loadSymbolWithInterval = async (
+  symbol: string,
+  interval: Interval,         
+  start_date?: string,
+  end_date?: string
+): Promise<DatasetInfo> => {
+  return loadSymbol({
+    symbol,
+    interval: getBackendInterval(interval),  
+    start_date,
+    end_date,
+  });
 };

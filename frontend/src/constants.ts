@@ -99,3 +99,47 @@ export const PERIODS: Period[] = [
 ];
 
 export const DEFAULT_PERIOD = PERIODS[1]; 
+
+// Returns coorrect interval string for backend such that
+// /api/data/load-symbol always recieves the form "min" vs "m"
+export const getBackendInterval = (interval: Interval): string => {
+  return interval.resampleRule ?? interval.value;
+}
+
+export const STRATEGIES = [
+  { label: "MA Crossover", value: "ma_crossover" },
+  { label: "EMA Crossover", value: "ema_crossover"},
+  { label: "RSI Overbought", value: "rsi_overbought"},
+  { label: "Bollinger Bands", value: "bollinger_bands" },
+] as const;
+
+export type StrategyValue = typeof STRATEGIES[number]["value"];
+
+export const STRATEGY_PARAMS: Record<StrategyValue, { key: string; label: string; default: number }[]> = {
+  ma_crossover:    [
+    { key: "fast_period", label: "Fast period", default: 9  },
+    { key: "slow_period", label: "Slow period", default: 21 },
+  ],
+  ema_crossover:   [
+    { key: "fast_period", label: "Fast period", default: 9  },
+    { key: "slow_period", label: "Slow period", default: 21 },
+  ],
+  rsi_overbought:  [
+    { key: "rsi_period", label: "RSI period", default: 14 },
+    { key: "overbought", label: "Overbought", default: 70 },
+    { key: "oversold", label: "Oversold", default: 30 },
+  ],
+  bollinger_bands: [
+    { key: "bb_period", label: "BB period", default: 20 },
+    { key: "std_dev", label: "Std deviation", default: 2  },
+  ],
+};
+
+export const PROP_PRESETS = [
+  { key: "custom", label: "Custom", name: "Custom", account_size: 100_000, daily_loss_limit: 0.04, max_drawdown: 0.08, profit_target: 0.10, consistency_rule: true,  consistency_threshold: 0.30, drawdown_type: "eod" },
+  { key: "ftmo", label: "FTMO", name: "FTMO", account_size: 100_000, daily_loss_limit: 0.05, max_drawdown: 0.10, profit_target: 0.10, consistency_rule: true,  consistency_threshold: 0.30, drawdown_type: "eod" },
+  { key: "topstep", label: "TopStep", name: "TopStep", account_size: 100_000, daily_loss_limit: 0.05, max_drawdown: 0.08, profit_target: 0.08, consistency_rule: true,  consistency_threshold: 0.35, drawdown_type: "eod" },
+  { key: "apex", label: "Apex", name: "Apex Trader Funding", account_size: 100_000, daily_loss_limit: 0.04, max_drawdown: 0.06, profit_target: 0.06, consistency_rule: false, consistency_threshold: 0.30, drawdown_type: "eod" },
+] as const;
+
+export type PropPresetKey = typeof PROP_PRESETS[number]["key"];
