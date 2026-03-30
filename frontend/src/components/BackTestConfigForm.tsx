@@ -1,5 +1,4 @@
-// src/components/BacktestConfigForm.tsx
-import { createSignal, createResource, Show, For, batch } from "solid-js";
+import { createSignal, createResource, Show, For, batch, createEffect } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { fetchSymbols, fetchPropPresets, loadSymbol, runBacktest, type SymbolInfo, type PropFirmPreset} from "../services/api";
 import { BACKTEST_INTERVALS, STRATEGIES, STRATEGY_PARAMS, getBackendInterval, type StrategyValue} from "../constants";
@@ -12,12 +11,12 @@ const label = "block text-xs text-zinc-400 mb-1";
 const section = "bg-zinc-900 rounded-lg p-5 space-y-4";
 
 // Group presets by firm name 
-function groupPresets(
-  presets: PropFirmPreset[]
-): Record<string, PropFirmPreset[]> {
+function groupPresets(presets: PropFirmPreset[]): Record<string, PropFirmPreset[]> {
   return presets.reduce<Record<string, PropFirmPreset[]>>((acc, p) => {
-    // Firm name = everything before the first space+dollar amount; "Topstep $50k" -> "Topstep"
-    const firm = p.name.replace(/\s+\$[\d,k]+.*$/i, "").trim();
+    // Handles variety of prop firms
+    let firm = p.name.split(/\s+\d/)[0].trim();  // everything before first number
+    firm = firm.replace(/^My Funded Futures (Rapid|Flex)?/i, "My Funded Futures")
+               .replace(/^Lucid Trading /i, "Lucid Trading").trim();
     (acc[firm] ??= []).push(p);
     return acc;
   }, {});
@@ -42,6 +41,16 @@ export default function BacktestConfigForm() {
   const [error, setError] = createSignal<string | null>(null);
   const [step, setStep] = createSignal<"idle" | "loading-data" | "running">("idle");
 
+  // Auto select first symbol upon load
+  createEffect(() => {
+    const loadedSymbols = symbols();
+    if(loadedSymbols && loadedSymbols.length > 0 && !symbol()){
+      setSymbol(loadedSymbols[0]); // Change to loadedSymbols.find(s => s.symbol === "NQ") for other defaults
+    }
+  });
+
+  //Submit guard
+  const canRun = () => !!symbol() && !!preset() && !loading();
   // Handlers 
   function handleStrategyChange(val: StrategyValue) {
     batch(() => {
@@ -76,23 +85,23 @@ export default function BacktestConfigForm() {
     try {
       // Register symbol as a dataset
       const dataset = await loadSymbol({
-        symbol:     sym.symbol,
-        interval:   getBackendInterval(interval()),
+        symbol: sym.symbol,
+        interval: getBackendInterval(interval()),
         start_date: startDate() || undefined,
-        end_date:   endDate()   || undefined,
+        end_date: endDate() || undefined,
       });
       setStep("running");
 
       // Run backtest
       const result = await runBacktest({
-        dataset_id:      dataset.dataset_id,
-        strategy:        { type: strategy(), params: params() },
+        dataset_id: dataset.dataset_id,
+        strategy: { type: strategy(), params: params() },
         prop_firm_rules: pre,
-        start_date:      startDate() || undefined,
-        end_date:        endDate()   || undefined,
+        start_date: startDate() || undefined,
+        end_date: endDate() || undefined,
         initial_balance: pre.account_size,
-        position_size:   1,
-        commission:      5,
+        position_size: 1,
+        commission: 5,
       });
       navigate(`/backtests/${result.backtest_id}`);
     } catch (e: unknown) {
@@ -114,7 +123,7 @@ export default function BacktestConfigForm() {
           {error()}
         </div>
       </Show>
-      {/* Symbol  */}
+      {/* Symbol  & Interval*/}
       <div class={section}>
         <p class="text-sm font-semibold text-zinc-200">Symbol & Interval</p>
         <Show
@@ -145,9 +154,7 @@ export default function BacktestConfigForm() {
                 setSymbol(found ?? null);
               }}
             >
-              <option value="" disabled>
-                Select a symbol…
-              </option>
+              <option value="" disabled>Select a symbol… </option>
               <For each={symbols()}>
                 {(s) => (
                   <option value={s.symbol}>
@@ -240,7 +247,7 @@ export default function BacktestConfigForm() {
         <p class="text-sm font-semibold text-zinc-200">Prop Firm Rules</p>
 
         <Show
-          when={!presets.loading}
+          when={presets() && presets()!.length > 0}
           fallback={<div class="h-9 bg-zinc-800 rounded animate-pulse" />}
         >
           <div>
@@ -249,15 +256,11 @@ export default function BacktestConfigForm() {
               class={field}
               value={preset()?.name ?? ""}
               onChange={(e) => {
-                const found = presets()?.find(
-                  (p) => p.name === e.currentTarget.value
-                );
+                const found = presets()?.find((p) => p.name === e.currentTarget.value);
                 setPreset(found ?? null);
               }}
             >
-              <option value="" disabled>
-                Select a preset…
-              </option>
+              <option value="" disabled>Select a preset…</option>
               <For each={Object.entries(groupPresets(presets() ?? []))}>
                 {([firm, firmPresets]) => (
                   <optgroup label={firm}>
@@ -301,7 +304,7 @@ export default function BacktestConfigForm() {
           "w-full py-2.5 rounded-lg text-sm font-semibold transition-colors " +
           (loading() ? "bg-zinc-700 text-zinc-400 cursor-not-allowed" : "bg-zinc-100 text-zinc-900 hover:bg-white")
         }
-        disabled={loading() || (!symbols.loading && (symbols()?.length ?? 0) === 0)}
+        disabled={!canRun()}
         onClick={handleSubmit}
       >
         {step() === "loading-data"
