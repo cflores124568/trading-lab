@@ -22,7 +22,7 @@ function groupPresets(presets: PropFirmPreset[]): Record<string, PropFirmPreset[
   }, {});
 }
 
-export default function BacktestConfigForm() {
+export default function BackTestConfigForm() {
   const navigate = useNavigate();
   const [symbols] = createResource(fetchSymbols);
   const [presets] = createResource(fetchPropPresets);
