@@ -47,6 +47,37 @@ async def import_from_yfinance(symbol:str, interval: str, dataset_id: str | None
     )
     return {"dataset_id": dataset_id, "rows": len(df), "message": "Imported successfully"}
 
+@router.get("/yfinance/candles")
+async def get_yfinance_candles(
+    symbol: str = Query(...),
+    interval: str = Query(default="1h"),
+    period: str = Query(default="60d"),
+):
+    """Fetch recent Yahoo Finance candles for the live dashboard without storing them."""
+    try:
+        df, _ = fetch_yfinance_intraday(symbol, interval, period)
+    except HTTPException as exc:
+        raise exc
+
+    if df.empty:
+        return []
+
+    df = df.copy()
+    df.columns = df.columns.str.lower()
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+
+    return [
+        {
+            "time": int(row.timestamp.timestamp()),
+            "open": round(float(row.open), 2),
+            "high": round(float(row.high), 2),
+            "low": round(float(row.low), 2),
+            "close": round(float(row.close), 2),
+            "volume": int(float(row.volume)),
+        }
+        for row in df.itertuples(index=False)
+    ]
+
 #CSV Support
 @router.post("/upload", response_model=DatasetInfo)
 async def upload_csv(file: UploadFile = File(...)):

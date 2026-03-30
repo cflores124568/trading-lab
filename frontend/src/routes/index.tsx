@@ -1,82 +1,259 @@
-import { createSignal, createResource, Show, ErrorBoundary } from "solid-js";
+import { A } from "@solidjs/router";
+import { createResource, createSignal, Show } from "solid-js";
 import PriceChart from "../components/PriceChart";
-import { fetchCandles } from "../services/api";
-import { DATABENTO_SYMBOLS, BACKTEST_INTERVALS, DEFAULT_DATABENTO_SYMBOL, DEFAULT_INTERVAL, type DatabentoSymbol, type Interval}  from "../constants";
- 
+import {
+  BACKTEST_INTERVALS,
+  DATABENTO_SYMBOLS,
+  DEFAULT_DATABENTO_SYMBOL,
+  DEFAULT_INTERVAL,
+  DEFAULT_PERIOD,
+  DEFAULT_YFINANCE_SYMBOL,
+  getBackendInterval,
+  LIVE_CHART_INTERVALS,
+  PERIODS,
+  YFINANCE_SYMBOLS,
+} from "../constants";
+import { fetchCandles, fetchYfinanceCandles, type Candle } from "../services/api";
+
+type DashboardMode = "live" | "historical";
+
+type DashboardQuery =
+  | {
+      mode: "live";
+      symbol: string;
+      interval: string;
+      period: string;
+    }
+  | {
+      mode: "historical";
+      symbol: string;
+      interval: string;
+      startDate?: string;
+      endDate?: string;
+    };
+
+function formatDate(daysAgo: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() - daysAgo);
+  return date.toISOString().slice(0, 10);
+}
+
+function tabClass(active: boolean): string {
+  return [
+    "rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+    active
+      ? "bg-zinc-100 text-zinc-900"
+      : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100",
+  ].join(" ");
+}
+
 export default function Dashboard() {
-  const [symbol, setSymbol]  = createSignal<DatabentoSymbol>(DEFAULT_DATABENTO_SYMBOL);
-  const [interval, setInterval] = createSignal<Interval>(DEFAULT_INTERVAL);
+  const defaultLiveInterval =
+    LIVE_CHART_INTERVALS.find((interval) => interval.value === DEFAULT_INTERVAL.value) ??
+    LIVE_CHART_INTERVALS[0];
+  const defaultHistoricalInterval =
+    BACKTEST_INTERVALS.find((interval) => interval.value === DEFAULT_INTERVAL.value) ??
+    BACKTEST_INTERVALS[0];
 
-  // Reactive data fetch 
-  const resourceKey = () => {
-    const rule = interval().resampleRule;
-    if(!rule){
-      return null;
-    }
-    return{
-      symbol: symbol().key,
-      interval: rule,
-      limit: 750
-    }
-  }
-  const [candles] = createResource(resourceKey, (args) => fetchCandles(args));
+  const [mode, setMode] = createSignal<DashboardMode>("live");
 
-  //Reusable tailwind classes for dropdowns (kept as string to avoid template literal issues)
-  const select = "bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-sm " +
-    "focus:outline-none focus:ring-1 focus:ring-zinc-500 cursor-pointer";
+  const [liveSymbol, setLiveSymbol] = createSignal(DEFAULT_YFINANCE_SYMBOL.key);
+  const [liveInterval, setLiveInterval] = createSignal(defaultLiveInterval.value);
+  const [livePeriod, setLivePeriod] = createSignal(DEFAULT_PERIOD.value);
+
+  const [historicalSymbol, setHistoricalSymbol] = createSignal(DEFAULT_DATABENTO_SYMBOL.key);
+  const [historicalInterval, setHistoricalInterval] = createSignal(defaultHistoricalInterval.value);
+  const [startDate, setStartDate] = createSignal(formatDate(30));
+  const [endDate, setEndDate] = createSignal(formatDate(0));
+
+  const [candles] = createResource<Candle[], DashboardQuery>(
+    (): DashboardQuery => {
+      if (mode() === "live") {
+        const selectedInterval =
+          LIVE_CHART_INTERVALS.find((interval) => interval.value === liveInterval()) ??
+          defaultLiveInterval;
+        return {
+          mode: "live",
+          symbol: liveSymbol(),
+          interval: selectedInterval.yfinanceInterval!,
+          period: livePeriod(),
+        };
+      }
+
+      const selectedInterval =
+        BACKTEST_INTERVALS.find((interval) => interval.value === historicalInterval()) ??
+        defaultHistoricalInterval;
+
+      return {
+        mode: "historical",
+        symbol: historicalSymbol(),
+        interval: getBackendInterval(selectedInterval),
+        startDate: startDate() || undefined,
+        endDate: endDate() || undefined,
+      };
+    },
+    async (query) => {
+      if (query.mode === "live") {
+        return fetchYfinanceCandles(query.symbol, query.interval, query.period);
+      }
+
+      if (query.startDate && query.endDate && query.startDate > query.endDate) {
+        throw new Error("Start date must be before end date.");
+      }
+
+      return fetchCandles({
+        symbol: query.symbol,
+        interval: query.interval,
+        startDate: query.startDate,
+        endDate: query.endDate,
+        limit: 50_000,
+      });
+    }
+  );
+
+  const select =
+    "bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm " +
+    "text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-500";
+  const dateInput = `${select} min-w-40`;
 
   return (
-    <div class="min-h-screen bg-zinc-950 text-zinc-100 p-6">
-      <div class="flex items-center justify-between mb-6">
-        <h1 class="text-2xl font-bold tracking-tight">Trading Lab</h1>
-        {/* Symbol + timeframe controls */}
-        <div class="flex gap-3 flex-wrap justify-end">
-          <select class={`${select} min-w-52`}
-            value={symbol().key}
-            onChange={e => {
-              const match = DATABENTO_SYMBOLS.find((s) => s.key === e.currentTarget.value);
-              if(match){
-                setSymbol(match);
-              }
-            }}
-          >
-            {DATABENTO_SYMBOLS.map((s) => (
-              <option value={s.key}>{s.label}</option>
-            ))}
-          </select>
+    <div class="min-h-screen bg-zinc-950 text-zinc-100">
+      <nav class="border-b border-zinc-800 px-6 py-3 flex items-center gap-6">
+        <span class="font-bold text-sm tracking-tight">Trading Lab</span>
+        <A href="/" class="text-sm text-zinc-100 transition-colors">Chart</A>
+        <A href="/backtests" class="text-sm text-zinc-400 hover:text-zinc-100 transition-colors">
+          Backtests
+        </A>
+      </nav>
 
-          <select 
-            class={select} 
-            value={interval().value}
-            onChange={(e) => {
-              const match = BACKTEST_INTERVALS.find((i) => i.value === e.currentTarget.value);
-              if(match){
-                setInterval(match);
-              }
-            }}
+      <div class="p-6 space-y-6">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div class="space-y-3">
+            <div>
+              <h1 class="text-2xl font-bold tracking-tight">Dashboard</h1>
+              <p class="text-sm text-zinc-400 mt-1">
+                Toggle between live preview data and historical TimescaleDB candles.
+              </p>
+            </div>
+
+            <div class="flex gap-2">
+              <button
+                type="button"
+                class={tabClass(mode() === "live")}
+                onClick={() => setMode("live")}
+              >
+                Live
+              </button>
+              <button
+                type="button"
+                class={tabClass(mode() === "historical")}
+                onClick={() => setMode("historical")}
+              >
+                Historical
+              </button>
+            </div>
+          </div>
+
+          <Show
+            when={mode() === "live"}
+            fallback={
+              <div class="flex flex-wrap gap-3 lg:justify-end">
+                <select
+                  class={`${select} min-w-52`}
+                  value={historicalSymbol()}
+                  onChange={(e) => setHistoricalSymbol(e.currentTarget.value)}
+                >
+                  {DATABENTO_SYMBOLS.map((symbol) => (
+                    <option value={symbol.key}>{symbol.label}</option>
+                  ))}
+                </select>
+
+                <select
+                  class={select}
+                  value={historicalInterval()}
+                  onChange={(e) => setHistoricalInterval(e.currentTarget.value)}
+                >
+                  {BACKTEST_INTERVALS.map((interval) => (
+                    <option value={interval.value}>{interval.label}</option>
+                  ))}
+                </select>
+
+                <input
+                  type="date"
+                  class={dateInput}
+                  value={startDate()}
+                  onInput={(e) => setStartDate(e.currentTarget.value)}
+                />
+
+                <input
+                  type="date"
+                  class={dateInput}
+                  value={endDate()}
+                  onInput={(e) => setEndDate(e.currentTarget.value)}
+                />
+              </div>
+            }
           >
-            {BACKTEST_INTERVALS.map((i) => (
-              <option value={i.value} disabled={i.resampleRule === null}>
-              {i.label}{i.resampleRule === null ? " (soon)": ""}
-              </option>
-            ))}
-          </select>
+            <div class="flex flex-wrap gap-3 lg:justify-end">
+              <select
+                class={`${select} min-w-52`}
+                value={liveSymbol()}
+                onChange={(e) => setLiveSymbol(e.currentTarget.value)}
+              >
+                {YFINANCE_SYMBOLS.map((symbol) => (
+                  <option value={symbol.key}>{symbol.label}</option>
+                ))}
+              </select>
+
+              <select
+                class={select}
+                value={liveInterval()}
+                onChange={(e) => setLiveInterval(e.currentTarget.value)}
+              >
+                {LIVE_CHART_INTERVALS.map((interval) => (
+                  <option value={interval.value}>{interval.label}</option>
+                ))}
+              </select>
+
+              <select
+                class={select}
+                value={livePeriod()}
+                onChange={(e) => setLivePeriod(e.currentTarget.value)}
+              >
+                {PERIODS.map((period) => (
+                  <option value={period.value}>{period.label}</option>
+                ))}
+              </select>
+            </div>
+          </Show>
+        </div>
+
+        <div class="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
+          <p class="text-xs uppercase tracking-wide text-zinc-500 mb-4">
+            {mode() === "live"
+              ? "Live preview via Yahoo Finance"
+              : "Historical candles via TimescaleDB"}
+          </p>
+
+          <Show
+            when={candles.error}
+            fallback={
+              <Show
+                when={!candles.loading}
+                fallback={<div class="h-96 bg-zinc-950 rounded-xl animate-pulse" />}
+              >
+                <PriceChart candles={candles() ?? []} />
+              </Show>
+            }
+          >
+            {(error) => (
+              <div class="h-96 flex items-center justify-center bg-zinc-950 rounded-xl">
+                <p class="text-sm text-red-400">Failed to load chart: {error().message}</p>
+              </div>
+            )}
+          </Show>
         </div>
       </div>
-
-      {/*Where the magic happens */}
-      <ErrorBoundary fallback={err => (
-        <div class="h-96 flex items-center justify-center bg-zinc-900 rounded-lg">
-          <p class="text-red-400 text-sm">Failed to load chart: {err.message}</p>
-        </div>
-      )}>
-        <Show
-          when={!candles.loading && candles()}
-          fallback={<div class="h-96 bg-zinc-900 rounded-lg animate-pulse" />}
-        >
-          <PriceChart candles={candles()!} />
-        </Show>
-      </ErrorBoundary>
     </div>
   );
 }

@@ -16,6 +16,7 @@ const API_ROUTES = {
   dbSymbols: "/data/db/symbols", //TimescaleDB replacing parquet
   dbCandles: (symbol: string) => `/data/db/${symbol}/candles`,
   dbInfo: (symbol: string) => `/data/db/${symbol}/info`,
+  yfinanceCandles: "/data/yfinance/candles",
   symbols: "/data/symbols",
   loadSymbol: "/data/load-symbol",
   backtests: "/backtests",
@@ -202,6 +203,15 @@ export const fetchCandles = async ({
     params.set("end_date", endDate);
   }
   return api<Candle[]>(`${API_ROUTES.dbCandles(symbol)}?${params}`);
+};
+
+export const fetchYfinanceCandles = async (
+  symbol: string,
+  interval: string,
+  period: string,
+): Promise<Candle[]> => {
+  const params = new URLSearchParams({ symbol, interval, period });
+  return api<Candle[]>(`${API_ROUTES.yfinanceCandles}?${params}`);
 };
 
 // Fetch metadata (row coubt, date range) for a single DB symbol using

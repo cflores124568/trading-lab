@@ -45,7 +45,9 @@ export interface YFinanceSymbol {
 export const YFINANCE_SYMBOLS: YFinanceSymbol[] = [
   { label: "NQ  · Nasdaq 100", key: "NQ", ticker: "NQ=F" },
   { label: "MNQ · Micro Nasdaq 100", key: "MNQ", ticker: "MNQ=F"},
-  { label: "GC  · Gold", key: "GC",  ticker: "GC=F"},
+  { label: "ES  · S&P 500", key: "ES",  ticker: "ES=F"},
+  { label: "MES · Micro S&P 500", key: "MES", ticker: "MES=F" },
+  { label: "GC  · Gold", key: "GC", ticker: "GC=F"},
   { label: "MGC · Micro Gold", key: "MGC", ticker: "MGC=F"},
 ];
 
