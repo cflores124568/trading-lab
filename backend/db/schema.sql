@@ -77,3 +77,27 @@ INSERT INTO symbols (symbol, full_name, exchange, tick_size, tick_value) VALUES
     ('GC',  'Gold Futures',             'CMX', 0.10, 10.00),
     ('MGC', 'Micro Gold Futures',       'CMX', 0.10,  1.00)
 ON CONFLICT (symbol) DO NOTHING;
+
+-- Backtest result persistence
+CREATE TABLE IF NOT EXISTS backtests (
+    backtest_id      TEXT PRIMARY KEY,
+    dataset_id       TEXT NOT NULL,
+    strategy_type    TEXT NOT NULL,
+    strategy         JSONB NOT NULL,
+    prop_firm_rules  JSONB NOT NULL,
+    status           TEXT NOT NULL DEFAULT 'completed',
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    trades           JSONB NOT NULL,
+    metrics          JSONB NOT NULL,
+    prop_firm_eval   JSONB NOT NULL,
+    equity_curve     JSONB NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS backtests_created_at_idx
+    ON backtests (created_at DESC);
+
+CREATE INDEX IF NOT EXISTS backtests_strategy_type_idx
+    ON backtests (strategy_type);
+
+CREATE INDEX IF NOT EXISTS backtests_dataset_id_idx
+    ON backtests (dataset_id);
