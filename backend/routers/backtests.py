@@ -2,7 +2,15 @@ import uuid
 from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from schemas import BacktestRequest, BacktestResult, BacktestSummary, BacktestCompare
-from services.backtest_store import backtest_store
+from services.backtest_repo import (
+    get_backtest as get_backtest_db,
+    list_backtests as list_backtests_db,
+)
+from services.backtest_store import (
+    backtest_store,
+    get_backtest as get_backtest_mem,
+    list_backtests as list_backtests_mem,
+)
 from services.data_loader    import get_dataset
 from services.indicators     import add_all_indicators
 from services.strategy       import generate_signals
@@ -11,6 +19,23 @@ from services.metrics        import calculate_metrics
 from services.prop_firm_eval import evaluate_prop_firm
 
 router = APIRouter()
+
+
+def _load_backtest_any(backtest_id: str) -> dict | None:
+    """Load a backtest from DB first, then fall back to memory.
+
+    This keeps the read path simple while we straddle both storage modes. If
+    Postgres is down or the row isn't there yet, the in-memory copy still works.
+    """
+    try:
+        bt = get_backtest_db(backtest_id)
+    except Exception:
+        bt = None
+
+    if bt is None:
+        bt = get_backtest_mem(backtest_id)
+
+    return bt
 
 @router.post("/", response_model=BacktestResult)
 async def create_backtest(request: BacktestRequest):
@@ -80,8 +105,13 @@ async def create_backtest(request: BacktestRequest):
 
 @router.get("/", response_model=list[BacktestSummary])
 async def list_backtests():
+    try:
+        source = list_backtests_db()
+    except Exception:
+        source = list_backtests_mem()
+
     summaries = []
-    for bt in backtest_store.values():
+    for bt in source:
         summaries.append({
             "backtest_id": bt["backtest_id"],
             "dataset_id": bt["dataset_id"],
@@ -95,13 +125,13 @@ async def list_backtests():
 
 @router.get("/compare", response_model=BacktestCompare)
 async def compare_backtests(a: str, b: str):
-    if a not in backtest_store:
-        raise HTTPException(status_code=404, detail=f"Backtest A '{a}' not found.")
-    if b not in backtest_store:
-        raise HTTPException(status_code=404, detail=f"Backtest B '{b}' not found.")
+    bt_a = _load_backtest_any(a)
+    bt_b = _load_backtest_any(b)
 
-    bt_a = backtest_store[a]
-    bt_b = backtest_store[b]
+    if bt_a is None:
+        raise HTTPException(status_code=404, detail=f"Backtest A '{a}' not found.")
+    if bt_b is None:
+        raise HTTPException(status_code=404, detail=f"Backtest B '{b}' not found.")
 
     comparison = {}
     for key in ["total_pnl", "win_rate", "profit_factor", "max_drawdown", "sharpe_ratio", "sortino_ratio", "total_trades"]:
@@ -122,6 +152,9 @@ async def compare_backtests(a: str, b: str):
 
 @router.get("/{backtest_id}", response_model=BacktestResult)
 async def get_backtest(backtest_id: str):
-    if backtest_id not in backtest_store:
+    bt = _load_backtest_any(backtest_id)
+
+    if bt is None:
         raise HTTPException(status_code=404, detail=f"Backtest '{backtest_id}' not found.")
-    return backtest_store[backtest_id]
+
+    return bt
