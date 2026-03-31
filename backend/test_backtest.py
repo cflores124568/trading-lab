@@ -1,100 +1,121 @@
 #!/usr/bin/env python3
-#Quick test for the  backtesting pipeline 
-import sys, os
-sys.path.insert(0, os.path.dirname(__file__))       
-from services.data_loader      import generate_sample_data, get_dataset
-from services.indicators       import add_all_indicators
-from services.strategy         import generate_signals
-from services.backtest_engine  import run_backtest
-from services.metrics          import calculate_metrics
-from services.prop_firm_eval   import evaluate_prop_firm
 
-def main():
-    print("=" * 60)
-    print(" Trading Lab – Backtest Pipeline Smoke Test")
-    print("=" * 60)
+import os
+import sys
 
-    #1. Generate sample data
-    print("\n[1/6] Generating sample OHLCV data …")
-    info = generate_sample_data(name="ES_test", bars=2000, seed=42)
-    print(f"      Dataset: {info['name']}  |  {info['rows']} bars  "
-          f"|  {info['start_date']} → {info['end_date']}")
+from fastapi.testclient import TestClient
 
-    dataset = get_dataset(info["dataset_id"])
-    df = dataset["df"].copy()
+sys.path.insert(0, os.path.dirname(__file__))
 
-    #2. Attach indicators
-    strategy_params = {"fast_period": 9, "slow_period": 21}
-    print("\n[2/6] Attaching indicators (SMA 9/21, RSI 14, BB 20/2) …")
-    df = add_all_indicators(df, strategy_params)
-    print(f"      Columns: {list(df.columns)}")
+from main import app
+from services.backtest_store import delete_backtest
 
-    #3. Generate signals 
-    print("\n[3/6] Generating MA-crossover signals …")
-    df = generate_signals(df, "ma_crossover", strategy_params)
-    buy_count  = (df["signal"] == 1).sum()
-    sell_count = (df["signal"] == -1).sum()
-    print(f"      Buy signals: {buy_count}  |  Sell signals: {sell_count}")
 
-    # 4. Run backtest engine
-    print("\n[4/6] Running bar-by-bar backtest engine …")
-    initial_balance = 100_000.0
-    result = run_backtest(
-        df,
-        initial_balance=initial_balance,
-        position_size=1.0,
-        commission=5.0,
-    )
-    trades = result["trades"]
-    equity_curve = result["equity_curve"]
-    print(f"      Trades executed: {len(trades)}")
-    print(f"      Final equity:    ${equity_curve[-1]:,.2f}")
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise AssertionError(message)
 
-    #5. Calculate metrics 
-    print("\n[5/6] Calculating performance metrics …")
-    metrics = calculate_metrics(trades, equity_curve, initial_balance)
-    print(f"      Win Rate        : {metrics['win_rate']*100:.1f} %")
-    print(f"      Total PnL       : ${metrics['total_pnl']:>10,.2f}")
-    print(f"      Profit Factor   : {metrics['profit_factor']}")
-    print(f"      Sharpe Ratio    : {metrics['sharpe_ratio']}")
-    print(f"      Sortino Ratio   : {metrics['sortino_ratio']}")
-    print(f"      Max Drawdown    : {metrics['max_drawdown']*100:.2f} %")
-    print(f"      Best / Worst    : ${metrics['best_trade']:,.2f} / ${metrics['worst_trade']:,.2f}")
-    print(f"      Avg Duration    : {metrics['avg_trade_duration']:.1f} min")
 
-    # 6. Prop-firm evaluation (FTMO preset) 
-    print("\n[6/6] Evaluating against FTMO prop-firm rules …")
-    ftmo_rules = {
-        "name":                  "FTMO",
-        "account_size":          100_000,
-        "daily_loss_limit":      0.05,
-        "max_drawdown":          0.10,
-        "profit_target":         0.10,
-        "consistency_rule":      True,
+def _ftmo_rules() -> dict:
+    return {
+        "name": "FTMO",
+        "account_size": 100_000,
+        "daily_loss_limit": 0.05,
+        "max_drawdown": 0.10,
+        "profit_target": 0.10,
+        "consistency_rule": True,
         "consistency_threshold": 0.30,
+        "drawdown_type": "eod",
+        "min_trading_days": None,
     }
-    eval_result = evaluate_prop_firm(
-        rules=ftmo_rules,
-        trades=trades,
-        equity_curve=equity_curve,
-        initial_balance=initial_balance,
-    )
-    print(f"      Overall PASSED  : {'✅ YES' if eval_result['passed'] else '❌ NO'}")
-    print(f"      Daily Loss OK   : {'✅' if not eval_result['daily_loss_breached'] else '❌'}")
-    print(f"      Drawdown OK     : {'✅' if not eval_result['drawdown_breached'] else '❌'}")
-    print(f"      Profit Target   : {'✅' if eval_result['profit_target_hit'] else '❌'}")
-    print(f"      Consistency OK  : {'✅' if eval_result['consistency_passed'] else '❌'}")
 
-    # sample trades 
-    print("\n── First 5 trades ────────────────────────────────────────")
-    for t in trades[:5]:
-        print(f"  #{t['trade_id']:>3}  {t['side']:>4}  "
-              f"entry={t['entry_price']:.2f}  exit={t['exit_price']:.2f}  "
-              f"PnL=${t['pnl']:>8,.2f}")
+
+def main() -> None:
+    """Run one API smoke pass across the backtest persistence flow.
+
+    This stays intentionally lightweight and hits the real FastAPI routes with
+    a generated sample dataset, so we can prove the create/list/detail path is
+    wired up without needing a whole pytest conversion yet.
+    """
+    print("=" * 60)
+    print(" Trading Lab - Backtest API Smoke Test")
+    print("=" * 60)
+
+    with TestClient(app) as client:
+        print("\n[1/5] Creating sample dataset through the API ...")
+        sample = client.post(
+            "/api/data/sample",
+            params={"name": "ES_smoke_api", "bars": 2000, "interval": "1min", "seed": 42},
+        )
+        _require(sample.status_code == 200, f"Sample dataset failed: {sample.text}")
+        sample_info = sample.json()
+        dataset_id = sample_info["dataset_id"]
+        print(f"      Dataset id: {dataset_id}")
+        print(f"      Rows: {sample_info['rows']}")
+
+        print("\n[2/5] Running a backtest through POST /api/backtests ...")
+        payload = {
+            "dataset_id": dataset_id,
+            "strategy": {
+                "type": "ma_crossover",
+                "params": {"fast_period": 9, "slow_period": 21},
+            },
+            "prop_firm_rules": _ftmo_rules(),
+            "initial_balance": 100_000,
+            "position_size": 1.0,
+            "commission": 5.0,
+        }
+        created = client.post("/api/backtests/", json=payload)
+        _require(created.status_code == 200, f"Backtest create failed: {created.text}")
+        backtest = created.json()
+        backtest_id = backtest.get("backtest_id")
+        _require(bool(backtest_id), "Backtest response did not include backtest_id.")
+        _require(backtest["dataset_id"] == dataset_id, "Backtest dataset_id did not match sample dataset.")
+        print(f"      Backtest id: {backtest_id}")
+        print(f"      Trades: {len(backtest['trades'])}")
+
+        print("\n[3/5] Checking GET /api/backtests list output ...")
+        listed = client.get("/api/backtests/")
+        _require(listed.status_code == 200, f"Backtest list failed: {listed.text}")
+        summaries = listed.json()
+        summary = next((item for item in summaries if item["backtest_id"] == backtest_id), None)
+        _require(summary is not None, "Created backtest did not show up in the list endpoint.")
+        print(f"      List entries: {len(summaries)}")
+
+        print("\n[4/5] Checking GET /api/backtests/{id} detail output ...")
+        detail = client.get(f"/api/backtests/{backtest_id}")
+        _require(detail.status_code == 200, f"Backtest detail failed: {detail.text}")
+        detail_payload = detail.json()
+        _require(detail_payload["backtest_id"] == backtest_id, "Detail endpoint returned the wrong backtest.")
+        _require(detail_payload["metrics"]["total_trades"] >= 0, "Detail endpoint returned invalid metrics.")
+        print(f"      Detail status: {detail_payload['status']}")
+
+        if os.getenv("DATABASE_URL"):
+            print("\n[5/5] Clearing in-memory copy and checking persisted read path ...")
+            removed = delete_backtest(backtest_id)
+            _require(removed, "Could not remove the in-memory backtest before DB fallback check.")
+
+            listed = client.get("/api/backtests/")
+            _require(listed.status_code == 200, f"Persisted list read failed: {listed.text}")
+            summaries = listed.json()
+            summary = next((item for item in summaries if item["backtest_id"] == backtest_id), None)
+            _require(summary is not None, "Persisted backtest did not survive the in-memory clear on list.")
+
+            detail = client.get(f"/api/backtests/{backtest_id}")
+            _require(detail.status_code == 200, f"Persisted detail read failed: {detail.text}")
+            detail_payload = detail.json()
+            _require(
+                detail_payload["backtest_id"] == backtest_id,
+                "Persisted detail endpoint returned the wrong backtest after in-memory clear.",
+            )
+            print("      DB-backed list/detail path still works.")
+        else:
+            print("\n[5/5] Skipping DB fallback check because DATABASE_URL is not set.")
 
     print("\n" + "=" * 60)
-    print(" Smoke test complete ✅")
+    print(" Smoke test complete")
     print("=" * 60)
+
 
 if __name__ == "__main__":
     main()
