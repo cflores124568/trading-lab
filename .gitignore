@@ -18,3 +18,5 @@ Thumbs.db
 # Node / Next.js 
 node_modules/
 .next/
+# Local Codex/style notes
+docs/style.local.md
