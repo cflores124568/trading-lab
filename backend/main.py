@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from routers import data, prop_firms, backtests
-from services.backtest_store import backtest_store
+from services.backtest_store import list_backtests
 
 load_dotenv()
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://localhost:3000").split(",")
@@ -38,7 +38,7 @@ app.include_router(prop_firms.router, prefix="/api/prop-firms", tags=["Prop Firm
 
 @app.get("/health") 
 async def health():
-    result = {"status": "ok", "backtests_in_memory": len(backtest_store)}
+    result = {"status": "ok", "backtests_in_memory": len(list_backtests())}
     # Show DB status; fails gracefully if not configured yet
     try:
         from services.db import health_check

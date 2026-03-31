@@ -1,35 +1,50 @@
-from typing import Dict, Optional
-from threading import Lock
+from copy import deepcopy
 from datetime import datetime
+from threading import Lock
+from typing import Optional
 
-backtest_store: Dict[str, dict] = {}
-store_lock = Lock()
+_backtest_store: dict[str, dict] = {}
+_store_lock = Lock()
 
 def add_backtest(backtest_id: str, result: dict) -> None:
-    result = result.copy()  #Snapshot so mutations dont carry over
-    result["stored_at"] = datetime.utcnow().isoformat()
-    with store_lock:
-        backtest_store[backtest_id] = result
+    """Store a backtest result in memory for fast local reads.
+
+    This keeps a deep snapshot instead of the original object, so later tweaks
+    to nested trades, metrics, or equity data don't quietly leak back into the
+    store and mess up older results.
+    """
+    entry = deepcopy(result)
+    entry["stored_at"] = datetime.utcnow().isoformat()
+    with _store_lock:
+        _backtest_store[backtest_id] = entry
 
 def get_backtest(backtest_id: str) -> Optional[dict]:
-    with store_lock:
-        data = backtest_store.get(backtest_id)
+    """Load one in-memory backtest and hand back a safe copy.
+
+    Returning a deep copy keeps callers from mutating the shared store by
+    accident, which gets more important now that memory is acting as the
+    fallback path when Postgres isn't available.
+    """
+    with _store_lock:
+        data = _backtest_store.get(backtest_id)
         if data is None:
             return None
-        return data.copy()  
+        return deepcopy(data)
 
 def list_backtests() -> list[dict]:
-    result = []
-    with store_lock:
-        for k, v in backtest_store.items():
-            entry = v.copy()
-            entry["id"] = k
-            result.append(entry)
-    return result
+    """List all in-memory backtests as safe copies.
+
+    Each entry already has its own `backtest_id`, so this just returns the
+    stored payloads without inventing an extra `id` field that the rest of the
+    app doesn't actually use.
+    """
+    with _store_lock:
+        return [deepcopy(entry) for entry in _backtest_store.values()]
 
 def delete_backtest(backtest_id: str) -> bool:
-    with store_lock:
-        if backtest_id not in backtest_store:
+    """Delete one in-memory backtest if it exists."""
+    with _store_lock:
+        if backtest_id not in _backtest_store:
             return False
-        del backtest_store[backtest_id]
+        del _backtest_store[backtest_id]
         return True

@@ -5,9 +5,10 @@ from schemas import BacktestRequest, BacktestResult, BacktestSummary, BacktestCo
 from services.backtest_repo import (
     get_backtest as get_backtest_db,
     list_backtests as list_backtests_db,
+    save_backtest,
 )
 from services.backtest_store import (
-    backtest_store,
+    add_backtest,
     get_backtest as get_backtest_mem,
     list_backtests as list_backtests_mem,
 )
@@ -100,7 +101,14 @@ async def create_backtest(request: BacktestRequest):
         "equity_curve": equity_curve,
     }
 
-    backtest_store[backtest_id] = result
+    add_backtest(backtest_id, result)
+
+    try:
+        save_backtest(result)
+    except Exception:
+        # DB persistence is best-effort for now; in-memory result still works
+        pass
+
     return result
 
 @router.get("/", response_model=list[BacktestSummary])
