@@ -1,47 +1,28 @@
 import { useParams } from "@solidjs/router";
-import { createResource, Show, For } from "solid-js";
-import { fetchBacktest } from "../../services/api";
+import { createResource, Show, For, createSignal } from "solid-js";
+import { fetchBacktest, fetchDatasetCandles } from "../../services/api";
+import type { Candle } from "../../services/api";
 import EquityCurve from "../../components/EquityCurve";
-
-//Inline svgs from Lucide to avoid dependencies
-interface IconProps {
-  size?: number;
-  class?: string;
-}
-
-const CheckCircle = (props: IconProps) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" 
-        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" 
-        class={`lucide lucide-circle-check-icon lucide-circle-check ${props.class || ""}`}>
-      <circle cx="12" cy="12" r="10"/>
-      <path d="m9 12 2 2 4-4"/>
-    </svg>
-)
-
-const XCircle = (props: IconProps) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" 
-        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" 
-        class={`lucide lucide-circle-x-icon lucide-circle-x ${props.class || ""}`}>
-      <circle cx="12" cy="12" r="10"/>
-      <path d="m15 9-6 6"/>
-      <path d="m9 9 6 6"/>
-    </svg>
-)
-
-const AlertTriangle = (props: IconProps) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" 
-        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" 
-        class={`lucide lucide-triangle-alert-icon lucide-triangle-alert ${props.class || ""}`}>
-      <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/>
-      <path d="M12 9v4"/>
-      <path d="M12 17h.01"/>
-    </svg>
-)
-
+import PriceChart from "../../components/PriceChart";
+import ReplayControls from "../../components/ReplayControls";
+import { CircleCheck, CircleX, TriangleAlert } from "lucide-solid";
 
 export default function BacktestDetail() {
   const params = useParams<{ id: string }>();
   const [result] = createResource(() => params.id, fetchBacktest);
+
+  // Once the backtest loads we have dataset_id — use that to fetch candles separately.
+  // createResource re-fires reactively whenever result() changes, so the two loads
+  // are naturally chained without any manual effect wiring.
+  const [candles] = createResource(
+    () => result()?.dataset_id,
+    (datasetId) => fetchDatasetCandles(datasetId)
+  );
+
+  const [isReplayActive, setIsReplayActive] = createSignal(false);
+  const [speed, setSpeed] = createSignal(8);
+  const [progress, setProgress] = createSignal(0);
+  const [currentBar, setCurrentBar] = createSignal(0);
 
   return (
     <Show
@@ -52,100 +33,170 @@ export default function BacktestDetail() {
         </div>
       }
     >
-      {bt => (
-        <div class="min-h-screen bg-zinc-950 text-zinc-100 p-6 space-y-6">
+      {(bt) => {
+        const { metrics, prop_firm_eval, trades, equity_curve, backtest_id } = bt();
 
-          <h1 class="text-xl font-bold tracking-tight">
-            Backtest — <span class="text-zinc-400 font-mono text-sm">{bt().backtest_id}</span>
-          </h1>
+        const tradesForChart = trades.map((trade) => ({
+          time: Math.floor(new Date(trade.entry_time).getTime() / 1000),
+          price: trade.entry_price,
+          side: trade.side as "buy" | "sell",
+          quantity: 1,
+        }));
 
-          {/* Metrics strip */}
-          <div class="grid grid-cols-3 gap-4">
-            {([
-              ["Total PnL", `$${bt().metrics.total_pnl.toFixed(2)}`],
-              ["Win Rate", `${(bt().metrics.win_rate * 100).toFixed(1)}%`],
-              ["Max Drawdown", `${(bt().metrics.max_drawdown * 100).toFixed(1)}%`],
-              ["Sharpe", bt().metrics.sharpe_ratio.toFixed(2)],
-              ["Profit Factor", bt().metrics.profit_factor.toFixed(2)],
-              ["Total Trades", String(bt().metrics.total_trades)],
-            ] as [string, string][]).map(([label, value]) => (
-              <div class="bg-zinc-900 rounded-lg p-4">
-                <p class="text-zinc-400 text-xs mb-1">{label}</p>
-                <p class="text-xl font-semibold font-mono">{value}</p>
-              </div>
-            ))}
-          </div>
+        return (
+          <div class="min-h-screen bg-zinc-950 text-zinc-100 p-6 space-y-6">
 
-          {/* Equity curve */}
-          <div class="bg-zinc-900 rounded-lg p-4">
-            <p class="text-sm text-zinc-400 mb-3">Equity Curve</p>
-            <EquityCurve data={bt().equity_curve} />
-          </div>
+            <h1 class="text-xl font-bold tracking-tight">
+              Backtest — <span class="text-zinc-400 font-mono text-sm">{backtest_id}</span>
+            </h1>
 
-          {/* Prop firm eval */}
-          <div class={`rounded-lg p-4 border ${
-            bt().prop_firm_eval.passed ? "bg-green-950 border-green-700": "bg-red-950  border-red-700"
-          }`}>
-            <div class="flex items-center gap-2 mb-2">
-                {bt().prop_firm_eval.passed ? <CheckCircle/>: <XCircle size={18} class="text-red-400"/>}
-              <p class="font-semibold">
-                Prop Eval: {bt().prop_firm_eval.passed ? "Passed" : "Failed"}
-              </p>
+            {/* Metrics strip */}
+            <div class="grid grid-cols-3 gap-4">
+              {([
+                ["Total PnL",     `$${metrics.total_pnl.toFixed(2)}`],
+                ["Win Rate",      `${(metrics.win_rate * 100).toFixed(1)}%`],
+                ["Max Drawdown",  `${(metrics.max_drawdown * 100).toFixed(1)}%`],
+                ["Sharpe",        metrics.sharpe_ratio.toFixed(2)],
+                ["Profit Factor", metrics.profit_factor.toFixed(2)],
+                ["Total Trades",  String(metrics.total_trades)],
+              ] as [string, string][]).map(([label, value]) => (
+                <div class="bg-zinc-900 rounded-lg p-4">
+                  <p class="text-zinc-400 text-xs mb-1">{label}</p>
+                  <p class="text-xl font-semibold font-mono">{value}</p>
+                </div>
+              ))}
             </div>
-            <Show when={!bt().prop_firm_eval.passed}>
-              <ul class="mt-2 text-sm text-red-300 space-y-1">
-                <Show when={bt().prop_firm_eval.daily_loss_breached}>
-                  <li class="flex items-center gap-1.5"><AlertTriangle size={13} /> Daily loss limit breached</li>
-                </Show>
-                <Show when={bt().prop_firm_eval.drawdown_breached}>
-                  <li class="flex items-center gap-1.5"><AlertTriangle size={13} /> Max drawdown breached</li>
-                </Show>
-                <Show when={!bt().prop_firm_eval.consistency_passed}>
-                  <li class="flex items-center gap-1.5"><AlertTriangle size={13} /> Consistency rule failed</li>
-                </Show>
-              </ul>
-            </Show>
-          </div>
 
-          {/* Trades table */}
-          <div class="bg-zinc-900 rounded-lg overflow-hidden">
-            <p class="text-sm text-zinc-400 p-4 border-b border-zinc-800">
-              Trades ({bt().trades.length})
-            </p>
-            <table class="w-full text-sm">
-              <thead class="text-zinc-400 text-xs">
-                <tr>
-                  <th class="p-3 text-left">#</th>
-                  <th class="p-3 text-left">Side</th>
-                  <th class="p-3 text-left">Entry Time</th>
-                  <th class="p-3 text-left">Exit Time</th>
-                  <th class="p-3 text-right">Entry $</th>
-                  <th class="p-3 text-right">Exit $</th>
-                  <th class="p-3 text-right">PnL</th>
-                </tr>
-              </thead>
-              <tbody>
-                <For each={bt().trades}>{trade => (
-                  <tr class="border-t border-zinc-800 hover:bg-zinc-800 transition-colors">
-                    <td class="p-3 text-zinc-400">{trade.trade_id}</td>
-                    <td class={`p-3 font-medium ${trade.side === "buy" ? "text-green-400" : "text-red-400"}`}>
-                      {trade.side}
-                    </td>
-                    <td class="p-3 text-zinc-400 text-xs font-mono">{trade.entry_time}</td>
-                    <td class="p-3 text-zinc-400 text-xs font-mono">{trade.exit_time}</td>
-                    <td class="p-3 text-right font-mono">{trade.entry_price.toFixed(2)}</td>
-                    <td class="p-3 text-right font-mono">{trade.exit_price.toFixed(2)}</td>
-                    <td class={`p-3 text-right font-mono font-semibold ${trade.pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
-                      {trade.pnl >= 0 ? "+" : ""}${trade.pnl.toFixed(2)}
-                    </td>
+            {/* Equity curve */}
+            <div class="bg-zinc-900 rounded-lg p-4">
+              <p class="text-sm text-zinc-400 mb-3">Equity Curve</p>
+              <EquityCurve data={equity_curve} />
+            </div>
+
+            {/* Replay — waits for candles to load independently, shows a skeleton in the meantime */}
+            <div class="bg-zinc-900 rounded-lg p-4 space-y-4">
+              <p class="text-sm text-zinc-400">Price Chart Replay</p>
+
+              <Show
+                when={!candles.loading && candles() && candles()!.length > 0}
+                fallback={
+                  <div class="h-[450px] bg-zinc-800 rounded-lg animate-pulse flex items-center justify-center">
+                    <p class="text-zinc-500 text-sm">
+                      {candles.loading ? "Loading chart data…" : "No candles available for this dataset."}
+                    </p>
+                  </div>
+                }
+              >
+                <PriceChart
+                  candles={candles() as Candle[]}
+                  trades={tradesForChart}
+                  isReplayActive={isReplayActive()}
+                  playbackSpeed={speed()}
+                  onProgress={(p) => {
+                    setProgress(p);
+                    setCurrentBar(Math.floor(p * candles()!.length));
+                  }}
+                  onComplete={() => setIsReplayActive(false)}
+                  height={450}
+                />
+
+                <ReplayControls
+                  isPlaying={isReplayActive()}
+                  speed={speed()}
+                  progress={progress()}
+                  currentBar={currentBar()}
+                  totalBars={candles()?.length ?? 0}
+                  onPlayPause={() => setIsReplayActive(!isReplayActive())}
+                  onSpeedChange={setSpeed}
+                  onSeek={(p) => {
+                    setProgress(p);
+                    setCurrentBar(Math.floor(p * candles()!.length));
+                  }}
+                  onRestart={() => {
+                    setProgress(0);
+                    setCurrentBar(0);
+                    setIsReplayActive(true);
+                  }}
+                />
+              </Show>
+            </div>
+
+            {/* Prop firm eval */}
+            <div class={`rounded-lg p-4 border ${
+              prop_firm_eval.passed
+                ? "bg-green-950 border-green-700"
+                : "bg-red-950 border-red-700"
+            }`}>
+              <div class="flex items-center gap-2 mb-2">
+                {prop_firm_eval.passed
+                  ? <CircleCheck class="text-green-400" />
+                  : <CircleX size={18} class="text-red-400" />
+                }
+                <p class="font-semibold">
+                  Prop Eval: {prop_firm_eval.passed ? "Passed" : "Failed"}
+                </p>
+              </div>
+              <Show when={!prop_firm_eval.passed}>
+                <ul class="mt-2 text-sm text-red-300 space-y-1">
+                  <Show when={prop_firm_eval.daily_loss_breached}>
+                    <li class="flex items-center gap-1.5">
+                      <TriangleAlert size={13} /> Daily loss limit breached
+                    </li>
+                  </Show>
+                  <Show when={prop_firm_eval.drawdown_breached}>
+                    <li class="flex items-center gap-1.5">
+                      <TriangleAlert size={13} /> Max drawdown breached
+                    </li>
+                  </Show>
+                  <Show when={!prop_firm_eval.consistency_passed}>
+                    <li class="flex items-center gap-1.5">
+                      <TriangleAlert size={13} /> Consistency rule failed
+                    </li>
+                  </Show>
+                </ul>
+              </Show>
+            </div>
+
+            {/* Trades table */}
+            <div class="bg-zinc-900 rounded-lg overflow-hidden">
+              <p class="text-sm text-zinc-400 p-4 border-b border-zinc-800">
+                Trades ({trades.length})
+              </p>
+              <table class="w-full text-sm">
+                <thead class="text-zinc-400 text-xs">
+                  <tr>
+                    <th class="p-3 text-left">#</th>
+                    <th class="p-3 text-left">Side</th>
+                    <th class="p-3 text-left">Entry Time</th>
+                    <th class="p-3 text-left">Exit Time</th>
+                    <th class="p-3 text-right">Entry $</th>
+                    <th class="p-3 text-right">Exit $</th>
+                    <th class="p-3 text-right">PnL</th>
                   </tr>
-                )}</For>
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  <For each={trades}>{(trade) => (
+                    <tr class="border-t border-zinc-800 hover:bg-zinc-800 transition-colors">
+                      <td class="p-3 text-zinc-400">{trade.trade_id}</td>
+                      <td class={`p-3 font-medium ${trade.side === "buy" ? "text-green-400" : "text-red-400"}`}>
+                        {trade.side}
+                      </td>
+                      <td class="p-3 text-zinc-400 text-xs font-mono">{trade.entry_time}</td>
+                      <td class="p-3 text-zinc-400 text-xs font-mono">{trade.exit_time}</td>
+                      <td class="p-3 text-right font-mono">{trade.entry_price.toFixed(2)}</td>
+                      <td class="p-3 text-right font-mono">{(trade.exit_price ?? 0).toFixed(2)}</td>
+                      <td class={`p-3 text-right font-mono font-semibold ${trade.pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+                        {trade.pnl >= 0 ? "+" : ""}${trade.pnl.toFixed(2)}
+                      </td>
+                    </tr>
+                  )}</For>
+                </tbody>
+              </table>
+            </div>
 
-        </div>
-      )}
+          </div>
+        );
+      }}
     </Show>
   );
 }

@@ -214,6 +214,20 @@ export const fetchYfinanceCandles = async (
   return api<Candle[]>(`${API_ROUTES.yfinanceCandles}?${params}`);
 };
 
+// Fetch candles for a loaded in-memory dataset by its UUID.
+// Hits GET /api/data/{dataset_id}/candles — the in-memory store path,
+// not the TimescaleDB symbol path. Used by the backtest detail page
+// to load chart data for replay without re-fetching by symbol.
+export const fetchDatasetCandles = async (
+  datasetId: string,
+  interval = "1min",
+  limit?: number,
+): Promise<Candle[]> => {
+  const params = new URLSearchParams({ interval });
+  if (limit) params.set("limit", String(limit));
+  return api<Candle[]>(`/data/${datasetId}/candles?${params}`);
+};
+
 // Fetch metadata (row coubt, date range) for a single DB symbol using
 // GET /api/data/db/{symbol}/info
 export const fetchDbSymbolInfo = async (symbol: string): Promise<DbSymbolInfo> => {
