@@ -13,22 +13,23 @@ def save_backtest(result: dict) -> None:
 
     sql = """
         INSERT INTO backtests (
-            backtest_id, dataset_id, strategy_type, strategy,
+            backtest_id, dataset_id, symbol, strategy_type, strategy,
             prop_firm_rules, status, created_at, trades,
             metrics, prop_firm_eval, equity_curve
         )
-        VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb)
+        VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb)
         ON CONFLICT (backtest_id) DO UPDATE SET
-            dataset_id = EXCLUDED.dataset_id,
-            strategy_type = EXCLUDED.strategy_type,
-            strategy = EXCLUDED.strategy,
+            dataset_id      = EXCLUDED.dataset_id,
+            symbol          = EXCLUDED.symbol,
+            strategy_type   = EXCLUDED.strategy_type,
+            strategy        = EXCLUDED.strategy,
             prop_firm_rules = EXCLUDED.prop_firm_rules,
-            status = EXCLUDED.status,
-            created_at = EXCLUDED.created_at,
-            trades = EXCLUDED.trades,
-            metrics = EXCLUDED.metrics,
-            prop_firm_eval = EXCLUDED.prop_firm_eval,
-            equity_curve = EXCLUDED.equity_curve
+            status          = EXCLUDED.status,
+            created_at      = EXCLUDED.created_at,
+            trades          = EXCLUDED.trades,
+            metrics         = EXCLUDED.metrics,
+            prop_firm_eval  = EXCLUDED.prop_firm_eval,
+            equity_curve    = EXCLUDED.equity_curve
     """
 
     with _conn() as conn:
@@ -38,6 +39,7 @@ def save_backtest(result: dict) -> None:
                 [
                     result["backtest_id"],
                     result["dataset_id"],
+                    result.get("symbol", ""),
                     result["strategy"]["type"],
                     json.dumps(result["strategy"]),
                     json.dumps(result["prop_firm_rules"]),
@@ -95,20 +97,21 @@ def _row_to_result(row) -> dict:
     where the result came from.
     """
     return {
-        "backtest_id": row["backtest_id"],
-        "dataset_id": row["dataset_id"],
-        "strategy": _maybe_json(row["strategy"]),
+        "backtest_id":     row["backtest_id"],
+        "dataset_id":      row["dataset_id"],
+        "symbol":          row.get("symbol", "") if hasattr(row, "get") else row["symbol"],
+        "strategy":        _maybe_json(row["strategy"]),
         "prop_firm_rules": _maybe_json(row["prop_firm_rules"]),
-        "status": row["status"],
+        "status":          row["status"],
         "created_at": (
             row["created_at"].isoformat()
             if hasattr(row["created_at"], "isoformat")
             else str(row["created_at"])
         ),
-        "trades": _maybe_json(row["trades"]),
-        "metrics": _maybe_json(row["metrics"]),
-        "prop_firm_eval": _maybe_json(row["prop_firm_eval"]),
-        "equity_curve": _maybe_json(row["equity_curve"]),
+        "trades":          _maybe_json(row["trades"]),
+        "metrics":         _maybe_json(row["metrics"]),
+        "prop_firm_eval":  _maybe_json(row["prop_firm_eval"]),
+        "equity_curve":    _maybe_json(row["equity_curve"]),
     }
 
 

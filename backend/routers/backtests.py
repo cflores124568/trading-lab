@@ -3,24 +3,19 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from schemas import BacktestRequest, BacktestResult, BacktestSummary, BacktestCompare
 from services.backtest_repo import (
-    get_backtest as get_backtest_db,
-    list_backtests as list_backtests_db,
-    save_backtest,
+    get_backtest as get_backtest_db, list_backtests as list_backtests_db, save_backtest,
 )
 from services.backtest_store import (
-    add_backtest,
-    get_backtest as get_backtest_mem,
-    list_backtests as list_backtests_mem,
+    add_backtest, get_backtest as get_backtest_mem, list_backtests as list_backtests_mem,
 )
-from services.data_loader    import get_dataset
-from services.indicators     import add_all_indicators
-from services.strategy       import generate_signals
+from services.data_loader import get_dataset
+from services.indicators import add_all_indicators
+from services.strategy import generate_signals
 from services.backtest_engine import run_backtest
-from services.metrics        import calculate_metrics
+from services.metrics import calculate_metrics
 from services.prop_firm_eval import evaluate_prop_firm
 
 router = APIRouter()
-
 
 def _load_backtest_any(backtest_id: str) -> dict | None:
     """Load a backtest from DB first, then fall back to memory.
@@ -91,6 +86,7 @@ async def create_backtest(request: BacktestRequest):
     result = {
         "backtest_id": backtest_id,
         "dataset_id": request.dataset_id,
+        "symbol": dataset["info"].get("symbol", ""),
         "strategy": request.strategy.model_dump(),
         "prop_firm_rules": request.prop_firm_rules.model_dump(),
         "status": "completed",
@@ -123,6 +119,7 @@ async def list_backtests():
         summaries.append({
             "backtest_id": bt["backtest_id"],
             "dataset_id": bt["dataset_id"],
+            "symbol": bt.get("symbol", ""),
             "strategy_type": bt["strategy"]["type"],
             "status": bt["status"],
             "total_pnl": bt["metrics"]["total_pnl"],

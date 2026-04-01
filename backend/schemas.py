@@ -44,7 +44,7 @@ class PropFirmRules(BaseModel):
     min_trading_days: Optional[int] = Field(default=None, ge=1)
 
 #Trade
-class Trade (BaseModel):
+class Trade(BaseModel):
     trade_id: int
     entry_time: str
     exit_time: Optional[str]
@@ -94,6 +94,7 @@ class BacktestRequest(BaseModel):
 class BacktestResult(BaseModel):
     backtest_id:    str
     dataset_id:     str
+    symbol:         Optional[str]   = None   # e.g. "NQ", "ES" — set for Databento backtests
     strategy:       Strategy
     prop_firm_rules: PropFirmRules
     status:         str
@@ -106,6 +107,7 @@ class BacktestResult(BaseModel):
 class BacktestSummary(BaseModel):
     backtest_id:    str
     dataset_id:     str
+    symbol:         Optional[str]   = None   # e.g. "NQ", "ES" — set for Databento backtests
     strategy_type:  StrategyType
     status:         str
     total_pnl:      float
@@ -117,7 +119,7 @@ class BacktestCompare(BaseModel):
     backtest_b: BacktestResult
     comparison: dict[str, Any]
 
-#Parquet Requets
+#Parquet load request
 class ParquetLoadRequest(BaseModel):
     symbol: str
     interval: str = "1min"
@@ -133,12 +135,6 @@ class DatasetInfo(BaseModel):
     start_date: str
     end_date: str
     uploaded_at: str
-
-class ParquetLoadRequest(BaseModel):
-    symbol: str
-    interval: str = "1min"
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
 
 # DB Symbol lookup
 class LoadSymbolRequest(BaseModel):

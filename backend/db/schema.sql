@@ -101,3 +101,6 @@ CREATE INDEX IF NOT EXISTS backtests_strategy_type_idx
 
 CREATE INDEX IF NOT EXISTS backtests_dataset_id_idx
     ON backtests (dataset_id);
+
+CREATE INDEX IF NOT EXISTS backtests_symbol_idx
+    ON backtests (symbol);
