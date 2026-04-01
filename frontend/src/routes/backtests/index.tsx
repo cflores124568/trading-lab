@@ -54,12 +54,12 @@ export default function BacktestList() {
                       <div>
                         {/* Normalize enum-style strategy names */}
                         <p class="text-sm font-medium">
-                          {bt.strategy_type.replace(/_/g, " ")}
+                          {bt.symbol} • {bt.strategy_type.replace(/_/g, " ")}
                         </p>
 
                         {/* Dataset + date (trim ISO for readability) */}
                         <p class="text-xs text-zinc-500 font-mono mt-0.5">
-                          {bt.dataset_id} · {bt.created_at.slice(0, 10)}
+                          {bt.created_at.slice(0, 10)}
                         </p>
                       </div>
 

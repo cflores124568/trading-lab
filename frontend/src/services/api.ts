@@ -133,6 +133,7 @@ export interface PropFirmEvaluation {
 export interface BacktestResult {
   backtest_id: string;
   dataset_id: string;
+  symbol: string;
   strategy: { type: string; params: Record<string, unknown> };
   prop_firm_rules: Record<string, unknown>;
   status: string;
@@ -148,6 +149,7 @@ export interface BacktestResult {
 export interface BacktestSummary {
   backtest_id: string;
   dataset_id: string;
+  symbol: string;
   strategy_type: string;
   status: string;
   total_pnl: number;
