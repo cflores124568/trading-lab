@@ -1,32 +1,68 @@
-import { onMount, onCleanup, createEffect, createSignal } from "solid-js";
-import { createChart, CandlestickSeries, createSeriesMarkers, type IChartApi, type ISeriesApi, type ISeriesMarkersPluginApi, type Time } from "lightweight-charts";
+import { createEffect, onCleanup, onMount } from "solid-js";
+import {
+  CandlestickSeries,
+  createChart,
+  createSeriesMarkers,
+  type IChartApi,
+  type ISeriesApi,
+  type ISeriesMarkersPluginApi,
+  type Time,
+} from "lightweight-charts";
 import type { Candle } from "../services/api";
+
+export interface PriceChartMarker {
+  time: number;
+  position: "aboveBar" | "belowBar" | "inBar";
+  color: string;
+  shape: "arrowUp" | "arrowDown" | "circle" | "square";
+  text: string;
+}
 
 interface Props {
   candles: Candle[];
-  trades?: Array<{
-    time: number;      // timestamp (unix seconds or lightweight-charts time)
-    price: number;
-    side: "buy" | "sell";
-    quantity?: number;
-  }>;
-  isReplayActive?: boolean;
-  playbackSpeed?: number;   // 1 = normal
-  onProgress?: (progress: number) => void;  // 0 to 1
-  onComplete?: () => void;
+  markers?: PriceChartMarker[];
+  visibleIndex?: number;
   height?: number;
 }
 
 export default function PriceChart(props: Props) {
   let container!: HTMLDivElement;
-  let chart: IChartApi;
-  let candleSeries: ISeriesApi<"Candlestick">;
+  let chart: IChartApi | undefined;
+  let candleSeries: ISeriesApi<"Candlestick"> | undefined;
   let markersPlugin: ISeriesMarkersPluginApi<Time> | null = null;
-  let animationFrame: number | null = null;
-  let startTime = 0;
-  let currentIndex = 0;
 
-  const [, setIsPlaying] = createSignal(false);
+  const renderChartState = () => {
+    if (!chart || !candleSeries) return;
+
+    const totalCandles = props.candles.length;
+    if (totalCandles === 0) {
+      candleSeries.setData([]);
+      markersPlugin?.setMarkers([]);
+      return;
+    }
+
+    const endIndex =
+      props.visibleIndex === undefined
+        ? totalCandles - 1
+        : Math.min(Math.max(props.visibleIndex, 0), totalCandles - 1);
+
+    const visibleCandles = props.candles.slice(0, endIndex + 1);
+    candleSeries.setData(visibleCandles);
+
+    const lastVisibleTime = visibleCandles[visibleCandles.length - 1]?.time;
+    const visibleMarkers = (props.markers ?? [])
+      .filter((marker) => lastVisibleTime !== undefined && marker.time <= lastVisibleTime)
+      .map((marker) => ({
+        time: marker.time as Time,
+        position: marker.position,
+        color: marker.color,
+        shape: marker.shape,
+        text: marker.text,
+      }));
+    markersPlugin?.setMarkers(visibleMarkers);
+
+    chart.timeScale().fitContent();
+  };
 
   onMount(() => {
     chart = createChart(container, {
@@ -57,92 +93,24 @@ export default function PriceChart(props: Props) {
       wickUpColor: "#22c55e",
       wickDownColor: "#ef4444",
     });
-
-    // v5: markers live in a plugin now, created once and reused
     markersPlugin = createSeriesMarkers(candleSeries, []);
-    // Initial full data load
-    if (props.candles.length > 0) {
-      candleSeries.setData(props.candles);
-      chart.timeScale().fitContent();
-    }
+    renderChartState();
 
     onCleanup(() => {
-      if (animationFrame){
-        cancelAnimationFrame(animationFrame);
-      }
-      chart.remove();
+      chart?.remove();
+      chart = undefined;
+      candleSeries = undefined;
+      markersPlugin = null;
     });
   });
 
-  // Replay engine
   createEffect(() => {
-    if (!props.isReplayActive || !candleSeries || props.candles.length === 0) {
-      setIsPlaying(false);
-      return;
-    }
-
-    const speed = props.playbackSpeed ?? 8;           // default feels good
-    const msPerBar = Math.max(8, 1000 / speed);
-
-    currentIndex = 0;
-    startTime = performance.now();
-
-    const step = (timestamp: number) => {
-      const elapsed = timestamp - startTime;
-      const targetIndex = Math.min(Math.floor(elapsed / msPerBar), props.candles.length - 1);
-
-      if (targetIndex > currentIndex) {
-        const visibleData = props.candles.slice(0, targetIndex + 1);
-        candleSeries.setData(visibleData);
-
-        // Add trade markers as they appear
-        // v5: update markers via plugin instead of setMarkers()
-        if (props.trades && markersPlugin) {
-          const lastTime = visibleData[visibleData.length - 1].time;
-          const visibleTrades = props.trades.filter((t) =>  t.time <= lastTime);
-
-          markersPlugin.setMarkers(
-            visibleTrades.map((t) => ({
-              time: t.time as any,
-              position: t.side === "buy" ? ("belowBar" as const) : ("aboveBar" as const),
-              color: t.side === "buy" ? "#22c55e" : "#ef4444",
-              shape: t.side === "buy" ? ("arrowUp" as const) : ("arrowDown" as const),
-              text: `${t.side.toUpperCase()} ${t.quantity ? t.quantity + " " : ""}@ ${t.price.toFixed(2)}`,
-            }))
-          );
-        }
-
-        chart.timeScale().scrollToPosition(targetIndex, false);
-        currentIndex = targetIndex;
-
-        const progress = (currentIndex + 1) / props.candles.length;
-        props.onProgress?.(progress);
-      }
-
-      if (currentIndex < props.candles.length - 1) {
-        animationFrame = requestAnimationFrame(step);
-      } else {
-        setIsPlaying(false);
-        props.onComplete?.();
-      }
-    };
-
-    setIsPlaying(true);
-    animationFrame = requestAnimationFrame(step);
-  });
-
-  // Allow external pause
-  createEffect(() => {
-    if (!props.isReplayActive && animationFrame) {
-      cancelAnimationFrame(animationFrame);
-      animationFrame = null;
-      setIsPlaying(false);
-    }
+    renderChartState();
   });
 
   return (
-    <div 
-      ref={container} 
+    <div
+      ref={container}
       class="w-full rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950"
     />
   );

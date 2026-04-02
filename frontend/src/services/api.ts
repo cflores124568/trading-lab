@@ -129,6 +129,18 @@ export interface PropFirmEvaluation {
   details: Record<string, unknown>;
 }
 
+export interface PropFirmRules {
+  name: string;
+  account_size: number;
+  daily_loss_limit: number;
+  max_drawdown: number;
+  profit_target: number;
+  consistency_rule: boolean;
+  consistency_threshold: number;
+  drawdown_type: "intraday" | "eod";
+  min_trading_days: number | null;
+}
+
 //Full backtest result returned by the backend.
 export interface BacktestResult {
   backtest_id: string;
@@ -142,7 +154,7 @@ export interface BacktestResult {
     end_date?: string;
   } | null;
   strategy: { type: string; params: Record<string, unknown> };
-  prop_firm_rules: Record<string, unknown>;
+  prop_firm_rules: PropFirmRules;
   status: string;
   created_at: string;
   trades: Trade[];
