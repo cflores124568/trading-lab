@@ -23,9 +23,25 @@ C++ backtest kernel and real CME Globex market data.
 - Node.js 18+
 - Docker + Docker Compose (for TimescaleDB)
 
-### Database
+### One-Time Local Bootstrap
 ```bash
-docker-compose up -d
+npm run bootstrap
+```
+
+What this does:
+- creates `backend/.env` from `backend/env.example` if needed
+- starts the local TimescaleDB container
+- waits for the DB to become healthy
+- imports any existing parquet files from `backend/data/futures_1m`
+
+What it does not do:
+- it does not auto-fetch from Databento, to avoid surprise data charges
+- it does not start the backend or frontend dev servers
+
+### Database Only
+```bash
+cd backend
+docker-compose up -d db
 ```
 
 ### Backend
@@ -34,7 +50,7 @@ cd backend
 python -m venv venv
 source venv/bin/activate      # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env          # fill in DATABASE_URL and API keys
+cp env.example .env           # fill in DATABASE_URL and API keys
 uvicorn main:app --reload
 ```
 
@@ -51,8 +67,9 @@ npm run dev
 
 Fetch historical futures data from Databento and migrate to TimescaleDB:
 ```bash
-python backend/fetch_databento.py --update
-python backend/db/migrate_parquet_to_pg.py
+cd backend
+python fetch_databento.py --update
+python db/migrate_parquet_to_pg.py
 ```
 
 Supported symbols: NQ, MNQ, ES, MES, GC, MGC (CME Globex continuous contracts).
