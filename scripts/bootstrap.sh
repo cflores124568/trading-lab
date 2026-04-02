@@ -44,7 +44,7 @@ resolve_python() {
 
 resolve_compose() {
   if docker compose version >/dev/null 2>&1; then
-    printf 'docker\ncompose\n'
+    printf 'docker compose\n'
     return
   fi
 
@@ -58,6 +58,10 @@ resolve_compose() {
 
 ensure_backend_env() {
   if [[ -f "$BACKEND_ENV_FILE" ]]; then
+    if grep -q '^DATABASE_URL=.*@postgres:' "$BACKEND_ENV_FILE"; then
+      perl -0pi -e 's#^DATABASE_URL=postgresql://trading:trading@postgres:5432/trading_lab$#DATABASE_URL=postgresql://trading:trading@localhost:5432/trading_lab#m' "$BACKEND_ENV_FILE"
+      log "Updated $BACKEND_ENV_FILE to use localhost for local DB access"
+    fi
     return
   fi
 
@@ -66,6 +70,9 @@ ensure_backend_env() {
   fi
 
   cp "$BACKEND_ENV_TEMPLATE" "$BACKEND_ENV_FILE"
+  if grep -q '^DATABASE_URL=.*@postgres:' "$BACKEND_ENV_FILE"; then
+    perl -0pi -e 's#^DATABASE_URL=postgresql://trading:trading@postgres:5432/trading_lab$#DATABASE_URL=postgresql://trading:trading@localhost:5432/trading_lab#m' "$BACKEND_ENV_FILE"
+  fi
   log "Created $BACKEND_ENV_FILE from env.example"
   log "Review DATABASE_URL, ALLOWED_ORIGINS, and DATABENTO_API_KEY before running the API."
 }
@@ -108,19 +115,21 @@ run_migration() {
 
 main() {
   local compose_cmd
-  local compose_args=()
 
   command_exists docker || fail "Docker is required. Install Docker Desktop first."
 
   ensure_backend_env
 
   compose_cmd="$(resolve_compose)"
-  mapfile -t compose_args <<<"$compose_cmd"
 
   log "Starting local TimescaleDB with Docker"
   (
     cd "$BACKEND_DIR"
-    "${compose_args[@]}" up -d db
+    if [[ "$compose_cmd" == "docker compose" ]]; then
+      docker compose up -d db
+    else
+      docker-compose up -d db
+    fi
   )
 
   wait_for_db_health

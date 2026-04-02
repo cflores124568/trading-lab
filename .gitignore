@@ -20,3 +20,4 @@ node_modules/
 .next/
 # Local Codex/style notes
 docs/style.local.md
+docs/*.local.md

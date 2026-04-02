@@ -17,6 +17,8 @@ C++ backtest kernel and real CME Globex market data.
 
 ## Getting Started
 
+Quick local reference: [docs/local-setup.md](/Users/chrisflores/trading-lab/docs/local-setup.md)
+
 ### Prerequisites
 
 - Python 3.12+
@@ -70,6 +72,15 @@ Fetch historical futures data from Databento and migrate to TimescaleDB:
 cd backend
 python fetch_databento.py --update
 python db/migrate_parquet_to_pg.py
+```
+
+`python fetch_databento.py --update` now resolves the next start timestamp from
+TimescaleDB first, then falls back to local parquet if the DB has no rows yet.
+Use `--check-cost` to preview the exact fetch window before spending anything:
+
+```bash
+cd backend
+python fetch_databento.py --update --check-cost
 ```
 
 Supported symbols: NQ, MNQ, ES, MES, GC, MGC (CME Globex continuous contracts).

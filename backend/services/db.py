@@ -8,6 +8,7 @@ faster and way more memory-efficient.
 
 from __future__ import annotations
 import os
+import warnings
 from contextlib import contextmanager
 from typing import Generator
 
@@ -16,6 +17,35 @@ import pandas as pd
 
 # ── Connection pool (lazy init) ───────────────────────────────────────────────
 _pool = None  # psycopg2.pool.ThreadedConnectionPool
+
+
+def _db_url() -> str:
+    """Return the configured database URL or raise a helpful error."""
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        raise RuntimeError(
+            "DATABASE_URL environment variable is not set. "
+            "Add it to your .env file."
+        )
+    return url
+
+
+def _read_sql(sql: str, params: list | None = None, parse_dates: list[str] | None = None) -> pd.DataFrame:
+    """Read SQL through pandas while suppressing the unsupported-DBAPI warning.
+
+    Pandas warns when handed a raw psycopg2 connection even though the query
+    works fine for our local app. Using the URL directly introduced parameter
+    binding issues with our `%s` SQL placeholders, so we keep the stable read
+    path and silence just that one noisy warning.
+    """
+    with _conn() as conn:
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="pandas only supports SQLAlchemy connectable",
+                category=UserWarning,
+            )
+            return pd.read_sql(sql, conn, params=params, parse_dates=parse_dates)
 
 
 def _init_pool() -> None:
@@ -36,16 +66,9 @@ def _init_pool() -> None:
             "Run: pip install psycopg2-binary"
         ) from exc
 
-    url = os.environ.get("DATABASE_URL")
-    if not url:
-        raise RuntimeError(
-            "DATABASE_URL environment variable is not set. "
-            "Add it to your .env file."
-        )
-
     # Creates 1–10 warm connections that we reuse instead of opening new ones
     # every time. ThreadedConnectionPool is safe for multi-threaded web apps.
-    _pool = pg_pool.ThreadedConnectionPool(minconn=1, maxconn=10, dsn=url)
+    _pool = pg_pool.ThreadedConnectionPool(minconn=1, maxconn=10, dsn=_db_url())
 
 
 @contextmanager
@@ -150,8 +173,7 @@ def get_ohlcv(
             {limit_clause}
         """
 
-    with _conn() as conn:
-        df = pd.read_sql(sql, conn, params=params, parse_dates=["ts"])
+    df = _read_sql(sql, params=params, parse_dates=["ts"])
 
     df.set_index("ts", inplace=True)
     df.index.name = "ts"
@@ -187,8 +209,7 @@ def list_db_symbols() -> list[dict]:
         ORDER BY o.symbol
     """
 
-    with _conn() as conn:
-        df = pd.read_sql(sql, conn)
+    df = _read_sql(sql)
 
     results = []
     for _, row in df.iterrows():
@@ -221,8 +242,7 @@ def get_symbol_info(symbol: str) -> dict | None:
         GROUP BY s.symbol, s.full_name, s.exchange, s.tick_size, s.tick_value
     """
 
-    with _conn() as conn:
-        df = pd.read_sql(sql, conn, params=[symbol.upper()])
+    df = _read_sql(sql, params=[symbol.upper()])
 
     if df.empty:
         return None
@@ -252,8 +272,7 @@ def health_check() -> dict:
             GROUP BY symbol
             ORDER BY symbol
         """
-        with _conn() as conn:
-            df = pd.read_sql(sql, conn)
+        df = _read_sql(sql)
 
         return {
             "db_status": "ok",

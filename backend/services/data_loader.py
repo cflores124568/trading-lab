@@ -487,6 +487,13 @@ def fetch_yfinance_intraday(
             "rows": len(df),
         }
         return df, metadata
+    except ModuleNotFoundError as exc:
+        missing = exc.name or "a required dependency"
+        raise HTTPException(
+            503,
+            f"Live preview dependency missing: {missing}. "
+            "Reinstall backend requirements to restore Yahoo Finance previews.",
+        ) from exc
     except Exception as e:
         raise HTTPException(503, f"yfinance fetch failed: {str(e)}")
 

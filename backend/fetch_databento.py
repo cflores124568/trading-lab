@@ -10,7 +10,9 @@
 #First time: Fetch once costs are verified:
 #       python fetch_databento.py --start 2024-01-01
 
-# Incremental update picks up from last stored bar automatically:
+# Incremental update picks up from the last stored bar automatically.
+# It prefers the DB timestamp (source of truth), falls back to parquet,
+# then falls back to the configured default start:
 #       python fetch_databento.py --update
 
 # Pull a specific date range:
@@ -35,6 +37,10 @@ import sys
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import pandas as pd
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).with_name(".env"))
+load_dotenv()
 
 #Constants
 DATASET = "GLBX.MDP3"      #CME Globex captures NQ, MNQ, ES, MES, GC, MGC
@@ -56,23 +62,87 @@ def parquet_path(symbol: str) -> Path:
     return DATA_DIR / f"{safe}.parquet"
 
 
-def get_last_stored_ts(symbol: str) -> str:
-    """
-    Return the ISO timestamp of the last stored bar for a symbol.
-    Falls back to FALLBACK_START if no data exists yet.
-    """
+def db_symbol(symbol: str) -> str:
+    """Convert a Databento continuous symbol like NQ.c.0 to the DB symbol NQ."""
+    return symbol.replace(".c.0", "").upper()
+
+
+def _format_resume_ts(value) -> str | None:
+    if value is None:
+        return None
+
+    ts = pd.Timestamp(value)
+    if ts.tzinfo is not None:
+        ts = ts.tz_convert("UTC").tz_localize(None)
+
+    last_plus_one = ts + pd.Timedelta(minutes=1)
+    return last_plus_one.strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def get_last_stored_ts_parquet(symbol: str) -> str | None:
+    """Return the next fetch timestamp derived from the local parquet archive."""
     path = parquet_path(symbol)
     if not path.exists():
-        return FALLBACK_START
+        return None
 
     df = pd.read_parquet(path, columns=["ts_event"])
     if df.empty:
-        return FALLBACK_START
+        return None
 
-    last = pd.to_datetime(df["ts_event"]).max()
-    # Add 1 minute so we don't re-fetch the last bar on the next pull
-    last_plus_one = last + pd.Timedelta(minutes=1)
-    return last_plus_one.strftime("%Y-%m-%dT%H:%M:%S")
+    return _format_resume_ts(pd.to_datetime(df["ts_event"]).max())
+
+
+def get_last_stored_ts_db(symbol: str) -> str | None:
+    """Return the next fetch timestamp derived from TimescaleDB max(ts)."""
+    try:
+        import psycopg2
+    except ImportError as exc:
+        raise RuntimeError(
+            "psycopg2 is required for DB-backed sync state. "
+            "Install backend requirements first."
+        ) from exc
+
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        raise RuntimeError("DATABASE_URL is not set.")
+
+    try:
+        with psycopg2.connect(db_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT max(ts) FROM ohlcv_1m WHERE symbol = %s",
+                    (db_symbol(symbol),),
+                )
+                row = cur.fetchone()
+    except Exception as exc:
+        raise RuntimeError(f"Unable to query TimescaleDB sync state: {exc}") from exc
+
+    if not row or row[0] is None:
+        return None
+
+    return _format_resume_ts(row[0])
+
+
+def resolve_incremental_start(symbol: str, state_source: str) -> tuple[str, str]:
+    """Resolve the next fetch timestamp using DB-first sync state."""
+    if state_source in ("auto", "db"):
+        try:
+            db_ts = get_last_stored_ts_db(symbol)
+        except RuntimeError as exc:
+            if state_source == "db":
+                print(f"ERROR: {exc}")
+                sys.exit(1)
+            print(f"WARN: {exc} Falling back to parquet state for {symbol}.")
+        else:
+            if db_ts is not None:
+                return db_ts, "db"
+
+    if state_source in ("auto", "parquet"):
+        parquet_ts = get_last_stored_ts_parquet(symbol)
+        if parquet_ts is not None:
+            return parquet_ts, "parquet"
+
+    return FALLBACK_START, "fallback"
 
 
 def load_client(api_key: str | None):
@@ -278,6 +348,16 @@ def parse_args():
         help="Only estimate cost — do not fetch any data.",
     )
     p.add_argument(
+        "--state-source",
+        choices=["auto", "db", "parquet"],
+        default="auto",
+        help=(
+            "Where incremental update mode reads the last synced timestamp from. "
+            "'auto' prefers TimescaleDB, then parquet, then FALLBACK_START. "
+            "'db' enforces DB-only. 'parquet' keeps the old local-archive behavior."
+        ),
+    )
+    p.add_argument(
         "--cost-cap",
         type=float,
         default=COST_CAP_USD,
@@ -346,11 +426,18 @@ def main():
     yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
     end = args.end or yesterday
     if args.update:
-        # Per-symbol incremental: find the oldest "last stored" date across requested symbols and use that as the global start.
-        # Each symbol's data will be deduplicated on merge anyway so over-fetching slightly on the already-up-to-date ones is fine and cheaper than N separate calls.
-        starts = [get_last_stored_ts(sym) for sym in symbols]
-        start  = min(starts)   # earliest gap = where we need to start fetching
-        print(f"Incremental update mode.")
+        # Per-symbol incremental: find the oldest "last synced" date across requested symbols
+        # and use that as the global start. Each symbol's data will still be deduplicated on
+        # merge, so slight over-fetch on already-current symbols is fine.
+        starts: list[str] = []
+        print("Incremental update mode.")
+        print(f"State source preference: {args.state_source}")
+        for sym in symbols:
+            start_ts, source = resolve_incremental_start(sym, args.state_source)
+            starts.append(start_ts)
+            print(f"  {sym:<8} resume from {start_ts} ({source})")
+
+        start = min(starts)
         print(f"Fetching from {start} → {end}")
     else:
         start = args.start or FALLBACK_START

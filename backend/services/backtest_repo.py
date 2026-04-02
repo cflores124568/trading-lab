@@ -93,12 +93,12 @@ def get_backtest(backtest_id: str) -> Optional[dict]:
     the same dict shape the API already uses, so the rest of the app doesn't
     have to care whether it came from memory or Postgres.
     """
-    from services.db import _conn
+    from services.db import _conn, _read_sql
 
     sql = "SELECT * FROM backtests WHERE backtest_id = %s"
     with _conn() as conn:
         _ensure_backtests_schema(conn)
-        df = pd.read_sql(sql, conn, params=[backtest_id])
+    df = _read_sql(sql, params=[backtest_id])
 
     if df.empty:
         return None
@@ -113,12 +113,12 @@ def list_backtests() -> list[dict]:
     back into the normal result payload shape, so the router can stay simple
     when it switches over to DB-first reads.
     """
-    from services.db import _conn
+    from services.db import _conn, _read_sql
 
     sql = "SELECT * FROM backtests ORDER BY created_at DESC"
     with _conn() as conn:
         _ensure_backtests_schema(conn)
-        df = pd.read_sql(sql, conn)
+    df = _read_sql(sql)
 
     return [_row_to_result(row) for _, row in df.iterrows()]
 
