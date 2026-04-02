@@ -157,6 +157,31 @@ export interface BacktestSummary {
   created_at: string;
 }
 
+export interface BacktestMetrics {
+  total_pnl: number;
+  win_rate: number;
+  max_drawdown: number;
+  sharpe_ratio: number;
+  profit_factor: number;
+}
+
+export interface BacktestCompare {
+  backtest_a: {
+    backtest_id: string;
+    symbol: string;
+    strategy: { type: string; params: Record<string, unknown> };
+    created_at: string;
+    metrics: BacktestMetrics;
+  };
+  backtest_b: {
+    backtest_id: string;
+    symbol: string;
+    strategy: { type: string; params: Record<string, unknown> };
+    created_at: string;
+    metrics: BacktestMetrics;
+  };
+}
+
 export interface PropFirmPreset {
   key: string;
   name: string;
@@ -254,6 +279,14 @@ export const runBacktest = async (payload: unknown): Promise<BacktestResult> => 
   });
 };
 
+export const compareBacktests = async (
+  a: string,
+  b: string
+): Promise<BacktestCompare> => {
+  const params = new URLSearchParams({ a, b });
+  return api<BacktestCompare>(`${API_ROUTES.backtests}/compare?${params}`);
+};
+
 //Fetch prop firm rule presets.
 export const fetchPropPresets = async (): Promise<PropFirmPreset[]> => {
   return api<PropFirmPreset[]>(API_ROUTES.propFirms);
@@ -285,3 +318,4 @@ export const loadSymbolWithInterval = async (
     end_date,
   });
 };
+
