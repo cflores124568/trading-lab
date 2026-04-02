@@ -80,6 +80,14 @@ class PropFirmEvaluation(BaseModel):
     consistency_passed: bool
     details: dict[str, Any]
 
+
+class ReplayContext(BaseModel):
+    source: str
+    symbol: Optional[str] = None
+    interval: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+
 #Backtest request/response
 class BacktestRequest(BaseModel):
     dataset_id:      str
@@ -95,6 +103,7 @@ class BacktestResult(BaseModel):
     backtest_id:    str
     dataset_id:     str
     symbol:         Optional[str]   = None   # e.g. "NQ", "ES" — set for Databento backtests
+    replay_context: Optional[ReplayContext] = None
     strategy:       Strategy
     prop_firm_rules: PropFirmRules
     status:         str
@@ -135,6 +144,9 @@ class DatasetInfo(BaseModel):
     start_date: str
     end_date: str
     uploaded_at: str
+    source: Optional[str] = None
+    symbol: Optional[str] = None
+    interval: Optional[str] = None
 
 # DB Symbol lookup
 class LoadSymbolRequest(BaseModel):

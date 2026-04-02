@@ -1,6 +1,35 @@
 import json
+from threading import Lock
 from typing import Any, Optional
 import pandas as pd
+
+_schema_lock = Lock()
+_schema_ready = False
+
+
+def _ensure_backtests_schema(conn) -> None:
+    """Backfill newer backtest columns for existing local databases.
+
+    Trading Lab is moving quickly and not using a full migration framework yet,
+    so this keeps older developer databases compatible with the latest app code.
+    """
+    global _schema_ready
+
+    if _schema_ready:
+        return
+
+    with _schema_lock:
+        if _schema_ready:
+            return
+
+        with conn.cursor() as cur:
+            cur.execute("ALTER TABLE backtests ADD COLUMN IF NOT EXISTS symbol TEXT")
+            cur.execute("ALTER TABLE backtests ADD COLUMN IF NOT EXISTS replay_context JSONB")
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS backtests_symbol_idx ON backtests (symbol)"
+            )
+        conn.commit()
+        _schema_ready = True
 
 def save_backtest(result: dict) -> None:
     """Save a completed backtest result into Postgres.
@@ -13,14 +42,15 @@ def save_backtest(result: dict) -> None:
 
     sql = """
         INSERT INTO backtests (
-            backtest_id, dataset_id, symbol, strategy_type, strategy,
+            backtest_id, dataset_id, symbol, replay_context, strategy_type, strategy,
             prop_firm_rules, status, created_at, trades,
             metrics, prop_firm_eval, equity_curve
         )
-        VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb)
+        VALUES (%s, %s, %s, %s::jsonb, %s, %s::jsonb, %s::jsonb, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb)
         ON CONFLICT (backtest_id) DO UPDATE SET
             dataset_id      = EXCLUDED.dataset_id,
             symbol          = EXCLUDED.symbol,
+            replay_context  = EXCLUDED.replay_context,
             strategy_type   = EXCLUDED.strategy_type,
             strategy        = EXCLUDED.strategy,
             prop_firm_rules = EXCLUDED.prop_firm_rules,
@@ -33,6 +63,7 @@ def save_backtest(result: dict) -> None:
     """
 
     with _conn() as conn:
+        _ensure_backtests_schema(conn)
         with conn.cursor() as cur:
             cur.execute(
                 sql,
@@ -40,6 +71,7 @@ def save_backtest(result: dict) -> None:
                     result["backtest_id"],
                     result["dataset_id"],
                     result.get("symbol", ""),
+                    json.dumps(result.get("replay_context")),
                     result["strategy"]["type"],
                     json.dumps(result["strategy"]),
                     json.dumps(result["prop_firm_rules"]),
@@ -65,6 +97,7 @@ def get_backtest(backtest_id: str) -> Optional[dict]:
 
     sql = "SELECT * FROM backtests WHERE backtest_id = %s"
     with _conn() as conn:
+        _ensure_backtests_schema(conn)
         df = pd.read_sql(sql, conn, params=[backtest_id])
 
     if df.empty:
@@ -84,6 +117,7 @@ def list_backtests() -> list[dict]:
 
     sql = "SELECT * FROM backtests ORDER BY created_at DESC"
     with _conn() as conn:
+        _ensure_backtests_schema(conn)
         df = pd.read_sql(sql, conn)
 
     return [_row_to_result(row) for _, row in df.iterrows()]
@@ -100,6 +134,7 @@ def _row_to_result(row) -> dict:
         "backtest_id":     row["backtest_id"],
         "dataset_id":      row["dataset_id"],
         "symbol":          row.get("symbol", "") if hasattr(row, "get") else row["symbol"],
+        "replay_context":  _maybe_json(row.get("replay_context")) if hasattr(row, "get") else None,
         "strategy":        _maybe_json(row["strategy"]),
         "prop_firm_rules": _maybe_json(row["prop_firm_rules"]),
         "status":          row["status"],

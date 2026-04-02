@@ -134,6 +134,13 @@ export interface BacktestResult {
   backtest_id: string;
   dataset_id: string;
   symbol: string;
+  replay_context?: {
+    source: string;
+    symbol?: string;
+    interval?: string;
+    start_date?: string;
+    end_date?: string;
+  } | null;
   strategy: { type: string; params: Record<string, unknown> };
   prop_firm_rules: Record<string, unknown>;
   status: string;
@@ -241,18 +248,17 @@ export const fetchYfinanceCandles = async (
   return api<Candle[]>(`${API_ROUTES.yfinanceCandles}?${params}`);
 };
 
-// Fetch candles for a loaded in-memory dataset by its UUID.
-// Hits GET /api/data/{dataset_id}/candles — the in-memory store path,
-// not the TimescaleDB symbol path. Used by the backtest detail page
-// to load chart data for replay without re-fetching by symbol.
-export const fetchDatasetCandles = async (
-  datasetId: string,
-  interval = "1min",
+// Fetch replay candles for a backtest. The backend decides whether to
+// rebuild them from persisted replay context or fall back to an in-memory
+// dataset if the backtest predates durable replay metadata.
+export const fetchBacktestCandles = async (
+  backtestId: string,
   limit?: number,
 ): Promise<Candle[]> => {
-  const params = new URLSearchParams({ interval });
+  const params = new URLSearchParams();
   if (limit) params.set("limit", String(limit));
-  return api<Candle[]>(`/data/${datasetId}/candles?${params}`);
+  const suffix = params.toString() ? `?${params}` : "";
+  return api<Candle[]>(`/backtests/${backtestId}/candles${suffix}`);
 };
 
 // Fetch metadata (row coubt, date range) for a single DB symbol using
@@ -318,4 +324,3 @@ export const loadSymbolWithInterval = async (
     end_date,
   });
 };
-

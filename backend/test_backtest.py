@@ -90,8 +90,15 @@ def main() -> None:
         _require(detail_payload["metrics"]["total_trades"] >= 0, "Detail endpoint returned invalid metrics.")
         print(f"      Detail status: {detail_payload['status']}")
 
+        print("\n[5/6] Checking GET /api/backtests/{id}/candles replay output ...")
+        candles = client.get(f"/api/backtests/{backtest_id}/candles")
+        _require(candles.status_code == 200, f"Backtest candles failed: {candles.text}")
+        candle_payload = candles.json()
+        _require(len(candle_payload) > 0, "Replay candles endpoint returned no bars.")
+        print(f"      Replay candles: {len(candle_payload)}")
+
         if os.getenv("DATABASE_URL"):
-            print("\n[5/5] Clearing in-memory copy and checking persisted read path ...")
+            print("\n[6/6] Clearing in-memory copy and checking persisted read path ...")
             removed = delete_backtest(backtest_id)
             _require(removed, "Could not remove the in-memory backtest before DB fallback check.")
 
@@ -110,7 +117,7 @@ def main() -> None:
             )
             print("      DB-backed list/detail path still works.")
         else:
-            print("\n[5/5] Skipping DB fallback check because DATABASE_URL is not set.")
+            print("\n[6/6] Skipping DB fallback check because DATABASE_URL is not set.")
 
     print("\n" + "=" * 60)
     print(" Smoke test complete")

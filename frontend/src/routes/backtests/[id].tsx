@@ -1,6 +1,6 @@
 import { useParams } from "@solidjs/router";
 import { createResource, Show, For, createSignal } from "solid-js";
-import { fetchBacktest, fetchDatasetCandles } from "../../services/api";
+import { fetchBacktest, fetchBacktestCandles } from "../../services/api";
 import type { Candle } from "../../services/api";
 import EquityCurve from "../../components/EquityCurve";
 import PriceChart from "../../components/PriceChart";
@@ -11,12 +11,11 @@ export default function BacktestDetail() {
   const params = useParams<{ id: string }>();
   const [result] = createResource(() => params.id, fetchBacktest);
 
-  // Once the backtest loads we have dataset_id — use that to fetch candles separately.
-  // createResource re-fires reactively whenever result() changes, so the two loads
-  // are naturally chained without any manual effect wiring.
+  // Replay candles now come from the backtest id itself so the backend can
+  // rebuild them from persisted replay context after a restart.
   const [candles] = createResource(
-    () => result()?.dataset_id,
-    (datasetId) => fetchDatasetCandles(datasetId)
+    () => result()?.backtest_id,
+    (backtestId) => fetchBacktestCandles(backtestId)
   );
 
   const [isReplayActive, setIsReplayActive] = createSignal(false);

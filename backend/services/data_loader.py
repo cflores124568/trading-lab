@@ -124,7 +124,13 @@ def _extract_arrays(df: pd.DataFrame) -> dict:
         "volume": np.ascontiguousarray(df["volume"].to_numpy(np.float64)),
     }
 
-def _store_dataset(df: pd.DataFrame, name: str, source: str="parquet") -> dict:
+def _store_dataset(
+    df: pd.DataFrame,
+    name: str,
+    source: str = "parquet",
+    symbol: str | None = None,
+    interval: str | None = None,
+) -> dict:
     dataset_id = str(uuid.uuid4())
     info = {
         "dataset_id": dataset_id,
@@ -136,6 +142,10 @@ def _store_dataset(df: pd.DataFrame, name: str, source: str="parquet") -> dict:
         "uploaded_at": datetime.utcnow().isoformat(),
         "source": source
     }
+    if symbol:
+        info["symbol"] = symbol.upper()
+    if interval:
+        info["interval"] = interval
     _store()[dataset_id] = {
         "info": info,
         "df": df,
@@ -373,7 +383,13 @@ def load_parquet(
     # Register & return 
     label = _PARQUET_SYMBOLS.get(symbol_key, symbol)
     name = f"{label} {interval} (Databento)"
-    return _store_dataset(df, name=name, source="databento")
+    return _store_dataset(
+        df,
+        name=name,
+        source="databento",
+        symbol=label,
+        interval=interval,
+    )
 
 def get_candles(
     dataset_id: str,
@@ -685,4 +701,10 @@ def load_from_db(
     df.index.name = "date"
 
     name = f"{symbol.upper()} {interval} (TimescaleDB)"
-    return _store_dataset(df, name=name, source="timescaledb")
+    return _store_dataset(
+        df,
+        name=name,
+        source="timescaledb",
+        symbol=symbol.upper(),
+        interval=interval,
+    )

@@ -82,6 +82,8 @@ ON CONFLICT (symbol) DO NOTHING;
 CREATE TABLE IF NOT EXISTS backtests (
     backtest_id      TEXT PRIMARY KEY,
     dataset_id       TEXT NOT NULL,
+    symbol           TEXT,
+    replay_context   JSONB,
     strategy_type    TEXT NOT NULL,
     strategy         JSONB NOT NULL,
     prop_firm_rules  JSONB NOT NULL,
@@ -92,6 +94,12 @@ CREATE TABLE IF NOT EXISTS backtests (
     prop_firm_eval   JSONB NOT NULL,
     equity_curve     JSONB NOT NULL
 );
+
+ALTER TABLE backtests
+    ADD COLUMN IF NOT EXISTS symbol TEXT;
+
+ALTER TABLE backtests
+    ADD COLUMN IF NOT EXISTS replay_context JSONB;
 
 CREATE INDEX IF NOT EXISTS backtests_created_at_idx
     ON backtests (created_at DESC);
