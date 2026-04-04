@@ -1,4 +1,4 @@
-import { useParams } from "@solidjs/router";
+import { A, useParams } from "@solidjs/router";
 import {
   batch,
   createEffect,
@@ -29,6 +29,7 @@ import {
   type ReplayAction,
 } from "../../services/replaySimulator";
 import { CircleCheck, CircleX, TriangleAlert } from "lucide-solid";
+import AppShell from "../../components/AppShell";
 
 const tickValueBySymbol = Object.fromEntries(
   DATABENTO_SYMBOLS.map((symbol) => [symbol.key, symbol.tickValue]),
@@ -295,27 +296,33 @@ export default function BacktestDetail() {
   };
 
   return (
-    <Show
-      when={result()}
-      fallback={
-        <div class="min-h-screen bg-zinc-950 flex items-center justify-center">
-          <p class="text-zinc-400">Loading backtest…</p>
-        </div>
+    <AppShell
+      title={result() ? `${result()!.symbol} • ${result()!.strategy.type}` : "Backtest"}
+      subtitle={result()?.backtest_id ?? "Review summary metrics, replay controls, and saved trades."}
+      actions={
+        <A
+          href="/backtests"
+          class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+        >
+          Back to Backtests
+        </A>
       }
     >
-      {(bt) => {
-        const { metrics, prop_firm_eval, trades, equity_curve, backtest_id } = bt();
+      <Show
+        when={result()}
+        fallback={
+          <section class="app-panel app-panel-section flex min-h-60 items-center justify-center">
+            <p class="text-zinc-400">Loading backtest…</p>
+          </section>
+        }
+      >
+        {(bt) => {
+          const { metrics, prop_firm_eval, trades, equity_curve } = bt();
 
-        return (
-          <div class="min-h-screen bg-zinc-950 text-zinc-100 p-6 space-y-6">
-            <h1 class="text-xl font-bold tracking-tight">
-              {bt().symbol} • {bt().strategy.type}
-              <span class="block text-zinc-500 text-xs font-mono mt-1">
-                {backtest_id}
-              </span>
-            </h1>
+          return (
+            <div class="space-y-6">
 
-            <div class="grid grid-cols-3 gap-4">
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {([
                 ["Total PnL", `$${metrics.total_pnl.toFixed(2)}`],
                 ["Win Rate", `${(metrics.win_rate * 100).toFixed(1)}%`],
@@ -324,19 +331,19 @@ export default function BacktestDetail() {
                 ["Profit Factor", metrics.profit_factor.toFixed(2)],
                 ["Total Trades", String(metrics.total_trades)],
               ] as [string, string][]).map(([label, value]) => (
-                <div class="bg-zinc-900 rounded-lg p-4">
+                <div class="app-panel p-4">
                   <p class="text-zinc-400 text-xs mb-1">{label}</p>
                   <p class="text-xl font-semibold font-mono">{value}</p>
                 </div>
               ))}
             </div>
 
-            <div class="bg-zinc-900 rounded-lg p-4">
+            <div class="app-panel p-4">
               <p class="text-sm text-zinc-400 mb-3">Strategy Equity Curve</p>
               <EquityCurve data={equity_curve} />
             </div>
 
-            <div class="bg-zinc-900 rounded-lg p-4 space-y-4">
+            <div class="app-panel p-4 space-y-4">
               <div class="flex items-center justify-between gap-4">
                 <div>
                   <p class="text-sm text-zinc-400">Interactive Replay Simulator</p>
@@ -428,10 +435,10 @@ export default function BacktestDetail() {
             <Show when={replaySession()}>
               {(session) => (
                 <>
-                  <div class="grid grid-cols-3 gap-4">
+                  <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                     <For each={replayMetrics() ?? []}>
                       {([label, value]) => (
-                        <div class="bg-zinc-900 rounded-lg p-4">
+                        <div class="app-panel p-4">
                           <p class="text-zinc-400 text-xs mb-1">{label}</p>
                           <p class="text-xl font-semibold font-mono">{value}</p>
                         </div>
@@ -439,7 +446,7 @@ export default function BacktestDetail() {
                     </For>
                   </div>
 
-                  <div class="bg-zinc-900 rounded-lg p-4">
+                  <div class="app-panel p-4">
                     <p class="text-sm text-zinc-400 mb-3">Replay Equity Curve</p>
                     <EquityCurve data={session().equityCurve} />
                   </div>
@@ -449,7 +456,7 @@ export default function BacktestDetail() {
                     <PropEvalPanel title="Replay Prop Eval" evaluation={session().propEvaluation} />
                   </div>
 
-                  <div class="bg-zinc-900 rounded-lg overflow-hidden">
+                  <div class="app-panel overflow-hidden">
                     <p class="text-sm text-zinc-400 p-4 border-b border-zinc-800">
                       Replay Trades ({session().trades.length})
                     </p>
@@ -501,7 +508,7 @@ export default function BacktestDetail() {
               )}
             </Show>
 
-            <div class="bg-zinc-900 rounded-lg overflow-hidden">
+            <div class="app-panel overflow-hidden">
               <p class="text-sm text-zinc-400 p-4 border-b border-zinc-800">
                 System Trades ({trades.length})
               </p>
@@ -539,8 +546,9 @@ export default function BacktestDetail() {
               </table>
             </div>
           </div>
-        );
-      }}
-    </Show>
+          );
+        }}
+      </Show>
+    </AppShell>
   );
 }

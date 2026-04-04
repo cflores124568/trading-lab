@@ -1,6 +1,7 @@
 // frontend/src/routes/backtests/compare.tsx
-import { useSearchParams } from "@solidjs/router";
+import { A, useSearchParams } from "@solidjs/router";
 import { createResource, Show, For } from "solid-js";
+import AppShell from "../../components/AppShell";
 import { compareBacktests, type BacktestCompare } from "../../services/api";
 
 export default function BacktestComparePage() {
@@ -32,18 +33,27 @@ export default function BacktestComparePage() {
   ];
 
   return (
-    <div class="min-h-screen bg-zinc-950 text-zinc-100 p-6">
-      <div class="max-w-6xl mx-auto">
-        <h1 class="text-2xl font-bold tracking-tight mb-8">Compare Backtests</h1>
-
+    <AppShell
+      title="Compare Backtests"
+      subtitle="Evaluate two saved runs side by side across returns, drawdown, and trade quality."
+      actions={
+        <A
+          href="/backtests"
+          class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+        >
+          Back to Backtests
+        </A>
+      }
+    >
+      <div class="mx-auto w-full max-w-6xl">
         <Show
           when={!comparison.loading}
-          fallback={<div class="h-40 bg-zinc-900 rounded-xl animate-pulse" />}
+          fallback={<div class="app-panel h-40 animate-pulse" />}
         >
           <Show
             when={comparison()}
             fallback={
-              <div class="bg-zinc-900 rounded-xl p-6 text-sm text-zinc-400">
+              <div class="app-panel app-panel-section text-sm text-zinc-400">
                 Missing compare params (a and b). Go back and select two backtests.
               </div>
             }
@@ -54,7 +64,7 @@ export default function BacktestComparePage() {
               const b = data.backtest_b;
 
               return (
-                <div class="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
+                <div class="app-panel overflow-hidden">
                   <div class="grid grid-cols-3 border-b border-zinc-800 bg-zinc-950/60">
                     <div class="p-4 text-xs font-semibold uppercase tracking-wide text-zinc-500">
                       Metric
@@ -86,6 +96,6 @@ export default function BacktestComparePage() {
           </Show>
         </Show>
       </div>
-    </div>
+    </AppShell>
   );
 }

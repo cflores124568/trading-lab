@@ -1,5 +1,6 @@
 import { createResource, For, Show, createSignal } from "solid-js";
 import { A, useNavigate } from "@solidjs/router";
+import AppShell from "../../components/AppShell";
 import { fetchBacktests, type BacktestSummary } from "../../services/api";
 
 export default function BacktestList() {
@@ -21,44 +22,38 @@ export default function BacktestList() {
   };
 
   return (
-    <div class="min-h-screen bg-zinc-950 text-zinc-100">
-      <div class="max-w-4xl mx-auto px-6 py-10">
-        {/* Header + primary CTA */}
-        <div class="flex items-center justify-between mb-8">
-          <h1 class="text-2xl font-bold tracking-tight">Backtests</h1>
-          <div class="flex items-center gap-3">
-            <Show when={selected().length === 2}>
-              <A
-                href={`/backtests/compare?a=${selected()[0]}&b=${selected()[1]}`}
-                class="px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-lg text-sm font-semibold transition-colors"
-              >
-                Compare
-              </A>
-            </Show>
-
+    <AppShell
+      title="Backtests"
+      subtitle="Review saved runs and compare strategy outcomes from one place."
+      actions={
+        <>
+          <Show when={selected().length === 2}>
             <A
-              href="/backtests/new"
-              class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-semibold transition-colors"
+              href={`/backtests/compare?a=${selected()[0]}&b=${selected()[1]}`}
+              class="rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold transition-colors hover:bg-purple-500"
             >
-              + New backtest
+              Compare
             </A>
-          </div>
-        </div>
+          </Show>
 
-        {/* loading/empty states */}
+          <A
+            href="/backtests/new"
+            class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold transition-colors hover:bg-blue-500"
+          >
+            + New backtest
+          </A>
+        </>
+      }
+    >
+      <div class="mx-auto w-full max-w-4xl">
         <Show
           when={!backtests.loading}
-          fallback={
-            // Skeleton loader (prevents layout shift)
-            <div class="h-40 bg-zinc-900 rounded-xl animate-pulse" />
-          }
+          fallback={<div class="app-panel h-40 animate-pulse" />}
         >
           <Show
-            // Guard against undefined resource result
             when={(backtests() ?? []).length > 0}
             fallback={
-              // Empty state (first-time user experience)
-              <div class="text-center py-20 text-zinc-500 text-sm">
+              <div class="app-panel app-panel-section py-20 text-center text-sm text-zinc-500">
                 No backtests yet.{" "}
                 <A href="/backtests/new" class="text-blue-400 hover:underline">
                   Run your first one
@@ -66,7 +61,6 @@ export default function BacktestList() {
               </div>
             }
           >
-            {/* Backtest list */}
             <div class="space-y-3">
               <For each={backtests()}>
                 {(bt) => {
@@ -75,10 +69,10 @@ export default function BacktestList() {
                   return (
                     <div
                       onClick={() => navigate(`/backtests/${bt.backtest_id}`)}
-                      class={`block rounded-xl px-5 py-4 transition-colors border cursor-pointer ${
+                      class={`app-panel block cursor-pointer px-5 py-4 transition-colors ${
                         isSelected()
-                          ? "bg-zinc-900 border-purple-500 ring-1 ring-purple-500"
-                          : "bg-zinc-900 hover:bg-zinc-800 border-transparent hover:border-zinc-700"
+                          ? "border-purple-500 ring-1 ring-purple-500"
+                          : "border-transparent hover:border-zinc-700 hover:bg-zinc-800"
                       }`}
                     >
                       <div class="flex items-start justify-between gap-4">
@@ -94,7 +88,7 @@ export default function BacktestList() {
                             <p class="text-sm font-medium">
                               {bt.symbol} • {bt.strategy_type.replace(/_/g, " ")}
                             </p>
-                            <p class="text-xs text-zinc-500 font-mono mt-0.5">
+                            <p class="mt-0.5 font-mono text-xs text-zinc-500">
                               {bt.created_at.slice(0, 10)}
                             </p>
                           </div>
@@ -102,13 +96,13 @@ export default function BacktestList() {
 
                         <div class="text-right">
                           <p
-                            class={`text-sm font-semibold font-mono ${
+                            class={`font-mono text-sm font-semibold ${
                               bt.total_pnl >= 0 ? "text-green-400" : "text-red-400"
                             }`}
                           >
                             {bt.total_pnl >= 0 ? "+" : ""}${bt.total_pnl.toFixed(2)}
                           </p>
-                          <p class="text-xs text-zinc-500 mt-0.5">
+                          <p class="mt-0.5 text-xs text-zinc-500">
                             {(bt.win_rate * 100).toFixed(1)}% win rate
                           </p>
                         </div>
@@ -121,6 +115,6 @@ export default function BacktestList() {
           </Show>
         </Show>
       </div>
-    </div>
+    </AppShell>
   );
 }

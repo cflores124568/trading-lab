@@ -1,5 +1,5 @@
-import { A } from "@solidjs/router";
 import { createResource, createSignal, Show } from "solid-js";
+import AppShell from "../components/AppShell";
 import PriceChart from "../components/PriceChart";
 import {
   BACKTEST_INTERVALS,
@@ -117,25 +117,13 @@ export default function Dashboard() {
   const dateInput = `${select} min-w-40`;
 
   return (
-    <div class="min-h-screen bg-zinc-950 text-zinc-100">
-      <nav class="border-b border-zinc-800 px-6 py-3 flex items-center gap-6">
-        <span class="font-bold text-sm tracking-tight">Trading Lab</span>
-        <A href="/" class="text-sm text-zinc-100 transition-colors">Chart</A>
-        <A href="/backtests" class="text-sm text-zinc-400 hover:text-zinc-100 transition-colors">
-          Backtests
-        </A>
-      </nav>
-
-      <div class="p-6 space-y-6">
+    <AppShell
+      title="Dashboard"
+      subtitle="Toggle between live preview data and historical TimescaleDB candles."
+    >
+      <section class="app-panel app-panel-section">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div class="space-y-3">
-            <div>
-              <h1 class="text-2xl font-bold tracking-tight">Dashboard</h1>
-              <p class="text-sm text-zinc-400 mt-1">
-                Toggle between live preview data and historical TimescaleDB candles.
-              </p>
-            </div>
-
             <div class="flex gap-2">
               <button
                 type="button"
@@ -227,33 +215,33 @@ export default function Dashboard() {
             </div>
           </Show>
         </div>
+      </section>
 
-        <div class="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
-          <p class="text-xs uppercase tracking-wide text-zinc-500 mb-4">
-            {mode() === "live"
-              ? "Live preview via Yahoo Finance"
-              : "Historical candles via TimescaleDB"}
-          </p>
+      <section class="app-panel app-panel-section">
+        <p class="app-kicker mb-4">
+          {mode() === "live"
+            ? "Live preview via Yahoo Finance"
+            : "Historical candles via TimescaleDB"}
+        </p>
 
-          <Show
-            when={candles.error}
-            fallback={
-              <Show
-                when={!candles.loading}
-                fallback={<div class="h-96 bg-zinc-950 rounded-xl animate-pulse" />}
-              >
-                <PriceChart candles={candles() ?? []} />
-              </Show>
-            }
-          >
-            {(error) => (
-              <div class="h-96 flex items-center justify-center bg-zinc-950 rounded-xl">
-                <p class="text-sm text-red-400">Failed to load chart: {error().message}</p>
-              </div>
-            )}
-          </Show>
-        </div>
-      </div>
-    </div>
+        <Show
+          when={candles.error}
+          fallback={
+            <Show
+              when={!candles.loading}
+              fallback={<div class="h-96 rounded-xl bg-zinc-950 animate-pulse" />}
+            >
+              <PriceChart candles={candles() ?? []} />
+            </Show>
+          }
+        >
+          {(error) => (
+            <div class="flex h-96 items-center justify-center rounded-xl bg-zinc-950">
+              <p class="text-sm text-red-400">Failed to load chart: {error().message}</p>
+            </div>
+          )}
+        </Show>
+      </section>
+    </AppShell>
   );
 }
