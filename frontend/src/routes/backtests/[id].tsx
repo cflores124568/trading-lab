@@ -298,14 +298,25 @@ export default function BacktestDetail() {
   return (
     <AppShell
       title={result() ? `${result()!.symbol} • ${result()!.strategy.type}` : "Backtest"}
-      subtitle={result()?.backtest_id ?? "Review summary metrics, replay controls, and saved trades."}
+      subtitle={
+        result()?.backtest_id ??
+        "Review summary metrics, inspect prop firm outcomes, and replay the run candle by candle."
+      }
       actions={
-        <A
-          href="/backtests"
-          class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
-        >
-          Back to Backtests
-        </A>
+        <>
+          <a
+            href="#replay"
+            class="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white"
+          >
+            Jump to Replay
+          </a>
+          <A
+            href="/backtests"
+            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+          >
+            Back to Backtests
+          </A>
+        </>
       }
     >
       <Show
@@ -321,231 +332,298 @@ export default function BacktestDetail() {
 
           return (
             <div class="space-y-6">
+              <section class="app-panel app-panel-section">
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                  <div class="space-y-2">
+                    <p class="app-kicker">Replay First</p>
+                    <p class="max-w-3xl text-sm text-zinc-300">
+                      Step through the saved run bar by bar, compare your manual decisions against
+                      the system trades, and see how the replay changes your prop evaluation.
+                    </p>
+                  </div>
 
-            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {([
-                ["Total PnL", `$${metrics.total_pnl.toFixed(2)}`],
-                ["Win Rate", `${(metrics.win_rate * 100).toFixed(1)}%`],
-                ["Max Drawdown", `${(metrics.max_drawdown * 100).toFixed(1)}%`],
-                ["Sharpe", metrics.sharpe_ratio.toFixed(2)],
-                ["Profit Factor", metrics.profit_factor.toFixed(2)],
-                ["Total Trades", String(metrics.total_trades)],
-              ] as [string, string][]).map(([label, value]) => (
-                <div class="app-panel p-4">
-                  <p class="text-zinc-400 text-xs mb-1">{label}</p>
-                  <p class="text-xl font-semibold font-mono">{value}</p>
+                  <div class="flex flex-wrap items-center gap-3">
+                    <a
+                      href="#replay"
+                      class="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white"
+                    >
+                      Start Replay
+                    </a>
+                    <A
+                      href="/backtests"
+                      class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+                    >
+                      All Backtests
+                    </A>
+                  </div>
                 </div>
-              ))}
-            </div>
+              </section>
 
-            <div class="app-panel p-4">
-              <p class="text-sm text-zinc-400 mb-3">Strategy Equity Curve</p>
-              <EquityCurve data={equity_curve} />
-            </div>
-
-            <div class="app-panel p-4 space-y-4">
-              <div class="flex items-center justify-between gap-4">
-                <div>
-                  <p class="text-sm text-zinc-400">Interactive Replay Simulator</p>
-                  <p class="text-xs text-zinc-500 mt-1">
-                    Scrub, step, jump between system trades, and place your own manual long/short/exit decisions.
-                  </p>
-                </div>
-                <div class="text-right text-xs text-zinc-500">
-                  <p>Commission: ${commission().toFixed(2)}</p>
-                  <p>Tick value: ${tickValue().toFixed(2)}</p>
-                </div>
+              <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {([
+                  ["Total PnL", `$${metrics.total_pnl.toFixed(2)}`],
+                  ["Win Rate", `${(metrics.win_rate * 100).toFixed(1)}%`],
+                  ["Max Drawdown", `${(metrics.max_drawdown * 100).toFixed(1)}%`],
+                  ["Sharpe", metrics.sharpe_ratio.toFixed(2)],
+                  ["Profit Factor", metrics.profit_factor.toFixed(2)],
+                  ["Total Trades", String(metrics.total_trades)],
+                ] as [string, string][]).map(([label, value]) => (
+                  <div class="app-panel p-4">
+                    <p class="mb-1 text-xs text-zinc-400">{label}</p>
+                    <p class="font-mono text-xl font-semibold">{value}</p>
+                  </div>
+                ))}
               </div>
 
-              <Show
-                when={candles.error}
-                fallback={
-                  <Show
-                    when={!candles.loading && candles() && candles()!.length > 0}
-                    fallback={
-                      <div class="h-[450px] bg-zinc-800 rounded-lg animate-pulse flex items-center justify-center">
-                        <p class="text-zinc-500 text-sm">
-                          {candles.loading ? "Loading chart data…" : "No candles available for this backtest."}
-                        </p>
-                      </div>
-                    }
-                  >
-                    <PriceChart
-                      candles={candles() as Candle[]}
-                      markers={chartMarkers()}
-                      visibleIndex={replayIndex()}
-                      height={450}
-                    />
-                  </Show>
-                }
-              >
-                {(error) => (
-                  <div class="h-[450px] rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center px-6 text-center">
-                    <p class="text-sm text-red-400">Replay data failed to load: {error().message}</p>
+              <section id="replay" class="app-panel p-4 space-y-4 scroll-mt-24">
+                <div class="flex items-center justify-between gap-4">
+                  <div>
+                    <p class="text-sm text-zinc-400">Interactive Replay Simulator</p>
+                    <p class="mt-1 text-xs text-zinc-500">
+                      Scrub, step, jump between system trades, and place your own manual
+                      long/short/exit decisions.
+                    </p>
                   </div>
+                  <div class="text-right text-xs text-zinc-500">
+                    <p>Commission: ${commission().toFixed(2)}</p>
+                    <p>Tick value: ${tickValue().toFixed(2)}</p>
+                  </div>
+                </div>
+
+                <Show
+                  when={candles.error}
+                  fallback={
+                    <Show
+                      when={!candles.loading && candles() && candles()!.length > 0}
+                      fallback={
+                        <div class="flex h-[450px] items-center justify-center rounded-lg bg-zinc-800 animate-pulse">
+                          <p class="text-sm text-zinc-500">
+                            {candles.loading
+                              ? "Loading chart data…"
+                              : "No candles available for this backtest."}
+                          </p>
+                        </div>
+                      }
+                    >
+                      <PriceChart
+                        candles={candles() as Candle[]}
+                        markers={chartMarkers()}
+                        visibleIndex={replayIndex()}
+                        height={450}
+                      />
+                    </Show>
+                  }
+                >
+                  {(error) => (
+                    <div class="flex h-[450px] items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 px-6 text-center">
+                      <p class="text-sm text-red-400">
+                        Replay data failed to load: {error().message}
+                      </p>
+                    </div>
+                  )}
+                </Show>
+
+                <Show when={candles() && candles()!.length > 0}>
+                  <ReplayControls
+                    isPlaying={isReplayActive()}
+                    speed={speed()}
+                    progress={replayProgress()}
+                    currentBar={totalBars() === 0 ? 0 : replayIndex() + 1}
+                    totalBars={totalBars()}
+                    currentTimeLabel={currentTimeLabel()}
+                    currentPriceLabel={currentPriceLabel()}
+                    positionLabel={positionLabel()}
+                    canStepBack={replayIndex() > 0}
+                    canStepForward={replayIndex() < totalBars() - 1}
+                    canJumpPrevTrade={
+                      findJumpTarget(replayIndex(), tradeEntryIndices(), "prev") !== null
+                    }
+                    canJumpNextTrade={
+                      findJumpTarget(replayIndex(), tradeEntryIndices(), "next") !== null
+                    }
+                    canExitPosition={!!replaySession()?.position}
+                    onPlayPause={() => {
+                      if (isReplayActive()) {
+                        setIsReplayActive(false);
+                        return;
+                      }
+
+                      if (replayIndex() >= totalBars() - 1) {
+                        setCurrentIndex(0);
+                      }
+                      setIsReplayActive(true);
+                    }}
+                    onSpeedChange={setSpeed}
+                    onSeek={(progress) =>
+                      seekToIndex(getReplayIndexFromProgress(progress, totalBars()))
+                    }
+                    onRestart={() => {
+                      batch(() => {
+                        setIsReplayActive(false);
+                        setCurrentIndex(0);
+                        setReplayActions([]);
+                      });
+                    }}
+                    onStepBack={() => seekToIndex(replayIndex() - 1)}
+                    onStepForward={() => seekToIndex(replayIndex() + 1)}
+                    onJumpPrevTrade={() => jumpToTrade("prev")}
+                    onJumpNextTrade={() => jumpToTrade("next")}
+                    onLong={() => recordReplayAction("buy")}
+                    onShort={() => recordReplayAction("sell")}
+                    onExit={() => recordReplayAction("exit")}
+                  />
+                </Show>
+              </section>
+
+              <Show when={replaySession()}>
+                {(session) => (
+                  <>
+                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                      <For each={replayMetrics() ?? []}>
+                        {([label, value]) => (
+                          <div class="app-panel p-4">
+                            <p class="mb-1 text-xs text-zinc-400">{label}</p>
+                            <p class="font-mono text-xl font-semibold">{value}</p>
+                          </div>
+                        )}
+                      </For>
+                    </div>
+
+                    <div class="app-panel p-4">
+                      <p class="mb-3 text-sm text-zinc-400">Replay Equity Curve</p>
+                      <EquityCurve data={session().equityCurve} />
+                    </div>
+
+                    <div class="grid gap-4 lg:grid-cols-2">
+                      <PropEvalPanel title="System Prop Eval" evaluation={prop_firm_eval} />
+                      <PropEvalPanel
+                        title="Replay Prop Eval"
+                        evaluation={session().propEvaluation}
+                      />
+                    </div>
+
+                    <div class="app-panel overflow-hidden">
+                      <p class="border-b border-zinc-800 p-4 text-sm text-zinc-400">
+                        Replay Trades ({session().trades.length})
+                      </p>
+                      <table class="w-full text-sm">
+                        <thead class="text-xs text-zinc-400">
+                          <tr>
+                            <th class="p-3 text-left">#</th>
+                            <th class="p-3 text-left">Side</th>
+                            <th class="p-3 text-left">Entry Time</th>
+                            <th class="p-3 text-left">Exit Time</th>
+                            <th class="p-3 text-right">Entry $</th>
+                            <th class="p-3 text-right">Exit $</th>
+                            <th class="p-3 text-right">PnL</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <Show
+                            when={session().trades.length > 0}
+                            fallback={
+                              <tr class="border-t border-zinc-800">
+                                <td class="p-4 text-zinc-500" colSpan={7}>
+                                  No replay trades yet. Use the controls above to place manual
+                                  decisions.
+                                </td>
+                              </tr>
+                            }
+                          >
+                            <For each={session().trades}>
+                              {(trade) => (
+                                <tr class="border-t border-zinc-800 transition-colors hover:bg-zinc-800">
+                                  <td class="p-3 text-zinc-400">{trade.trade_id}</td>
+                                  <td
+                                    class={`p-3 font-medium ${
+                                      trade.side === "buy" ? "text-green-400" : "text-red-400"
+                                    }`}
+                                  >
+                                    {trade.side}
+                                  </td>
+                                  <td class="p-3 font-mono text-xs text-zinc-400">
+                                    {trade.entry_time}
+                                  </td>
+                                  <td class="p-3 font-mono text-xs text-zinc-400">
+                                    {trade.exit_time}
+                                  </td>
+                                  <td class="p-3 text-right font-mono">
+                                    {trade.entry_price.toFixed(2)}
+                                  </td>
+                                  <td class="p-3 text-right font-mono">
+                                    {(trade.exit_price ?? 0).toFixed(2)}
+                                  </td>
+                                  <td
+                                    class={`p-3 text-right font-mono font-semibold ${
+                                      trade.pnl >= 0 ? "text-green-400" : "text-red-400"
+                                    }`}
+                                  >
+                                    {trade.pnl >= 0 ? "+" : ""}${trade.pnl.toFixed(2)}
+                                  </td>
+                                </tr>
+                              )}
+                            </For>
+                          </Show>
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
                 )}
               </Show>
 
-              <Show when={candles() && candles()!.length > 0}>
-                <ReplayControls
-                  isPlaying={isReplayActive()}
-                  speed={speed()}
-                  progress={replayProgress()}
-                  currentBar={totalBars() === 0 ? 0 : replayIndex() + 1}
-                  totalBars={totalBars()}
-                  currentTimeLabel={currentTimeLabel()}
-                  currentPriceLabel={currentPriceLabel()}
-                  positionLabel={positionLabel()}
-                  canStepBack={replayIndex() > 0}
-                  canStepForward={replayIndex() < totalBars() - 1}
-                  canJumpPrevTrade={findJumpTarget(replayIndex(), tradeEntryIndices(), "prev") !== null}
-                  canJumpNextTrade={findJumpTarget(replayIndex(), tradeEntryIndices(), "next") !== null}
-                  canExitPosition={!!replaySession()?.position}
-                  onPlayPause={() => {
-                    if (isReplayActive()) {
-                      setIsReplayActive(false);
-                      return;
-                    }
+              <div class="app-panel p-4">
+                <p class="mb-3 text-sm text-zinc-400">Strategy Equity Curve</p>
+                <EquityCurve data={equity_curve} />
+              </div>
 
-                    if (replayIndex() >= totalBars() - 1) {
-                      setCurrentIndex(0);
-                    }
-                    setIsReplayActive(true);
-                  }}
-                  onSpeedChange={setSpeed}
-                  onSeek={(progress) => seekToIndex(getReplayIndexFromProgress(progress, totalBars()))}
-                  onRestart={() => {
-                    batch(() => {
-                      setIsReplayActive(false);
-                      setCurrentIndex(0);
-                      setReplayActions([]);
-                    });
-                  }}
-                  onStepBack={() => seekToIndex(replayIndex() - 1)}
-                  onStepForward={() => seekToIndex(replayIndex() + 1)}
-                  onJumpPrevTrade={() => jumpToTrade("prev")}
-                  onJumpNextTrade={() => jumpToTrade("next")}
-                  onLong={() => recordReplayAction("buy")}
-                  onShort={() => recordReplayAction("sell")}
-                  onExit={() => recordReplayAction("exit")}
-                />
-              </Show>
-            </div>
-
-            <Show when={replaySession()}>
-              {(session) => (
-                <>
-                  <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    <For each={replayMetrics() ?? []}>
-                      {([label, value]) => (
-                        <div class="app-panel p-4">
-                          <p class="text-zinc-400 text-xs mb-1">{label}</p>
-                          <p class="text-xl font-semibold font-mono">{value}</p>
-                        </div>
+              <div class="app-panel overflow-hidden">
+                <p class="border-b border-zinc-800 p-4 text-sm text-zinc-400">
+                  System Trades ({trades.length})
+                </p>
+                <table class="w-full text-sm">
+                  <thead class="text-xs text-zinc-400">
+                    <tr>
+                      <th class="p-3 text-left">#</th>
+                      <th class="p-3 text-left">Side</th>
+                      <th class="p-3 text-left">Entry Time</th>
+                      <th class="p-3 text-left">Exit Time</th>
+                      <th class="p-3 text-right">Entry $</th>
+                      <th class="p-3 text-right">Exit $</th>
+                      <th class="p-3 text-right">PnL</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <For each={trades}>
+                      {(trade: Trade) => (
+                        <tr class="border-t border-zinc-800 transition-colors hover:bg-zinc-800">
+                          <td class="p-3 text-zinc-400">{trade.trade_id}</td>
+                          <td
+                            class={`p-3 font-medium ${
+                              trade.side === "buy" ? "text-green-400" : "text-red-400"
+                            }`}
+                          >
+                            {trade.side}
+                          </td>
+                          <td class="p-3 font-mono text-xs text-zinc-400">{trade.entry_time}</td>
+                          <td class="p-3 font-mono text-xs text-zinc-400">{trade.exit_time}</td>
+                          <td class="p-3 text-right font-mono">{trade.entry_price.toFixed(2)}</td>
+                          <td class="p-3 text-right font-mono">
+                            {(trade.exit_price ?? 0).toFixed(2)}
+                          </td>
+                          <td
+                            class={`p-3 text-right font-mono font-semibold ${
+                              trade.pnl >= 0 ? "text-green-400" : "text-red-400"
+                            }`}
+                          >
+                            {trade.pnl >= 0 ? "+" : ""}${trade.pnl.toFixed(2)}
+                          </td>
+                        </tr>
                       )}
                     </For>
-                  </div>
-
-                  <div class="app-panel p-4">
-                    <p class="text-sm text-zinc-400 mb-3">Replay Equity Curve</p>
-                    <EquityCurve data={session().equityCurve} />
-                  </div>
-
-                  <div class="grid gap-4 lg:grid-cols-2">
-                    <PropEvalPanel title="System Prop Eval" evaluation={prop_firm_eval} />
-                    <PropEvalPanel title="Replay Prop Eval" evaluation={session().propEvaluation} />
-                  </div>
-
-                  <div class="app-panel overflow-hidden">
-                    <p class="text-sm text-zinc-400 p-4 border-b border-zinc-800">
-                      Replay Trades ({session().trades.length})
-                    </p>
-                    <table class="w-full text-sm">
-                      <thead class="text-zinc-400 text-xs">
-                        <tr>
-                          <th class="p-3 text-left">#</th>
-                          <th class="p-3 text-left">Side</th>
-                          <th class="p-3 text-left">Entry Time</th>
-                          <th class="p-3 text-left">Exit Time</th>
-                          <th class="p-3 text-right">Entry $</th>
-                          <th class="p-3 text-right">Exit $</th>
-                          <th class="p-3 text-right">PnL</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <Show
-                          when={session().trades.length > 0}
-                          fallback={
-                            <tr class="border-t border-zinc-800">
-                              <td class="p-4 text-zinc-500" colSpan={7}>
-                                No replay trades yet. Use the controls above to place manual decisions.
-                              </td>
-                            </tr>
-                          }
-                        >
-                          <For each={session().trades}>
-                            {(trade) => (
-                              <tr class="border-t border-zinc-800 hover:bg-zinc-800 transition-colors">
-                                <td class="p-3 text-zinc-400">{trade.trade_id}</td>
-                                <td class={`p-3 font-medium ${trade.side === "buy" ? "text-green-400" : "text-red-400"}`}>
-                                  {trade.side}
-                                </td>
-                                <td class="p-3 text-zinc-400 text-xs font-mono">{trade.entry_time}</td>
-                                <td class="p-3 text-zinc-400 text-xs font-mono">{trade.exit_time}</td>
-                                <td class="p-3 text-right font-mono">{trade.entry_price.toFixed(2)}</td>
-                                <td class="p-3 text-right font-mono">{(trade.exit_price ?? 0).toFixed(2)}</td>
-                                <td class={`p-3 text-right font-mono font-semibold ${trade.pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
-                                  {trade.pnl >= 0 ? "+" : ""}${trade.pnl.toFixed(2)}
-                                </td>
-                              </tr>
-                            )}
-                          </For>
-                        </Show>
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              )}
-            </Show>
-
-            <div class="app-panel overflow-hidden">
-              <p class="text-sm text-zinc-400 p-4 border-b border-zinc-800">
-                System Trades ({trades.length})
-              </p>
-              <table class="w-full text-sm">
-                <thead class="text-zinc-400 text-xs">
-                  <tr>
-                    <th class="p-3 text-left">#</th>
-                    <th class="p-3 text-left">Side</th>
-                    <th class="p-3 text-left">Entry Time</th>
-                    <th class="p-3 text-left">Exit Time</th>
-                    <th class="p-3 text-right">Entry $</th>
-                    <th class="p-3 text-right">Exit $</th>
-                    <th class="p-3 text-right">PnL</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <For each={trades}>
-                    {(trade: Trade) => (
-                      <tr class="border-t border-zinc-800 hover:bg-zinc-800 transition-colors">
-                        <td class="p-3 text-zinc-400">{trade.trade_id}</td>
-                        <td class={`p-3 font-medium ${trade.side === "buy" ? "text-green-400" : "text-red-400"}`}>
-                          {trade.side}
-                        </td>
-                        <td class="p-3 text-zinc-400 text-xs font-mono">{trade.entry_time}</td>
-                        <td class="p-3 text-zinc-400 text-xs font-mono">{trade.exit_time}</td>
-                        <td class="p-3 text-right font-mono">{trade.entry_price.toFixed(2)}</td>
-                        <td class="p-3 text-right font-mono">{(trade.exit_price ?? 0).toFixed(2)}</td>
-                        <td class={`p-3 text-right font-mono font-semibold ${trade.pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
-                          {trade.pnl >= 0 ? "+" : ""}${trade.pnl.toFixed(2)}
-                        </td>
-                      </tr>
-                    )}
-                  </For>
-                </tbody>
-              </table>
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
           );
         }}
       </Show>

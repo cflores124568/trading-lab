@@ -24,7 +24,7 @@ export default function BacktestList() {
   return (
     <AppShell
       title="Backtests"
-      subtitle="Review saved runs and compare strategy outcomes from one place."
+      subtitle="Review saved runs, jump into replay, and compare strategy outcomes from one place."
       actions={
         <>
           <Show when={selected().length === 2}>
@@ -32,7 +32,7 @@ export default function BacktestList() {
               href={`/backtests/compare?a=${selected()[0]}&b=${selected()[1]}`}
               class="rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold transition-colors hover:bg-purple-500"
             >
-              Compare
+              Compare Selected
             </A>
           </Show>
 
@@ -65,10 +65,12 @@ export default function BacktestList() {
               <For each={backtests()}>
                 {(bt) => {
                   const isSelected = () => selected().includes(bt.backtest_id);
+                  const detailHref = `/backtests/${bt.backtest_id}`;
+                  const replayHref = `${detailHref}#replay`;
 
                   return (
                     <div
-                      onClick={() => navigate(`/backtests/${bt.backtest_id}`)}
+                      onClick={() => navigate(detailHref)}
                       class={`app-panel block cursor-pointer px-5 py-4 transition-colors ${
                         isSelected()
                           ? "border-purple-500 ring-1 ring-purple-500"
@@ -91,6 +93,9 @@ export default function BacktestList() {
                             <p class="mt-0.5 font-mono text-xs text-zinc-500">
                               {bt.created_at.slice(0, 10)}
                             </p>
+                            <p class="mt-2 text-xs text-zinc-400">
+                              Replay this saved run candle by candle from the detail page.
+                            </p>
                           </div>
                         </div>
 
@@ -105,6 +110,29 @@ export default function BacktestList() {
                           <p class="mt-0.5 text-xs text-zinc-500">
                             {(bt.win_rate * 100).toFixed(1)}% win rate
                           </p>
+                        </div>
+                      </div>
+
+                      <div class="mt-4 flex items-center justify-between gap-4 border-t border-zinc-800 pt-4">
+                        <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                          Saved replay context
+                        </p>
+
+                        <div class="flex items-center gap-2">
+                          <A
+                            href={detailHref}
+                            class="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            View
+                          </A>
+                          <A
+                            href={replayHref}
+                            class="rounded-lg bg-zinc-100 px-3 py-2 text-xs font-semibold text-zinc-950 transition-colors hover:bg-white"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            Replay
+                          </A>
                         </div>
                       </div>
                     </div>
