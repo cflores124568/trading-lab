@@ -182,6 +182,9 @@ export interface BacktestMetrics {
   max_drawdown: number;
   sharpe_ratio: number;
   profit_factor: number;
+  total_trades?: number;
+  best_trade?: number;
+  worst_trade?: number;
 }
 
 export interface BacktestCompare {

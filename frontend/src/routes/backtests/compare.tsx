@@ -4,6 +4,22 @@ import { createResource, Show, For } from "solid-js";
 import AppShell from "../../components/AppShell";
 import { compareBacktests, type BacktestCompare } from "../../services/api";
 
+function formatMoney(value: number | undefined): string {
+  if (typeof value !== "number") {
+    return "—";
+  }
+
+  return `${value >= 0 ? "+" : "-"}$${Math.abs(value).toFixed(2)}`;
+}
+
+function formatPercent(value: number | undefined): string {
+  if (typeof value !== "number") {
+    return "—";
+  }
+
+  return `${(value * 100).toFixed(1)}%`;
+}
+
 export default function BacktestComparePage() {
   const [params] = useSearchParams<{ a?: string; b?: string }>();
 
@@ -64,32 +80,86 @@ export default function BacktestComparePage() {
               const b = data.backtest_b;
 
               return (
-                <div class="app-panel overflow-hidden">
-                  <div class="grid grid-cols-3 border-b border-zinc-800 bg-zinc-950/60">
-                    <div class="p-4 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                      Metric
-                    </div>
-                    <div class="p-4 text-sm font-semibold border-l border-zinc-800 font-mono">
-                      {a.backtest_id}
-                    </div>
-                    <div class="p-4 text-sm font-semibold border-l border-zinc-800 font-mono">
-                      {b.backtest_id}
-                    </div>
-                  </div>
-
-                  <For each={metricRows}>
-                    {(row) => (
-                      <div class="grid grid-cols-3 border-b border-zinc-800 last:border-b-0">
-                        <div class="p-4 text-sm text-zinc-400">{row.label}</div>
-                        <div class="p-4 text-sm font-mono border-l border-zinc-800">
-                          {row.getValue(a)}
+                <div class="space-y-6">
+                  <section class="grid gap-4 lg:grid-cols-2">
+                    {[
+                      { title: "Run A", backtest: a, accent: "text-sky-300" },
+                      { title: "Run B", backtest: b, accent: "text-emerald-300" },
+                    ].map(({ title, backtest, accent }) => (
+                      <div class="app-panel app-panel-section space-y-4">
+                        <div class="space-y-2">
+                          <p class={`text-xs uppercase tracking-[0.18em] ${accent}`}>{title}</p>
+                          <h2 class="text-xl font-semibold text-zinc-100">
+                            {backtest.symbol} • {backtest.strategy.type.replace(/_/g, " ")}
+                          </h2>
+                          <p class="font-mono text-xs text-zinc-500">{backtest.backtest_id}</p>
                         </div>
-                        <div class="p-4 text-sm font-mono border-l border-zinc-800">
-                          {row.getValue(b)}
+
+                        <div class="grid grid-cols-2 gap-3">
+                          <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                            <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Total PnL</p>
+                            <p class={`mt-2 font-mono text-lg font-semibold ${backtest.metrics.total_pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+                              {formatMoney(backtest.metrics.total_pnl)}
+                            </p>
+                          </div>
+                          <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                            <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Win Rate</p>
+                            <p class="mt-2 font-mono text-lg font-semibold text-zinc-100">
+                              {formatPercent(backtest.metrics.win_rate)}
+                            </p>
+                          </div>
+                          <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                            <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Max Drawdown</p>
+                            <p class="mt-2 font-mono text-sm font-semibold text-zinc-100">
+                              {formatPercent(backtest.metrics.max_drawdown)}
+                            </p>
+                          </div>
+                          <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                            <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Created</p>
+                            <p class="mt-2 text-sm font-medium text-zinc-100">
+                              {backtest.created_at.slice(0, 10)}
+                            </p>
+                          </div>
                         </div>
                       </div>
-                    )}
-                  </For>
+                    ))}
+                  </section>
+
+                  <div class="app-panel app-panel-section">
+                    <p class="max-w-3xl text-sm text-zinc-400">
+                      Use the table below to compare both runs across returns, risk, and trade quality.
+                      Once you spot the stronger candidate, jump back into the saved replay to inspect
+                      where the path diverged.
+                    </p>
+                  </div>
+
+                  <div class="app-panel overflow-hidden">
+                    <div class="grid grid-cols-3 border-b border-zinc-800 bg-zinc-950/60">
+                      <div class="p-4 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                        Metric
+                      </div>
+                      <div class="border-l border-zinc-800 p-4 text-sm font-semibold font-mono">
+                        {a.backtest_id}
+                      </div>
+                      <div class="border-l border-zinc-800 p-4 text-sm font-semibold font-mono">
+                        {b.backtest_id}
+                      </div>
+                    </div>
+
+                    <For each={metricRows}>
+                      {(row) => (
+                        <div class="grid grid-cols-3 border-b border-zinc-800 last:border-b-0">
+                          <div class="p-4 text-sm text-zinc-400">{row.label}</div>
+                          <div class="border-l border-zinc-800 p-4 text-sm font-mono">
+                            {row.getValue(a)}
+                          </div>
+                          <div class="border-l border-zinc-800 p-4 text-sm font-mono">
+                            {row.getValue(b)}
+                          </div>
+                        </div>
+                      )}
+                    </For>
+                  </div>
                 </div>
               );
             }}
