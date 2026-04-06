@@ -15,7 +15,15 @@
     @apply p-5 lg:p-6;
   }
 
+  .app-subpanel {
+    @apply rounded-2xl border border-zinc-800 bg-zinc-950/60;
+  }
+
   .app-kicker {
     @apply text-xs uppercase tracking-[0.18em] text-zinc-500;
+  }
+
+  .app-skeleton {
+    @apply animate-pulse rounded-2xl bg-zinc-800/80;
   }
 }

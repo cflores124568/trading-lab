@@ -47,6 +47,15 @@ function tabClass(active: boolean): string {
   ].join(" ");
 }
 
+function summaryCard(label: string, value: string) {
+  return (
+    <div class="app-subpanel px-4 py-3">
+      <p class="app-kicker">{label}</p>
+      <p class="mt-2 text-sm font-medium text-zinc-100">{value}</p>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const defaultLiveInterval =
     LIVE_CHART_INTERVALS.find((interval) => interval.value === DEFAULT_INTERVAL.value) ??
@@ -115,15 +124,34 @@ export default function Dashboard() {
     "bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm " +
     "text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-500";
   const dateInput = `${select} min-w-40`;
+  const fieldLabel = "block text-xs text-zinc-400";
+  const activeSymbolLabel = () =>
+    mode() === "live" ? liveSymbol() : historicalSymbol();
+  const activeIntervalLabel = () =>
+    mode() === "live"
+      ? LIVE_CHART_INTERVALS.find((item) => item.value === liveInterval())?.label ?? liveInterval()
+      : BACKTEST_INTERVALS.find((item) => item.value === historicalInterval())?.label ??
+        historicalInterval();
+  const sourceLabel = () =>
+    mode() === "live" ? "Yahoo Finance preview feed" : "TimescaleDB historical feed";
 
   return (
     <AppShell
       title="Dashboard"
-      subtitle="Toggle between live preview data and historical TimescaleDB candles."
+      subtitle="Explore live previews or query historical futures candles from the warehouse."
     >
       <section class="app-panel app-panel-section">
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div class="space-y-3">
+        <div class="space-y-6">
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div class="space-y-2">
+              <p class="app-kicker">Data Mode</p>
+              <h2 class="text-lg font-semibold text-zinc-100">Choose the chart source first</h2>
+              <p class="max-w-3xl text-sm text-zinc-400">
+                Switch between fast live previews and date-bounded historical candles without
+                leaving the dashboard.
+              </p>
+            </div>
+
             <div class="flex gap-2">
               <button
                 type="button"
@@ -142,105 +170,193 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <Show
-            when={mode() === "live"}
-            fallback={
-              <div class="flex flex-wrap gap-3 lg:justify-end">
-                <select
-                  class={`${select} min-w-52`}
-                  value={historicalSymbol()}
-                  onChange={(e) => setHistoricalSymbol(e.currentTarget.value)}
-                >
-                  {DATABENTO_SYMBOLS.map((symbol) => (
-                    <option value={symbol.key}>{symbol.label}</option>
-                  ))}
-                </select>
+          <div class="grid gap-3 md:grid-cols-3">
+            {summaryCard("Source", sourceLabel())}
+            {summaryCard("Symbol", activeSymbolLabel())}
+            {summaryCard("Interval", activeIntervalLabel())}
+          </div>
 
-                <select
-                  class={select}
-                  value={historicalInterval()}
-                  onChange={(e) => setHistoricalInterval(e.currentTarget.value)}
-                >
-                  {BACKTEST_INTERVALS.map((interval) => (
-                    <option value={interval.value}>{interval.label}</option>
-                  ))}
-                </select>
+          <div class="app-subpanel p-4 lg:p-5">
+            <Show
+              when={mode() === "live"}
+              fallback={
+                <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <label class="space-y-1">
+                    <span class={fieldLabel}>Symbol</span>
+                    <select
+                      class={`${select} min-w-0 w-full`}
+                      value={historicalSymbol()}
+                      onChange={(e) => setHistoricalSymbol(e.currentTarget.value)}
+                    >
+                      {DATABENTO_SYMBOLS.map((symbol) => (
+                        <option value={symbol.key}>{symbol.label}</option>
+                      ))}
+                    </select>
+                  </label>
 
-                <input
-                  type="date"
-                  class={dateInput}
-                  value={startDate()}
-                  onInput={(e) => setStartDate(e.currentTarget.value)}
-                />
+                  <label class="space-y-1">
+                    <span class={fieldLabel}>Interval</span>
+                    <select
+                      class={`${select} min-w-0 w-full`}
+                      value={historicalInterval()}
+                      onChange={(e) => setHistoricalInterval(e.currentTarget.value)}
+                    >
+                      {BACKTEST_INTERVALS.map((interval) => (
+                        <option value={interval.value}>{interval.label}</option>
+                      ))}
+                    </select>
+                  </label>
 
-                <input
-                  type="date"
-                  class={dateInput}
-                  value={endDate()}
-                  onInput={(e) => setEndDate(e.currentTarget.value)}
-                />
+                  <label class="space-y-1">
+                    <span class={fieldLabel}>Start Date</span>
+                    <input
+                      type="date"
+                      class={`${dateInput} min-w-0 w-full`}
+                      value={startDate()}
+                      onInput={(e) => setStartDate(e.currentTarget.value)}
+                    />
+                  </label>
+
+                  <label class="space-y-1">
+                    <span class={fieldLabel}>End Date</span>
+                    <input
+                      type="date"
+                      class={`${dateInput} min-w-0 w-full`}
+                      value={endDate()}
+                      onInput={(e) => setEndDate(e.currentTarget.value)}
+                    />
+                  </label>
+                </div>
+              }
+            >
+              <div class="grid gap-3 md:grid-cols-3">
+                <label class="space-y-1">
+                  <span class={fieldLabel}>Symbol</span>
+                  <select
+                    class={`${select} min-w-0 w-full`}
+                    value={liveSymbol()}
+                    onChange={(e) => setLiveSymbol(e.currentTarget.value)}
+                  >
+                    {YFINANCE_SYMBOLS.map((symbol) => (
+                      <option value={symbol.key}>{symbol.label}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label class="space-y-1">
+                  <span class={fieldLabel}>Interval</span>
+                  <select
+                    class={`${select} min-w-0 w-full`}
+                    value={liveInterval()}
+                    onChange={(e) => setLiveInterval(e.currentTarget.value)}
+                  >
+                    {LIVE_CHART_INTERVALS.map((interval) => (
+                      <option value={interval.value}>{interval.label}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label class="space-y-1">
+                  <span class={fieldLabel}>Lookback</span>
+                  <select
+                    class={`${select} min-w-0 w-full`}
+                    value={livePeriod()}
+                    onChange={(e) => setLivePeriod(e.currentTarget.value)}
+                  >
+                    {PERIODS.map((period) => (
+                      <option value={period.value}>{period.label}</option>
+                    ))}
+                  </select>
+                </label>
               </div>
-            }
-          >
-            <div class="flex flex-wrap gap-3 lg:justify-end">
-              <select
-                class={`${select} min-w-52`}
-                value={liveSymbol()}
-                onChange={(e) => setLiveSymbol(e.currentTarget.value)}
-              >
-                {YFINANCE_SYMBOLS.map((symbol) => (
-                  <option value={symbol.key}>{symbol.label}</option>
-                ))}
-              </select>
-
-              <select
-                class={select}
-                value={liveInterval()}
-                onChange={(e) => setLiveInterval(e.currentTarget.value)}
-              >
-                {LIVE_CHART_INTERVALS.map((interval) => (
-                  <option value={interval.value}>{interval.label}</option>
-                ))}
-              </select>
-
-              <select
-                class={select}
-                value={livePeriod()}
-                onChange={(e) => setLivePeriod(e.currentTarget.value)}
-              >
-                {PERIODS.map((period) => (
-                  <option value={period.value}>{period.label}</option>
-                ))}
-              </select>
-            </div>
-          </Show>
+            </Show>
+          </div>
         </div>
       </section>
 
       <section class="app-panel app-panel-section">
-        <p class="app-kicker mb-4">
-          {mode() === "live"
-            ? "Live preview via Yahoo Finance"
-            : "Historical candles via TimescaleDB"}
-        </p>
+        <div class="mb-4 flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+          <div class="space-y-1">
+            <p class="app-kicker">
+              {mode() === "live"
+                ? "Live preview via Yahoo Finance"
+                : "Historical candles via TimescaleDB"}
+            </p>
+            <h2 class="text-lg font-semibold text-zinc-100">Chart Focus</h2>
+            <p class="max-w-3xl text-sm text-zinc-400">
+              Use this panel to validate the price path before launching a saved backtest run.
+            </p>
+          </div>
+
+          <div class="app-subpanel px-4 py-3 lg:min-w-72">
+            <p class="app-kicker">Current Query</p>
+            <p class="mt-2 text-sm text-zinc-300">
+              {activeSymbolLabel()} on {activeIntervalLabel()}
+              {mode() === "live" ? ` for ${livePeriod()}` : ""}
+            </p>
+            <p class="mt-1 text-xs text-zinc-500">
+              {mode() === "live"
+                ? "Fast preview data for idea validation."
+                : `${startDate() || "Earliest available"} to ${endDate() || "latest available"}`}
+            </p>
+          </div>
+        </div>
 
         <Show
           when={candles.error}
           fallback={
             <Show
               when={!candles.loading}
-              fallback={<div class="h-96 rounded-xl bg-zinc-950 animate-pulse" />}
+              fallback={<div class="app-skeleton h-96" />}
             >
               <PriceChart candles={candles() ?? []} />
             </Show>
           }
         >
           {(error) => (
-            <div class="flex h-96 items-center justify-center rounded-xl bg-zinc-950">
-              <p class="text-sm text-red-400">Failed to load chart: {error().message}</p>
+            <div class="app-subpanel flex h-96 items-center justify-center px-6 text-center">
+              <div class="space-y-2">
+                <p class="text-sm font-semibold text-red-300">Chart request failed</p>
+                <p class="text-sm text-red-400">{error().message}</p>
+              </div>
             </div>
           )}
         </Show>
+
+        <Show when={!candles.loading && (candles()?.length ?? 0) === 0 && !candles.error}>
+          <div class="app-subpanel mt-4 px-4 py-5">
+            <p class="text-sm font-semibold text-zinc-100">No candles returned</p>
+            <p class="mt-1 text-sm text-zinc-400">
+              Try a wider date range or switch to another interval to populate the chart.
+            </p>
+          </div>
+        </Show>
+      </section>
+
+      <section class="grid gap-4 lg:grid-cols-3">
+        <div class="app-panel app-panel-section">
+          <p class="app-kicker">Live Preview</p>
+          <p class="mt-2 text-sm font-semibold text-zinc-100">Validate the market quickly</p>
+          <p class="mt-1 text-sm text-zinc-400">
+            Use Yahoo Finance-backed previews to sanity-check a symbol before you commit to a saved run.
+          </p>
+        </div>
+
+        <div class="app-panel app-panel-section">
+          <p class="app-kicker">Historical Query</p>
+          <p class="mt-2 text-sm font-semibold text-zinc-100">Inspect warehouse candles</p>
+          <p class="mt-1 text-sm text-zinc-400">
+            Pull date-bounded futures data from TimescaleDB to mirror the inputs your backtests use.
+          </p>
+        </div>
+
+        <div class="app-panel app-panel-section">
+          <p class="app-kicker">Next Step</p>
+          <p class="mt-2 text-sm font-semibold text-zinc-100">Move into saved backtests</p>
+          <p class="mt-1 text-sm text-zinc-400">
+            Once the chart looks right, launch a new run and inspect the replay-first detail view.
+          </p>
+        </div>
       </section>
     </AppShell>
   );
