@@ -5,11 +5,13 @@ import BacktestList from "./routes/backtests/index";
 import NewBacktest from "./routes/backtests/new";
 import BacktestDetail from "./routes/backtests/[id]";
 import BacktestComparePage from "./routes/backtests/compare";
+import ReplayLabPage from "./routes/replay";
 
 export default function App() {
   return (
     <Router>
       <Route path="/" component={Dashboard} />
+      <Route path="/replay" component={ReplayLabPage} />
       <Route path="/backtests" component={BacktestList} />
       <Route path="/backtests/new" component={NewBacktest} />
       <Route path="/backtests/compare" component={BacktestComparePage} />

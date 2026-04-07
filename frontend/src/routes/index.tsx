@@ -1,3 +1,4 @@
+import { A } from "@solidjs/router";
 import { createResource, createSignal, Show } from "solid-js";
 import AppShell from "../components/AppShell";
 import PriceChart from "../components/PriceChart";
@@ -139,6 +140,22 @@ export default function Dashboard() {
     <AppShell
       title="Dashboard"
       subtitle="Explore live previews or query historical futures candles from the warehouse."
+      actions={
+        <>
+          <A
+            href="/replay"
+            class="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white"
+          >
+            Open Replay Lab
+          </A>
+          <A
+            href="/backtests/new"
+            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+          >
+            New Backtest
+          </A>
+        </>
+      }
     >
       <section class="app-panel app-panel-section">
         <div class="space-y-6">
@@ -352,9 +369,10 @@ export default function Dashboard() {
 
         <div class="app-panel app-panel-section">
           <p class="app-kicker">Next Step</p>
-          <p class="mt-2 text-sm font-semibold text-zinc-100">Move into saved backtests</p>
+          <p class="mt-2 text-sm font-semibold text-zinc-100">Launch a standalone replay</p>
           <p class="mt-1 text-sm text-zinc-400">
-            Once the chart looks right, launch a new run and inspect the replay-first detail view.
+            When the data window looks right, jump into Replay Lab to paper trade the same market
+            history without creating a saved backtest first.
           </p>
         </div>
       </section>
