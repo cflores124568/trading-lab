@@ -19,6 +19,9 @@ Thumbs.db
 node_modules/
 .next/
 # Local Codex/style notes
-docs/
+docs/*
+!docs/CPP_KERNEL.md
+!docs/DEPLOYMENT.md
+!docs/PROP_FIRM_RULES.md
 docs/style.local.md
 docs/*.local.md
