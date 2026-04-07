@@ -44,6 +44,13 @@ export default function BacktestList() {
           </A>
 
           <A
+            href="/replay-sessions"
+            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+          >
+            Replay Sessions
+          </A>
+
+          <A
             href="/backtests/new"
             class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold transition-colors hover:bg-blue-500"
           >

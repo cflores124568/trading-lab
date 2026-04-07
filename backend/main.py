@@ -3,8 +3,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from routers import data, prop_firms, backtests
+from routers import backtests, data, prop_firms, replay_sessions
 from services.backtest_store import list_backtests
+from services.replay_session_store import list_replay_sessions
 
 load_dotenv()
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://localhost:3000").split(",")
@@ -33,12 +34,17 @@ app.add_middleware(
 )
 #Register API route groups
 app.include_router(backtests.router, prefix="/api/backtests", tags=["Backtests"])
+app.include_router(replay_sessions.router, prefix="/api/replay-sessions", tags=["Replay Sessions"])
 app.include_router(data.router, prefix="/api/data", tags=["Market Data"])
 app.include_router(prop_firms.router, prefix="/api/prop-firms", tags=["Prop Firms"])
 
 @app.get("/health") 
 async def health():
-    result = {"status": "ok", "backtests_in_memory": len(list_backtests())}
+    result = {
+        "status": "ok",
+        "backtests_in_memory": len(list_backtests()),
+        "replay_sessions_in_memory": len(list_replay_sessions()),
+    }
     # Show DB status; fails gracefully if not configured yet
     try:
         from services.db import health_check

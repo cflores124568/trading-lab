@@ -112,3 +112,31 @@ CREATE INDEX IF NOT EXISTS backtests_dataset_id_idx
 
 CREATE INDEX IF NOT EXISTS backtests_symbol_idx
     ON backtests (symbol);
+
+-- Standalone replay session persistence
+CREATE TABLE IF NOT EXISTS replay_sessions (
+    replay_session_id TEXT PRIMARY KEY,
+    name              TEXT NOT NULL,
+    symbol            TEXT NOT NULL,
+    interval          TEXT NOT NULL,
+    start_date        TEXT,
+    end_date          TEXT,
+    prop_firm_rules   JSONB NOT NULL,
+    commission        DOUBLE PRECISION NOT NULL DEFAULT 5,
+    tick_value        DOUBLE PRECISION NOT NULL,
+    current_bar_index INTEGER NOT NULL DEFAULT 0,
+    status            TEXT NOT NULL DEFAULT 'active',
+    actions           JSONB NOT NULL,
+    trades            JSONB NOT NULL,
+    metrics           JSONB NOT NULL,
+    prop_firm_eval    JSONB NOT NULL,
+    equity_curve      JSONB NOT NULL,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS replay_sessions_updated_at_idx
+    ON replay_sessions (updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS replay_sessions_symbol_idx
+    ON replay_sessions (symbol);

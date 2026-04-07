@@ -88,6 +88,60 @@ class ReplayContext(BaseModel):
     start_date: Optional[str] = None
     end_date: Optional[str] = None
 
+
+class ReplayAction(BaseModel):
+    id: str
+    bar_index: int = Field(ge=0)
+    type: str
+    created_at: int = Field(ge=0)
+
+
+class ReplaySessionBase(BaseModel):
+    name: str
+    symbol: str
+    interval: str
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    prop_firm_rules: PropFirmRules
+    commission: float = Field(default=5.0, ge=0)
+    tick_value: float = Field(default=1.0, gt=0)
+    current_bar_index: int = Field(default=0, ge=0)
+    status: str = Field(default="active")
+    actions: List[ReplayAction] = Field(default_factory=list)
+    trades: List[Trade] = Field(default_factory=list)
+    metrics: PerformanceMetrics
+    prop_firm_eval: PropFirmEvaluation
+    equity_curve: List[float] = Field(default_factory=list)
+
+
+class ReplaySessionCreate(ReplaySessionBase):
+    pass
+
+
+class ReplaySessionUpdate(ReplaySessionBase):
+    pass
+
+
+class ReplaySessionResult(ReplaySessionBase):
+    replay_session_id: str
+    created_at: str
+    updated_at: str
+
+
+class ReplaySessionSummary(BaseModel):
+    replay_session_id: str
+    name: str
+    symbol: str
+    interval: str
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    status: str
+    current_bar_index: int
+    total_pnl: float
+    total_trades: int
+    created_at: str
+    updated_at: str
+
 #Backtest request/response
 class BacktestRequest(BaseModel):
     dataset_id:      str

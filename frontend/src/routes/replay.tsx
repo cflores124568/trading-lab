@@ -1,4 +1,4 @@
-import { A } from "@solidjs/router";
+import { A, useNavigate, useParams } from "@solidjs/router";
 import {
   batch,
   createEffect,
@@ -21,12 +21,16 @@ import {
   type Interval,
 } from "../constants";
 import {
+  createReplaySession,
   fetchCandles,
   fetchPropPresets,
+  fetchReplaySession,
   fetchSymbols,
+  updateReplaySession,
   type Candle,
   type PropFirmEvaluation,
-  type PropFirmPreset,
+  type PropFirmRules,
+  type ReplaySessionPayload,
   type SymbolInfo,
   type Trade,
 } from "../services/api";
@@ -53,7 +57,7 @@ const tickValueBySymbol = Object.fromEntries(
 type ReplayLaunchConfig = {
   symbol: SymbolInfo;
   interval: Interval;
-  preset: PropFirmPreset;
+  propFirmRules: PropFirmRules;
   startDate?: string;
   endDate?: string;
   commission: number;
@@ -81,8 +85,8 @@ function propEvalTone(passed: boolean): string {
   return passed ? "border-green-700 bg-green-950" : "border-red-700 bg-red-950";
 }
 
-function groupPresets(presets: PropFirmPreset[]): Record<string, PropFirmPreset[]> {
-  return presets.reduce<Record<string, PropFirmPreset[]>>((acc, preset) => {
+function groupPresets(presets: PropFirmRules[]): Record<string, PropFirmRules[]> {
+  return presets.reduce<Record<string, PropFirmRules[]>>((acc, preset) => {
     let firm = preset.name.split(/\s+\d/)[0].trim();
     firm = firm
       .replace(/^My Funded Futures (Rapid|Flex)?/i, "My Funded Futures")
@@ -91,6 +95,23 @@ function groupPresets(presets: PropFirmPreset[]): Record<string, PropFirmPreset[
     (acc[firm] ??= []).push(preset);
     return acc;
   }, {});
+}
+
+function findInterval(value: string): Interval {
+  return (
+    BACKTEST_INTERVALS.find(
+      (interval) =>
+        interval.value === value || getBackendInterval(interval).toLowerCase() === value.toLowerCase(),
+    ) ?? BACKTEST_INTERVALS.find((interval) => interval.value === "15m")!
+  );
+}
+
+function defaultSessionName(config: ReplayLaunchConfig): string {
+  const range =
+    config.startDate || config.endDate
+      ? `${config.startDate || "earliest"} to ${config.endDate || "latest"}`
+      : "full range";
+  return `${config.symbol.symbol} ${config.interval.label} replay (${range})`;
 }
 
 function PropEvalPanel(props: {
@@ -139,22 +160,31 @@ function PropEvalPanel(props: {
 }
 
 export default function ReplayLabPage() {
+  const params = useParams<{ id?: string }>();
+  const navigate = useNavigate();
   const [symbols] = createResource(fetchSymbols);
   const [presets] = createResource(fetchPropPresets);
+  const [savedSession] = createResource(() => params.id, fetchReplaySession);
 
   const defaultInterval = BACKTEST_INTERVALS.find((interval) => interval.value === "15m")!;
+  const [sessionId, setSessionId] = createSignal<string | null>(params.id ?? null);
+  const [sessionName, setSessionName] = createSignal("");
   const [symbol, setSymbol] = createSignal<SymbolInfo | null>(null);
   const [interval, setInterval] = createSignal(defaultInterval);
-  const [preset, setPreset] = createSignal<PropFirmPreset | null>(null);
+  const [preset, setPreset] = createSignal<PropFirmRules | null>(null);
   const [startDate, setStartDate] = createSignal("");
   const [endDate, setEndDate] = createSignal("");
-  const [formError, setFormError] = createSignal<string | null>(null);
+  const [bannerError, setBannerError] = createSignal<string | null>(null);
+  const [bannerNotice, setBannerNotice] = createSignal<string | null>(null);
   const [launchConfig, setLaunchConfig] = createSignal<ReplayLaunchConfig | null>(null);
+  const [isSaving, setIsSaving] = createSignal(false);
 
   const [isReplayActive, setIsReplayActive] = createSignal(false);
   const [speed, setSpeed] = createSignal(8);
   const [currentIndex, setCurrentIndex] = createSignal(0);
   const [replayActions, setReplayActions] = createSignal<ReplayAction[]>([]);
+
+  let hydratedSessionId: string | null = null;
 
   const [candles] = createResource(launchConfig, async (config) =>
     fetchCandles({
@@ -178,6 +208,51 @@ export default function ReplayLabPage() {
     if (!preset() && loadedPresets && loadedPresets.length > 0) {
       setPreset(loadedPresets[0]);
     }
+  });
+
+  createEffect(() => {
+    const existing = savedSession();
+    const loadedSymbols = symbols();
+    if (!existing || !loadedSymbols || hydratedSessionId === existing.replay_session_id) {
+      return;
+    }
+
+    const matchedSymbol =
+      loadedSymbols.find((item) => item.symbol === existing.symbol) ?? loadedSymbols[0];
+    const resolvedInterval = findInterval(existing.interval);
+
+    hydratedSessionId = existing.replay_session_id;
+    batch(() => {
+      setSessionId(existing.replay_session_id);
+      setSessionName(existing.name);
+      setSymbol(matchedSymbol ?? null);
+      setInterval(resolvedInterval);
+      setPreset(existing.prop_firm_rules);
+      setStartDate(existing.start_date ?? "");
+      setEndDate(existing.end_date ?? "");
+      setSpeed(8);
+      setIsReplayActive(false);
+      setCurrentIndex(existing.current_bar_index);
+      setReplayActions(
+        existing.actions.map((action) => ({
+          id: action.id,
+          type: action.type,
+          barIndex: action.bar_index,
+          createdAt: action.created_at,
+        })),
+      );
+      setLaunchConfig({
+        symbol: matchedSymbol,
+        interval: resolvedInterval,
+        propFirmRules: existing.prop_firm_rules,
+        startDate: existing.start_date ?? undefined,
+        endDate: existing.end_date ?? undefined,
+        commission: existing.commission,
+        tickValue: existing.tick_value,
+      });
+      setBannerError(null);
+      setBannerNotice(`Loaded saved session "${existing.name}".`);
+    });
   });
 
   createEffect(() => {
@@ -228,10 +303,10 @@ export default function ReplayLabPage() {
       candles: candleList,
       currentIndex: replayIndex(),
       actions: replayActions(),
-      initialBalance: config.preset.account_size,
+      initialBalance: config.propFirmRules.account_size,
       commission: config.commission,
       tickValue: config.tickValue,
-      propFirmRules: config.preset,
+      propFirmRules: config.propFirmRules,
     });
   });
 
@@ -242,6 +317,7 @@ export default function ReplayLabPage() {
     }
 
     return [
+      ["Session", sessionName() || defaultSessionName(config)],
       ["Symbol", config.symbol.symbol],
       ["Interval", config.interval.label],
       [
@@ -250,7 +326,8 @@ export default function ReplayLabPage() {
           ? `${config.startDate || "Earliest"} to ${config.endDate || "Latest"}`
           : "Full available range",
       ],
-      ["Rules", config.preset.name],
+      ["Rules", config.propFirmRules.name],
+      ["Progress", totalBars() === 0 ? "0 / 0" : `${replayIndex() + 1} / ${totalBars()}`],
     ] as [string, string][];
   });
 
@@ -287,6 +364,17 @@ export default function ReplayLabPage() {
     }
 
     return `${session.position.side.toUpperCase()} from $${session.position.entry_price.toFixed(2)} (${formatCurrency(session.position.unrealized_pnl)})`;
+  });
+
+  const sessionStatus = createMemo(() => {
+    if (!launchConfig()) {
+      return "draft";
+    }
+    const session = replaySession();
+    if (totalBars() > 0 && replayIndex() >= totalBars() - 1 && !session?.position) {
+      return "completed";
+    }
+    return "active";
   });
 
   const chartMarkers = createMemo<PriceChartMarker[]>(() => {
@@ -331,7 +419,16 @@ export default function ReplayLabPage() {
   });
 
   const canLaunch = createMemo(
-    () => !!symbol() && !!preset() && !symbols.loading && !presets.loading,
+    () =>
+      !!symbol() &&
+      !!preset() &&
+      !symbols.loading &&
+      !presets.loading &&
+      !savedSession.loading,
+  );
+
+  const canSave = createMemo(
+    () => !!launchConfig() && !!replaySession() && !candles.loading && !isSaving(),
   );
 
   const seekToIndex = (nextIndex: number) => {
@@ -346,6 +443,7 @@ export default function ReplayLabPage() {
       return;
     }
 
+    setBannerNotice(null);
     setIsReplayActive(false);
     setReplayActions((previous) => [...previous, createReplayAction(type, replayIndex())]);
   };
@@ -361,47 +459,124 @@ export default function ReplayLabPage() {
     const selectedSymbol = symbol();
     const selectedPreset = preset();
     if (!selectedSymbol) {
-      setFormError("Select a symbol to launch a standalone replay session.");
+      setBannerError("Select a symbol to launch a standalone replay session.");
       return;
     }
     if (!selectedPreset) {
-      setFormError("Select a prop-firm ruleset to evaluate the replay against.");
+      setBannerError("Select a prop-firm ruleset to evaluate the replay against.");
       return;
     }
     if (startDate() && endDate() && startDate() > endDate()) {
-      setFormError("Start date must be before end date.");
+      setBannerError("Start date must be before end date.");
       return;
     }
 
-    setFormError(null);
+    setBannerError(null);
+    setBannerNotice(null);
     batch(() => {
       setIsReplayActive(false);
       setSpeed(8);
       setCurrentIndex(0);
       setReplayActions([]);
-      setLaunchConfig({
+      setSessionName((previous) => previous || defaultSessionName({
         symbol: selectedSymbol,
         interval: interval(),
-        preset: selectedPreset,
+        propFirmRules: selectedPreset,
         startDate: startDate() || undefined,
         endDate: endDate() || undefined,
         commission: 5,
-        tickValue: tickValueBySymbol[selectedSymbol.symbol] ?? 1,
+        tickValue: tickValueBySymbol[selectedSymbol.symbol] ?? selectedSymbol.tick_value ?? 1,
+      }));
+      setLaunchConfig({
+        symbol: selectedSymbol,
+        interval: interval(),
+        propFirmRules: selectedPreset,
+        startDate: startDate() || undefined,
+        endDate: endDate() || undefined,
+        commission: 5,
+        tickValue: tickValueBySymbol[selectedSymbol.symbol] ?? selectedSymbol.tick_value ?? 1,
       });
     });
   };
 
+  const buildPayload = (): ReplaySessionPayload | null => {
+    const config = launchConfig();
+    const session = replaySession();
+    if (!config || !session) {
+      return null;
+    }
+
+    return {
+      name: (sessionName().trim() || defaultSessionName(config)).trim(),
+      symbol: config.symbol.symbol,
+      interval: getBackendInterval(config.interval),
+      start_date: config.startDate,
+      end_date: config.endDate,
+      prop_firm_rules: config.propFirmRules,
+      commission: config.commission,
+      tick_value: config.tickValue,
+      current_bar_index: replayIndex(),
+      status: sessionStatus(),
+      actions: replayActions().map((action) => ({
+        id: action.id,
+        type: action.type,
+        bar_index: action.barIndex,
+        created_at: action.createdAt,
+      })),
+      trades: session.trades,
+      metrics: session.metrics,
+      prop_firm_eval: session.propEvaluation,
+      equity_curve: session.equityCurve,
+    };
+  };
+
+  const saveSession = async () => {
+    const payload = buildPayload();
+    if (!payload) {
+      setBannerError("Launch the replay before saving a session.");
+      return;
+    }
+
+    setBannerError(null);
+    setBannerNotice(null);
+    setIsSaving(true);
+
+    try {
+      if (sessionId()) {
+        const result = await updateReplaySession(sessionId()!, payload);
+        setSessionName(result.name);
+        setBannerNotice(`Updated session "${result.name}".`);
+      } else {
+        const result = await createReplaySession(payload);
+        setSessionId(result.replay_session_id);
+        setSessionName(result.name);
+        setBannerNotice(`Saved session "${result.name}".`);
+        navigate(`/replay/${result.replay_session_id}`, { replace: true });
+      }
+    } catch (error) {
+      setBannerError(error instanceof Error ? error.message : "Failed to save replay session.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <AppShell
-      title="Replay Lab"
-      subtitle="Launch a standalone historical replay session on any supported symbol and date range, then trade it manually against prop-firm rules."
+      title={sessionId() ? "Replay Session" : "Replay Lab"}
+      subtitle="Launch a standalone historical replay session on any supported symbol and date range, then save it so you can resume the manual run later."
       actions={
         <>
           <A
-            href="/backtests/new"
+            href="/replay-sessions"
             class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
           >
-            New Backtest
+            Replay Sessions
+          </A>
+          <A
+            href="/replay"
+            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+          >
+            New Replay
           </A>
           <A
             href="/backtests"
@@ -413,23 +588,31 @@ export default function ReplayLabPage() {
       }
     >
       <div class="space-y-6">
-        <Show when={formError()}>
+        <Show when={bannerError()}>
           <div class="rounded-lg border border-red-700 bg-red-950 px-4 py-3 text-sm text-red-300">
-            {formError()}
+            {bannerError()}
+          </div>
+        </Show>
+
+        <Show when={bannerNotice()}>
+          <div class="rounded-lg border border-emerald-700 bg-emerald-950 px-4 py-3 text-sm text-emerald-300">
+            {bannerNotice()}
           </div>
         </Show>
 
         <section class={section}>
           <div class="space-y-2">
             <p class="app-kicker">Standalone Session</p>
-            <h2 class="text-lg font-semibold text-zinc-100">Build a replay without a saved backtest</h2>
+            <h2 class="text-lg font-semibold text-zinc-100">
+              {sessionId() ? "Resume and update a saved replay" : "Build a replay without a saved backtest"}
+            </h2>
             <p class="max-w-3xl text-sm text-zinc-400">
               Pick a warehouse-backed symbol, choose the candle interval, and load a historical
-              window straight into the manual replay simulator.
+              window straight into the manual replay simulator. Save whenever you want to come back later.
             </p>
           </div>
 
-          <div class="grid gap-3 md:grid-cols-4">
+          <div class="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
             <For each={sessionSummary()}>
               {([key, value]) => (
                 <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
@@ -439,7 +622,7 @@ export default function ReplayLabPage() {
               )}
             </For>
             <Show when={!launchConfig()}>
-              <div class="rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/40 px-4 py-3 md:col-span-4">
+              <div class="rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/40 px-4 py-3 md:col-span-3 xl:col-span-6">
                 <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Next Move</p>
                 <p class="mt-2 text-sm text-zinc-300">
                   Launch a standalone replay to load up to {SESSION_LIMIT.toLocaleString()} bars
@@ -452,10 +635,21 @@ export default function ReplayLabPage() {
 
         <section class={section}>
           <div class="space-y-1">
-            <p class="text-sm font-semibold text-zinc-100">1. Market Window</p>
+            <p class="text-sm font-semibold text-zinc-100">1. Session Setup</p>
             <p class="text-xs text-zinc-400">
-              Choose the symbol, interval, and date range to replay from the historical warehouse.
+              Name the session, choose the symbol, and pick the date window you want to replay.
             </p>
+          </div>
+
+          <div>
+            <label class={label}>Session name</label>
+            <input
+              type="text"
+              class={field}
+              value={sessionName()}
+              placeholder="NQ 15 min replay"
+              onInput={(event) => setSessionName(event.currentTarget.value)}
+            />
           </div>
 
           <Show
@@ -613,26 +807,45 @@ export default function ReplayLabPage() {
         </section>
 
         <section class={section}>
-          <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div class="space-y-1">
-              <p class="text-sm font-semibold text-zinc-100">3. Launch Replay</p>
+              <p class="text-sm font-semibold text-zinc-100">3. Launch And Save</p>
               <p class="text-xs text-zinc-400">
-                Load the historical window and start trading it manually bar by bar.
+                Load the historical window, trade it manually, and save progress whenever you want.
               </p>
             </div>
 
-            <button
-              class={
-                "w-full rounded-xl px-5 py-3 text-sm font-semibold transition-colors md:w-auto " +
-                (canLaunch()
-                  ? "bg-zinc-100 text-zinc-900 hover:bg-white"
-                  : "cursor-not-allowed bg-zinc-700 text-zinc-400")
-              }
-              disabled={!canLaunch()}
-              onClick={launchReplay}
-            >
-              {candles.loading ? "Loading Replay…" : "Launch Replay"}
-            </button>
+            <div class="flex flex-col gap-3 md:flex-row">
+              <button
+                class={
+                  "w-full rounded-xl px-5 py-3 text-sm font-semibold transition-colors md:w-auto " +
+                  (canLaunch()
+                    ? "bg-zinc-100 text-zinc-900 hover:bg-white"
+                    : "cursor-not-allowed bg-zinc-700 text-zinc-400")
+                }
+                disabled={!canLaunch()}
+                onClick={launchReplay}
+              >
+                {candles.loading ? "Loading Replay…" : "Launch Replay"}
+              </button>
+
+              <button
+                class={
+                  "w-full rounded-xl px-5 py-3 text-sm font-semibold transition-colors md:w-auto " +
+                  (canSave()
+                    ? "bg-emerald-600 text-white hover:bg-emerald-500"
+                    : "cursor-not-allowed bg-zinc-700 text-zinc-400")
+                }
+                disabled={!canSave()}
+                onClick={saveSession}
+              >
+                {isSaving()
+                  ? "Saving…"
+                  : sessionId()
+                    ? "Update Session"
+                    : "Save Session"}
+              </button>
+            </div>
           </div>
         </section>
 
@@ -645,7 +858,7 @@ export default function ReplayLabPage() {
                     <p class="text-sm text-zinc-400">Standalone Historical Replay</p>
                     <p class="mt-1 text-xs text-zinc-500">
                       Step, scrub, and trade the selected market window without tying it to a saved
-                      strategy run.
+                      strategy backtest.
                     </p>
                   </div>
                   <div class="text-right text-xs text-zinc-500">
@@ -721,6 +934,7 @@ export default function ReplayLabPage() {
                     }
                     onRestart={() => {
                       batch(() => {
+                        setBannerNotice(null);
                         setIsReplayActive(false);
                         setCurrentIndex(0);
                         setReplayActions([]);
@@ -759,10 +973,10 @@ export default function ReplayLabPage() {
                     <div class="grid gap-4 lg:grid-cols-2">
                       <PropEvalPanel title="Replay Prop Eval" evaluation={session().propEvaluation} />
                       <div class="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
-                        <p class="text-sm font-semibold text-zinc-100">Session Notes</p>
+                        <p class="text-sm font-semibold text-zinc-100">Persistence</p>
                         <p class="mt-2 text-sm text-zinc-400">
-                          This first standalone flow keeps session state in the browser for now.
-                          You can relaunch the same window anytime, but it is not persisted yet.
+                          This session can now be saved and reopened later. Use the save button
+                          after major decision points so your current bar and manual trades stay durable.
                         </p>
                       </div>
                     </div>

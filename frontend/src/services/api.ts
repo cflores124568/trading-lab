@@ -20,6 +20,7 @@ const API_ROUTES = {
   symbols: "/data/symbols",
   loadSymbol: "/data/load-symbol",
   backtests: "/backtests",
+  replaySessions: "/replay-sessions",
   propFirms: "/prop-firms",
 } as const;
 
@@ -217,6 +218,52 @@ export interface PropFirmPreset {
   min_trading_days: number | null;
 }
 
+export interface ReplaySessionAction {
+  id: string;
+  bar_index: number;
+  type: "buy" | "sell" | "exit";
+  created_at: number;
+}
+
+export interface ReplaySessionPayload {
+  name: string;
+  symbol: string;
+  interval: string;
+  start_date?: string;
+  end_date?: string;
+  prop_firm_rules: PropFirmRules;
+  commission: number;
+  tick_value: number;
+  current_bar_index: number;
+  status: string;
+  actions: ReplaySessionAction[];
+  trades: Trade[];
+  metrics: PerformanceMetrics;
+  prop_firm_eval: PropFirmEvaluation;
+  equity_curve: number[];
+}
+
+export interface ReplaySessionResult extends ReplaySessionPayload {
+  replay_session_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReplaySessionSummary {
+  replay_session_id: string;
+  name: string;
+  symbol: string;
+  interval: string;
+  start_date?: string;
+  end_date?: string;
+  status: string;
+  current_bar_index: number;
+  total_pnl: number;
+  total_trades: number;
+  created_at: string;
+  updated_at: string;
+}
+
 
 // Fetch helpers
 /* Fetch futures symbols from TimescaleDB.
@@ -284,6 +331,35 @@ export const fetchDbSymbolInfo = async (symbol: string): Promise<DbSymbolInfo> =
 //Fetch list of previous backtests
 export const fetchBacktests = async (): Promise<BacktestSummary[]> => {
   return api<BacktestSummary[]>(API_ROUTES.backtests);
+};
+
+export const fetchReplaySessions = async (): Promise<ReplaySessionSummary[]> => {
+  return api<ReplaySessionSummary[]>(API_ROUTES.replaySessions);
+};
+
+export const fetchReplaySession = async (id: string): Promise<ReplaySessionResult> => {
+  return api<ReplaySessionResult>(`${API_ROUTES.replaySessions}/${id}`);
+};
+
+export const createReplaySession = async (
+  payload: ReplaySessionPayload,
+): Promise<ReplaySessionResult> => {
+  return api<ReplaySessionResult>(API_ROUTES.replaySessions, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+};
+
+export const updateReplaySession = async (
+  id: string,
+  payload: ReplaySessionPayload,
+): Promise<ReplaySessionResult> => {
+  return api<ReplaySessionResult>(`${API_ROUTES.replaySessions}/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 };
 
 //Fetch detailed results for a specific backtest.
