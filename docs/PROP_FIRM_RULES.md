@@ -62,6 +62,14 @@ Right now:
 
 If that passes, consistency passes.
 
+### Minimum Trading Days
+
+If `min_trading_days` is set, the evaluator counts distinct closed-trade dates
+and requires the run to meet or beat that number before it can pass.
+
+Important gotcha: this is based on days with closed trades, not just days where
+you opened something and left it hanging.
+
 ## What Is In The Presets
 
 Preset families currently include:
@@ -79,10 +87,8 @@ standalone replay flow.
 
 ## Important Gaps Right Now
 
-Two honest notes matter here:
+One honest note still matters here:
 
-- `min_trading_days` exists in the schema and presets, but `evaluate_prop_firm()`
-  does not currently enforce it
 - the daily loss and drawdown checks are useful, but still simplified compared to
   the weird firm-specific trailing rules some challenges use in real life
 
@@ -97,6 +103,7 @@ A run only passes if all of these are true:
 - drawdown was not breached
 - profit target was hit
 - consistency passed when enabled
+- minimum trading days were met when the preset requires them
 
 That result comes back as:
 

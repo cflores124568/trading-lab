@@ -78,6 +78,7 @@ class PropFirmEvaluation(BaseModel):
     drawdown_breached: bool
     profit_target_hit: bool
     consistency_passed: bool
+    min_trading_days_passed: bool = True
     details: dict[str, Any]
 
 

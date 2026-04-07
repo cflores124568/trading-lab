@@ -1,8 +1,8 @@
-#Evaluates a completed backtest against a PropFirmRules configurationand returns a PropFirmEvaluation-compatible dict
 from typing import List
-import numpy as np
 from collections import defaultdict
 from datetime import datetime
+
+import numpy as np
 
 def evaluate_prop_firm(
     rules: dict,
@@ -10,22 +10,32 @@ def evaluate_prop_firm(
     equity_curve: List[float],
     initial_balance: float,
 ) -> dict:
-    #Run every prop-firm check and return evaluation result
+    """Score a run against the prop-firm rules we actually enforce.
+
+    This keeps the evaluator honest for both backtests and replay saves. It
+    still uses a simplified internal rule model, but it now counts distinct
+    trading days too so presets with a day minimum stop passing early.
+    """
     account_size = rules.get("account_size", initial_balance)
     daily_loss_limit = rules.get("daily_loss_limit", 0.04)
     max_drawdown_limit = rules.get("max_drawdown", 0.08)
     profit_target = rules.get("profit_target", 0.10)
     consistency_rule = rules.get("consistency_rule", True)
     consistency_threshold = rules.get("consistency_threshold", 0.30)
+    min_trading_days = rules.get("min_trading_days")
 
-    #Daily loss limit 
+    # Daily loss limit
     daily_loss_breached, daily_pnls = _check_daily_loss(trades, account_size, daily_loss_limit)
+    trading_days_completed = len(daily_pnls)
+    min_trading_days_passed = (
+        min_trading_days is None or trading_days_completed >= min_trading_days
+    )
 
-    #Max drawdown 
+    # Max drawdown
     drawdown_type = rules.get("drawdown_type", "intraday")
     drawdown_breached, actual_drawdown = _check_drawdown(equity_curve, account_size, max_drawdown_limit, drawdown_type)
 
-    #Profit target 
+    # Profit target
     if len(equity_curve) > 0:
         final_balance = equity_curve[-1]
     else:
@@ -34,7 +44,7 @@ def evaluate_prop_firm(
     total_profit_pct = (final_balance - account_size) / account_size
     profit_target_hit = total_profit_pct >= profit_target
 
-    #Consistency rule
+    # Consistency rule
     consistency_passed = True
     best_day_pct       = 0.0
     if consistency_rule and daily_pnls:
@@ -50,6 +60,7 @@ def evaluate_prop_firm(
     and not drawdown_breached
     and profit_target_hit
     and consistency_passed
+    and min_trading_days_passed
     )
 
     return {
@@ -58,6 +69,7 @@ def evaluate_prop_firm(
         "drawdown_breached":   drawdown_breached,
         "profit_target_hit":   profit_target_hit,
         "consistency_passed":  consistency_passed,
+        "min_trading_days_passed": min_trading_days_passed,
         "details": {
             "account_size":           account_size,
             "daily_loss_limit_pct":   daily_loss_limit,
@@ -68,11 +80,12 @@ def evaluate_prop_firm(
             "actual_profit_pct":      round(total_profit_pct, 4),
             "best_day_profit_pct":    round(best_day_pct, 4),
             "consistency_threshold":  consistency_threshold,
+            "min_trading_days_required": min_trading_days,
+            "trading_days_completed": trading_days_completed,
             "daily_pnls":             {k: round(v, 2) for k, v in daily_pnls.items()},
         },
     }
 
-#Helpers 
 def _check_daily_loss(trades: List[dict], account_size: float, limit_pct: float):
     daily_pnls: dict = defaultdict(float)
     for t in trades:

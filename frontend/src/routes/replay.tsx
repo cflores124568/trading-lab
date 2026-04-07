@@ -118,6 +118,8 @@ function PropEvalPanel(props: {
   title: string;
   evaluation: PropFirmEvaluation;
 }) {
+  const minTradingDaysPassed = () => props.evaluation.min_trading_days_passed ?? true;
+
   return (
     <div class={`rounded-lg border p-4 ${propEvalTone(props.evaluation.passed)}`}>
       <div class="mb-2 flex items-center gap-2">
@@ -146,6 +148,11 @@ function PropEvalPanel(props: {
           <Show when={!props.evaluation.consistency_passed}>
             <li class="flex items-center gap-1.5">
               <TriangleAlert size={13} /> Consistency rule failed
+            </li>
+          </Show>
+          <Show when={!minTradingDaysPassed()}>
+            <li class="flex items-center gap-1.5">
+              <TriangleAlert size={13} /> Minimum trading days not reached
             </li>
           </Show>
           <Show when={!props.evaluation.profit_target_hit}>

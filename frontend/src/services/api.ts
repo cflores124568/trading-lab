@@ -127,6 +127,7 @@ export interface PropFirmEvaluation {
   drawdown_breached: boolean;
   profit_target_hit: boolean;
   consistency_passed: boolean;
+  min_trading_days_passed?: boolean;
   details: Record<string, unknown>;
 }
 

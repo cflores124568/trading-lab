@@ -254,6 +254,7 @@ function evaluatePropFirm(
   const consistencyRule = rules.consistency_rule ?? true;
   const consistencyThreshold = rules.consistency_threshold ?? 0.3;
   const drawdownType = rules.drawdown_type ?? "intraday";
+  const minTradingDays = rules.min_trading_days ?? null;
 
   const dailyPnls = new Map<string, number>();
   for (const trade of trades) {
@@ -261,6 +262,9 @@ function evaluatePropFirm(
     const key = trade.exit_time.slice(0, 10);
     dailyPnls.set(key, (dailyPnls.get(key) ?? 0) + trade.pnl);
   }
+  const tradingDaysCompleted = dailyPnls.size;
+  const minTradingDaysPassed =
+    minTradingDays === null || tradingDaysCompleted >= minTradingDays;
 
   const dailyLossBreached = Array.from(dailyPnls.values()).some(
     (pnl) => pnl < -(accountSize * dailyLossLimit),
@@ -289,11 +293,13 @@ function evaluatePropFirm(
       !dailyLossBreached &&
       !drawdownBreached &&
       profitTargetHit &&
-      consistencyPassed,
+      consistencyPassed &&
+      minTradingDaysPassed,
     daily_loss_breached: dailyLossBreached,
     drawdown_breached: drawdownBreached,
     profit_target_hit: profitTargetHit,
     consistency_passed: consistencyPassed,
+    min_trading_days_passed: minTradingDaysPassed,
     details: {
       account_size: accountSize,
       daily_loss_limit_pct: dailyLossLimit,
@@ -304,6 +310,8 @@ function evaluatePropFirm(
       actual_profit_pct: round(totalProfitPct, 4),
       best_day_profit_pct: round(bestDayProfitPct, 4),
       consistency_threshold: consistencyThreshold,
+      min_trading_days_required: minTradingDays,
+      trading_days_completed: tradingDaysCompleted,
       daily_pnls: Object.fromEntries(
         Array.from(dailyPnls.entries()).map(([key, value]) => [key, round(value)]),
       ),

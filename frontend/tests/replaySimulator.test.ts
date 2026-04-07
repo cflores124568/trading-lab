@@ -22,6 +22,18 @@ function makeCandles(count: number): Candle[] {
   }));
 }
 
+function makeDailyCandles(count: number): Candle[] {
+  const start = 1_704_067_200;
+  return Array.from({ length: count }, (_, index) => ({
+    time: (start + index * 86_400) as Candle["time"],
+    open: 100 + index,
+    high: 101 + index,
+    low: 99 + index,
+    close: 100 + index,
+    volume: 1_000 + index,
+  }));
+}
+
 const rules: PropFirmRules = {
   name: "Replay Test",
   account_size: 100_000,
@@ -99,4 +111,74 @@ test("open positions remain mark-to-market when replay has not exited", () => {
   assert.equal(session.unrealizedPnl, 15);
   assert.equal(session.totalPnl, 15);
   assert.equal(session.equityCurve.at(-1), 100_015);
+});
+
+test("replay enforces minimum trading days before passing prop eval", () => {
+  const candles = makeDailyCandles(6);
+  const actions: ReplayAction[] = [
+    { id: "a", barIndex: 0, type: "buy", createdAt: 1 },
+    { id: "b", barIndex: 1, type: "exit", createdAt: 2 },
+    { id: "c", barIndex: 2, type: "buy", createdAt: 3 },
+    { id: "d", barIndex: 3, type: "exit", createdAt: 4 },
+  ];
+
+  const session = simulateReplaySession({
+    candles,
+    currentIndex: 3,
+    actions,
+    initialBalance: 100_000,
+    commission: 0,
+    tickValue: 300,
+    propFirmRules: {
+      ...rules,
+      profit_target: 0.005,
+      min_trading_days: 3,
+    },
+  });
+
+  const details = session.propEvaluation.details as {
+    trading_days_completed: number;
+    daily_pnls: Record<string, number>;
+  };
+
+  assert.equal(session.trades.length, 2);
+  assert.equal(session.propEvaluation.profit_target_hit, true);
+  assert.equal(session.propEvaluation.min_trading_days_passed, false);
+  assert.equal(session.propEvaluation.passed, false);
+  assert.equal(details.trading_days_completed, 2);
+  assert.deepEqual(details.daily_pnls, {
+    "2024-01-02": 300,
+    "2024-01-04": 300,
+  });
+});
+
+test("replay passes minimum trading days after enough closed trade dates", () => {
+  const candles = makeDailyCandles(6);
+  const actions: ReplayAction[] = [
+    { id: "a", barIndex: 0, type: "buy", createdAt: 1 },
+    { id: "b", barIndex: 1, type: "exit", createdAt: 2 },
+    { id: "c", barIndex: 2, type: "buy", createdAt: 3 },
+    { id: "d", barIndex: 3, type: "exit", createdAt: 4 },
+    { id: "e", barIndex: 4, type: "buy", createdAt: 5 },
+    { id: "f", barIndex: 5, type: "exit", createdAt: 6 },
+  ];
+
+  const session = simulateReplaySession({
+    candles,
+    currentIndex: 5,
+    actions,
+    initialBalance: 100_000,
+    commission: 0,
+    tickValue: 300,
+    propFirmRules: {
+      ...rules,
+      profit_target: 0.009,
+      min_trading_days: 3,
+    },
+  });
+
+  assert.equal(session.trades.length, 3);
+  assert.equal(session.propEvaluation.min_trading_days_passed, true);
+  assert.equal(session.propEvaluation.profit_target_hit, true);
+  assert.equal(session.propEvaluation.passed, true);
 });
