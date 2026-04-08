@@ -1,12 +1,15 @@
 import { A } from "@solidjs/router";
-import { createEffect, createMemo } from "solid-js";
+import { batch, createEffect, createMemo } from "solid-js";
 import { createStore } from "solid-js/store";
 import AppShell from "../components/AppShell";
 import WorkspaceGrid from "../components/workspace/WorkspaceGrid";
 import WorkspaceToolbar from "../components/workspace/WorkspaceToolbar";
 import {
   buildDefaultWorkspaceState,
+  createWorkspacePanel,
+  MAX_WORKSPACE_PANELS,
   normalizeWorkspaceState,
+  reconcileWorkspaceLayout,
   WORKSPACE_PRESET_OPTIONS,
   type ChartPanelQuery,
   type WorkspaceLayout,
@@ -35,6 +38,7 @@ function loadWorkspaceState() {
 export default function Dashboard() {
   const [workspace, setWorkspace] = createStore(loadWorkspaceState());
   const activePresetState = createMemo(() => workspace.presets[workspace.selectedPreset]);
+  const canAddChart = createMemo(() => activePresetState().panels.length < MAX_WORKSPACE_PANELS);
 
   const handlePresetChange = (nextPreset: WorkspacePreset) => {
     setWorkspace("selectedPreset", nextPreset);
@@ -53,7 +57,46 @@ export default function Dashboard() {
 
   const handleLayoutChange = (nextLayout: WorkspaceLayout) => {
     const preset = workspace.selectedPreset;
-    setWorkspace("presets", preset, "layout", nextLayout);
+    setWorkspace(
+      "presets",
+      preset,
+      "layout",
+      reconcileWorkspaceLayout(preset, nextLayout, workspace.presets[preset].panels.length),
+    );
+  };
+
+  const handleAddChart = () => {
+    const preset = workspace.selectedPreset;
+    const currentPanels = workspace.presets[preset].panels;
+
+    if (currentPanels.length >= MAX_WORKSPACE_PANELS) {
+      return;
+    }
+
+    const nextPanels = [...currentPanels, createWorkspacePanel(preset, currentPanels.length)];
+    const nextLayout = reconcileWorkspaceLayout(preset, workspace.presets[preset].layout, nextPanels.length);
+
+    batch(() => {
+      setWorkspace("presets", preset, "panels", nextPanels);
+      setWorkspace("presets", preset, "layout", nextLayout);
+    });
+  };
+
+  const handleRemovePanel = (panelId: string) => {
+    const preset = workspace.selectedPreset;
+    const currentPanels = workspace.presets[preset].panels;
+
+    if (currentPanels.length <= 1) {
+      return;
+    }
+
+    const nextPanels = currentPanels.filter((panel) => panel.id !== panelId);
+    const nextLayout = reconcileWorkspaceLayout(preset, workspace.presets[preset].layout, nextPanels.length);
+
+    batch(() => {
+      setWorkspace("presets", preset, "panels", nextPanels);
+      setWorkspace("presets", preset, "layout", nextLayout);
+    });
   };
 
   createEffect(() => {
@@ -95,7 +138,10 @@ export default function Dashboard() {
         <WorkspaceToolbar
           preset={workspace.selectedPreset}
           options={WORKSPACE_PRESET_OPTIONS}
+          panelCount={activePresetState().panels.length}
+          canAddChart={canAddChart()}
           onPresetChange={handlePresetChange}
+          onAddChart={handleAddChart}
         />
       </section>
 
@@ -105,33 +151,35 @@ export default function Dashboard() {
         layout={activePresetState().layout}
         onLayoutChange={handleLayoutChange}
         onPanelQueryChange={handlePanelQueryChange}
+        onPanelRemove={handleRemovePanel}
       />
 
       <section class="grid gap-4 lg:grid-cols-3">
         <div class="app-panel app-panel-section">
-          <p class="app-kicker">Resizable Presets</p>
-          <p class="mt-2 text-sm font-semibold text-zinc-100">Wide-screen layouts can breathe now</p>
+          <p class="app-kicker">Dynamic Workspace</p>
+          <p class="mt-2 text-sm font-semibold text-zinc-100">Add charts without leaving the preset flow</p>
           <p class="mt-1 text-sm text-zinc-400">
-            `1`, `2`, and `4` chart workspaces still stay deterministic, but now you can drag the
-            dividers on desktop instead of being stuck with one rigid preset ratio.
+            Presets still give you a believable starting shape, but now you can grow the active
+            workspace up to six panels instead of pretending every real desk stops at `1`, `2`,
+            or `4`.
           </p>
         </div>
 
         <div class="app-panel app-panel-section">
-          <p class="app-kicker">Workspace Memory</p>
-          <p class="mt-2 text-sm font-semibold text-zinc-100">Reloads keep your setup intact</p>
+          <p class="app-kicker">Auto Reflow</p>
+          <p class="mt-2 text-sm font-semibold text-zinc-100">Remove a chart and the layout heals itself</p>
           <p class="mt-1 text-sm text-zinc-400">
-            Preset choice, resize ratios, and each panel&apos;s query now stick in local storage so
-            the dashboard feels more like a real workspace and less like a disposable demo.
+            Rows and resize state rebalance automatically when panel count changes, so the
+            workspace still feels intentional instead of collapsing into dead empty slots.
           </p>
         </div>
 
         <div class="app-panel app-panel-section">
           <p class="app-kicker">Next Step</p>
-          <p class="mt-2 text-sm font-semibold text-zinc-100">Add and remove charts carefully</p>
+          <p class="mt-2 text-sm font-semibold text-zinc-100">Named workspaces are the next strong move</p>
           <p class="mt-1 text-sm text-zinc-400">
-            The clean follow-up from here is user-controlled panel count within this workspace
-            model, then we can decide later if full drag-and-drop is actually worth the pain.
+            Once this interaction feels solid, saving multiple named desk setups is a much better
+            trading-product signal than jumping straight into draggable boxes for their own sake.
           </p>
         </div>
       </section>

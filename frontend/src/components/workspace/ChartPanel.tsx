@@ -15,7 +15,9 @@ import type { ChartPanelConfig, ChartPanelQuery } from "./chartPanelTypes";
 
 interface Props {
   panel: ChartPanelConfig;
+  canRemove: boolean;
   onQueryChange: (query: ChartPanelQuery) => void;
+  onRemove: () => void;
 }
 
 type LiveChartPanelQuery = Extract<ChartPanelQuery, { mode: "live" }>;
@@ -120,7 +122,16 @@ export default function ChartPanel(props: Props) {
           <p class="text-sm text-zinc-400">{panelSummary()}</p>
         </div>
 
-        <div class="flex gap-2">
+        <div class="flex flex-wrap justify-end gap-2">
+          <Show when={props.canRemove}>
+            <button
+              type="button"
+              class="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+              onClick={props.onRemove}
+            >
+              Remove
+            </button>
+          </Show>
           <button
             type="button"
             class={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
