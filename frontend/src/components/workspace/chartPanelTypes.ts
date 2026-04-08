@@ -55,6 +55,16 @@ export interface WorkspaceState {
   presets: Record<WorkspacePreset, WorkspacePresetState>;
 }
 
+export interface SavedWorkspace extends WorkspaceState {
+  id: string;
+  name: string;
+}
+
+export interface WorkspaceCollectionState {
+  selectedWorkspaceId: string;
+  workspaces: SavedWorkspace[];
+}
+
 export interface WorkspacePresetOption {
   value: WorkspacePreset;
   label: string;
@@ -63,6 +73,8 @@ export interface WorkspacePresetOption {
 
 const MIN_RATIO = 0.3;
 export const MAX_WORKSPACE_PANELS = 6;
+export const DEFAULT_WORKSPACE_NAME = "Main Desk";
+export const MAX_WORKSPACE_NAME_LENGTH = 36;
 
 function formatDate(daysAgo: number): string {
   const date = new Date();
@@ -76,6 +88,10 @@ function cloneQuery(query: ChartPanelQuery): ChartPanelQuery {
 
 function createPanelId(preset: WorkspacePreset): string {
   return `${preset}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createWorkspaceId(): string {
+  return `desk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function buildPanelTemplates(): Record<WorkspacePreset, Omit<ChartPanelConfig, "id">[]> {
@@ -267,6 +283,32 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
+function cloneLayout(layout: WorkspaceLayout): WorkspaceLayout {
+  if (layout.kind === "focus") {
+    return {
+      kind: "focus",
+      rowWeights: [...layout.rowWeights],
+    };
+  }
+
+  return {
+    kind: layout.kind,
+    rowWeights: [...layout.rowWeights],
+    columnRatios: [...layout.columnRatios],
+  };
+}
+
+function clonePresetState(state: WorkspacePresetState): WorkspacePresetState {
+  return {
+    panels: state.panels.map((panel) => ({
+      id: panel.id,
+      title: panel.title,
+      query: cloneQuery(panel.query),
+    })),
+    layout: cloneLayout(state.layout),
+  };
+}
+
 export const WORKSPACE_PRESET_OPTIONS: WorkspacePresetOption[] = [
   {
     value: "focus",
@@ -368,6 +410,48 @@ export function buildDefaultWorkspaceState(): WorkspaceState {
   };
 }
 
+export function normalizeWorkspaceName(value: unknown, fallback = DEFAULT_WORKSPACE_NAME): string {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  const cleaned = value.trim().replace(/\s+/g, " ").slice(0, MAX_WORKSPACE_NAME_LENGTH);
+  return cleaned || fallback;
+}
+
+export function cloneWorkspaceState(state: WorkspaceState): WorkspaceState {
+  return {
+    selectedPreset: state.selectedPreset,
+    presets: {
+      focus: clonePresetState(state.presets.focus),
+      split: clonePresetState(state.presets.split),
+      grid: clonePresetState(state.presets.grid),
+    },
+  };
+}
+
+export function buildSavedWorkspace(
+  name = DEFAULT_WORKSPACE_NAME,
+  state: WorkspaceState = buildDefaultWorkspaceState(),
+): SavedWorkspace {
+  const nextState = cloneWorkspaceState(state);
+
+  return {
+    id: createWorkspaceId(),
+    name: normalizeWorkspaceName(name),
+    selectedPreset: nextState.selectedPreset,
+    presets: nextState.presets,
+  };
+}
+
+export function buildDefaultWorkspaceCollectionState(): WorkspaceCollectionState {
+  const workspace = buildSavedWorkspace();
+  return {
+    selectedWorkspaceId: workspace.id,
+    workspaces: [workspace],
+  };
+}
+
 function normalizeQuery(query: unknown, fallback: ChartPanelQuery): ChartPanelQuery {
   const record = asRecord(query);
   if (!record) {
@@ -465,5 +549,92 @@ export function normalizeWorkspaceState(value: unknown): WorkspaceState {
         layout: reconcileWorkspaceLayout("grid", gridPreset?.layout as WorkspaceLayout, gridPanels.length),
       },
     },
+  };
+}
+
+export function createWorkspaceCopyName(baseName: string, existingNames: string[]): string {
+  const cleanedBase = normalizeWorkspaceName(baseName);
+  const taken = new Set(existingNames.map((name) => normalizeWorkspaceName(name)));
+  const firstTry = `${cleanedBase} Copy`.slice(0, MAX_WORKSPACE_NAME_LENGTH);
+
+  if (!taken.has(firstTry)) {
+    return firstTry;
+  }
+
+  let copyIndex = 2;
+  while (copyIndex < 100) {
+    const candidate = `${cleanedBase} Copy ${copyIndex}`.slice(0, MAX_WORKSPACE_NAME_LENGTH);
+    if (!taken.has(candidate)) {
+      return candidate;
+    }
+
+    copyIndex += 1;
+  }
+
+  return normalizeWorkspaceName(`${cleanedBase} Copy`, cleanedBase);
+}
+
+/**
+ * Turn whatever is in localStorage into a sane saved-desk collection.
+ *
+ * Older dashboard builds only stored one workspace object, so this quietly
+ * wraps that shape in a named desk instead of wiping out somebody's panels
+ * the first time they land on the new version.
+ */
+export function normalizeWorkspaceCollectionState(value: unknown): WorkspaceCollectionState {
+  const defaults = buildDefaultWorkspaceCollectionState();
+  const record = asRecord(value);
+
+  if (!record) {
+    return defaults;
+  }
+
+  if (!Array.isArray(record.workspaces)) {
+    const migrated = buildSavedWorkspace(DEFAULT_WORKSPACE_NAME, normalizeWorkspaceState(value));
+    return {
+      selectedWorkspaceId: migrated.id,
+      workspaces: [migrated],
+    };
+  }
+
+  const usedIds = new Set<string>();
+  const workspaces = record.workspaces
+    .map((candidate, index) => {
+      const candidateRecord = asRecord(candidate);
+      if (!candidateRecord) {
+        return null;
+      }
+
+      const normalizedState = normalizeWorkspaceState(candidateRecord);
+      const preferredId =
+        typeof candidateRecord.id === "string" && candidateRecord.id.trim()
+          ? candidateRecord.id
+          : createWorkspaceId();
+      const id = usedIds.has(preferredId) ? createWorkspaceId() : preferredId;
+
+      usedIds.add(id);
+
+      return {
+        id,
+        name: normalizeWorkspaceName(candidateRecord.name, `Desk ${index + 1}`),
+        selectedPreset: normalizedState.selectedPreset,
+        presets: normalizedState.presets,
+      } satisfies SavedWorkspace;
+    })
+    .filter((workspace): workspace is SavedWorkspace => workspace !== null);
+
+  if (workspaces.length === 0) {
+    return defaults;
+  }
+
+  const selectedWorkspaceId =
+    typeof record.selectedWorkspaceId === "string" &&
+    workspaces.some((workspace) => workspace.id === record.selectedWorkspaceId)
+      ? record.selectedWorkspaceId
+      : workspaces[0].id;
+
+  return {
+    selectedWorkspaceId,
+    workspaces,
   };
 }

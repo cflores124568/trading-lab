@@ -5,10 +5,13 @@ import AppShell from "../components/AppShell";
 import WorkspaceGrid from "../components/workspace/WorkspaceGrid";
 import WorkspaceToolbar from "../components/workspace/WorkspaceToolbar";
 import {
-  buildDefaultWorkspaceState,
+  buildSavedWorkspace,
+  cloneWorkspaceState,
+  createWorkspaceCopyName,
   createWorkspacePanel,
+  normalizeWorkspaceCollectionState,
+  normalizeWorkspaceName,
   MAX_WORKSPACE_PANELS,
-  normalizeWorkspaceState,
   reconcileWorkspaceLayout,
   WORKSPACE_PRESET_OPTIONS,
   type ChartPanelQuery,
@@ -20,82 +23,163 @@ const WORKSPACE_STORAGE_KEY = "trading-lab.dashboard.workspace.v1";
 
 function loadWorkspaceState() {
   if (typeof window === "undefined") {
-    return buildDefaultWorkspaceState();
+    return normalizeWorkspaceCollectionState(null);
   }
 
   const saved = window.localStorage.getItem(WORKSPACE_STORAGE_KEY);
   if (!saved) {
-    return buildDefaultWorkspaceState();
+    return normalizeWorkspaceCollectionState(null);
   }
 
   try {
-    return normalizeWorkspaceState(JSON.parse(saved));
+    return normalizeWorkspaceCollectionState(JSON.parse(saved));
   } catch {
-    return buildDefaultWorkspaceState();
+    return normalizeWorkspaceCollectionState(null);
   }
 }
 
 export default function Dashboard() {
   const [workspace, setWorkspace] = createStore(loadWorkspaceState());
-  const activePresetState = createMemo(() => workspace.presets[workspace.selectedPreset]);
+  const activeWorkspaceIndex = createMemo(() => {
+    const index = workspace.workspaces.findIndex(
+      (candidate) => candidate.id === workspace.selectedWorkspaceId,
+    );
+
+    return index === -1 ? 0 : index;
+  });
+  const activeWorkspace = createMemo(() => workspace.workspaces[activeWorkspaceIndex()]);
+  const activePresetState = createMemo(() => {
+    const currentWorkspace = activeWorkspace();
+    return currentWorkspace.presets[currentWorkspace.selectedPreset];
+  });
   const canAddChart = createMemo(() => activePresetState().panels.length < MAX_WORKSPACE_PANELS);
+  const canDeleteWorkspace = createMemo(() => workspace.workspaces.length > 1);
+
+  const handleWorkspaceChange = (workspaceId: string) => {
+    setWorkspace("selectedWorkspaceId", workspaceId);
+  };
+
+  const handleWorkspaceNameChange = (nextName: string) => {
+    const workspaceIndex = activeWorkspaceIndex();
+    const currentName = workspace.workspaces[workspaceIndex]?.name;
+    setWorkspace(
+      "workspaces",
+      workspaceIndex,
+      "name",
+      normalizeWorkspaceName(nextName, currentName),
+    );
+  };
+
+  const handleCreateWorkspace = () => {
+    const currentWorkspace = activeWorkspace();
+    const nextWorkspace = buildSavedWorkspace(
+      createWorkspaceCopyName(
+        currentWorkspace.name,
+        workspace.workspaces.map((candidate) => candidate.name),
+      ),
+      cloneWorkspaceState(currentWorkspace),
+    );
+
+    batch(() => {
+      setWorkspace("workspaces", (current) => [...current, nextWorkspace]);
+      setWorkspace("selectedWorkspaceId", nextWorkspace.id);
+    });
+  };
+
+  const handleDeleteWorkspace = () => {
+    if (workspace.workspaces.length <= 1) {
+      return;
+    }
+
+    const workspaceIndex = activeWorkspaceIndex();
+    const nextWorkspaces = workspace.workspaces.filter((_, index) => index !== workspaceIndex);
+    const fallbackWorkspace =
+      nextWorkspaces[workspaceIndex] ??
+      nextWorkspaces[workspaceIndex - 1] ??
+      nextWorkspaces[0];
+
+    batch(() => {
+      setWorkspace("workspaces", nextWorkspaces);
+      setWorkspace("selectedWorkspaceId", fallbackWorkspace.id);
+    });
+  };
 
   const handlePresetChange = (nextPreset: WorkspacePreset) => {
-    setWorkspace("selectedPreset", nextPreset);
+    setWorkspace("workspaces", activeWorkspaceIndex(), "selectedPreset", nextPreset);
   };
 
   const handlePanelQueryChange = (panelId: string, nextQuery: ChartPanelQuery) => {
-    const preset = workspace.selectedPreset;
-    const panelIndex = workspace.presets[preset].panels.findIndex((panel) => panel.id === panelId);
+    const workspaceIndex = activeWorkspaceIndex();
+    const preset = workspace.workspaces[workspaceIndex].selectedPreset;
+    const panelIndex = workspace.workspaces[workspaceIndex].presets[preset].panels.findIndex(
+      (panel) => panel.id === panelId,
+    );
 
     if (panelIndex === -1) {
       return;
     }
 
-    setWorkspace("presets", preset, "panels", panelIndex, "query", nextQuery);
+    setWorkspace("workspaces", workspaceIndex, "presets", preset, "panels", panelIndex, "query", nextQuery);
   };
 
   const handleLayoutChange = (nextLayout: WorkspaceLayout) => {
-    const preset = workspace.selectedPreset;
+    const workspaceIndex = activeWorkspaceIndex();
+    const preset = workspace.workspaces[workspaceIndex].selectedPreset;
     setWorkspace(
+      "workspaces",
+      workspaceIndex,
       "presets",
       preset,
       "layout",
-      reconcileWorkspaceLayout(preset, nextLayout, workspace.presets[preset].panels.length),
+      reconcileWorkspaceLayout(
+        preset,
+        nextLayout,
+        workspace.workspaces[workspaceIndex].presets[preset].panels.length,
+      ),
     );
   };
 
   const handleAddChart = () => {
-    const preset = workspace.selectedPreset;
-    const currentPanels = workspace.presets[preset].panels;
+    const workspaceIndex = activeWorkspaceIndex();
+    const preset = workspace.workspaces[workspaceIndex].selectedPreset;
+    const currentPanels = workspace.workspaces[workspaceIndex].presets[preset].panels;
 
     if (currentPanels.length >= MAX_WORKSPACE_PANELS) {
       return;
     }
 
     const nextPanels = [...currentPanels, createWorkspacePanel(preset, currentPanels.length)];
-    const nextLayout = reconcileWorkspaceLayout(preset, workspace.presets[preset].layout, nextPanels.length);
+    const nextLayout = reconcileWorkspaceLayout(
+      preset,
+      workspace.workspaces[workspaceIndex].presets[preset].layout,
+      nextPanels.length,
+    );
 
     batch(() => {
-      setWorkspace("presets", preset, "panels", nextPanels);
-      setWorkspace("presets", preset, "layout", nextLayout);
+      setWorkspace("workspaces", workspaceIndex, "presets", preset, "panels", nextPanels);
+      setWorkspace("workspaces", workspaceIndex, "presets", preset, "layout", nextLayout);
     });
   };
 
   const handleRemovePanel = (panelId: string) => {
-    const preset = workspace.selectedPreset;
-    const currentPanels = workspace.presets[preset].panels;
+    const workspaceIndex = activeWorkspaceIndex();
+    const preset = workspace.workspaces[workspaceIndex].selectedPreset;
+    const currentPanels = workspace.workspaces[workspaceIndex].presets[preset].panels;
 
     if (currentPanels.length <= 1) {
       return;
     }
 
     const nextPanels = currentPanels.filter((panel) => panel.id !== panelId);
-    const nextLayout = reconcileWorkspaceLayout(preset, workspace.presets[preset].layout, nextPanels.length);
+    const nextLayout = reconcileWorkspaceLayout(
+      preset,
+      workspace.workspaces[workspaceIndex].presets[preset].layout,
+      nextPanels.length,
+    );
 
     batch(() => {
-      setWorkspace("presets", preset, "panels", nextPanels);
-      setWorkspace("presets", preset, "layout", nextLayout);
+      setWorkspace("workspaces", workspaceIndex, "presets", preset, "panels", nextPanels);
+      setWorkspace("workspaces", workspaceIndex, "presets", preset, "layout", nextLayout);
     });
   };
 
@@ -136,17 +220,29 @@ export default function Dashboard() {
     >
       <section class="app-panel app-panel-section">
         <WorkspaceToolbar
-          preset={workspace.selectedPreset}
+          workspaceId={activeWorkspace().id}
+          workspaceName={activeWorkspace().name}
+          workspaceCount={workspace.workspaces.length}
+          workspaces={workspace.workspaces.map((candidate) => ({
+            id: candidate.id,
+            name: candidate.name,
+          }))}
+          preset={activeWorkspace().selectedPreset}
           options={WORKSPACE_PRESET_OPTIONS}
           panelCount={activePresetState().panels.length}
           canAddChart={canAddChart()}
+          canDeleteWorkspace={canDeleteWorkspace()}
+          onWorkspaceChange={handleWorkspaceChange}
+          onWorkspaceNameChange={handleWorkspaceNameChange}
+          onCreateWorkspace={handleCreateWorkspace}
+          onDeleteWorkspace={handleDeleteWorkspace}
           onPresetChange={handlePresetChange}
           onAddChart={handleAddChart}
         />
       </section>
 
       <WorkspaceGrid
-        preset={workspace.selectedPreset}
+        preset={activeWorkspace().selectedPreset}
         panels={activePresetState().panels}
         layout={activePresetState().layout}
         onLayoutChange={handleLayoutChange}
@@ -156,30 +252,32 @@ export default function Dashboard() {
 
       <section class="grid gap-4 lg:grid-cols-3">
         <div class="app-panel app-panel-section">
-          <p class="app-kicker">Dynamic Workspace</p>
-          <p class="mt-2 text-sm font-semibold text-zinc-100">Add charts without leaving the preset flow</p>
+          <p class="app-kicker">Saved Desks</p>
+          <p class="mt-2 text-sm font-semibold text-zinc-100">Keep separate setups without losing presets</p>
           <p class="mt-1 text-sm text-zinc-400">
-            Presets still give you a believable starting shape, but now you can grow the active
-            workspace up to six panels instead of pretending every real desk stops at `1`, `2`,
-            or `4`.
+            Fork the current desk, give it a real name, and keep one version for replay, one for
+            backtest review, and another for live scan work without turning the dashboard into
+            generic floating widgets.
           </p>
         </div>
 
         <div class="app-panel app-panel-section">
-          <p class="app-kicker">Auto Reflow</p>
-          <p class="mt-2 text-sm font-semibold text-zinc-100">Remove a chart and the layout heals itself</p>
+          <p class="app-kicker">Dynamic Panels</p>
+          <p class="mt-2 text-sm font-semibold text-zinc-100">Every saved desk still grows and heals itself</p>
           <p class="mt-1 text-sm text-zinc-400">
-            Rows and resize state rebalance automatically when panel count changes, so the
-            workspace still feels intentional instead of collapsing into dead empty slots.
+            Add or remove charts inside any desk and the row weights plus column ratios rebalance
+            automatically, so your layout keeps feeling intentional instead of leaving behind dead
+            space.
           </p>
         </div>
 
         <div class="app-panel app-panel-section">
-          <p class="app-kicker">Next Step</p>
-          <p class="mt-2 text-sm font-semibold text-zinc-100">Named workspaces are the next strong move</p>
+          <p class="app-kicker">What Matters</p>
+          <p class="mt-2 text-sm font-semibold text-zinc-100">The preset model stays in charge</p>
           <p class="mt-1 text-sm text-zinc-400">
-            Once this interaction feels solid, saving multiple named desk setups is a much better
-            trading-product signal than jumping straight into draggable boxes for their own sake.
+            This still starts from `1`, `2`, and `4` chart trading setups, then lets each saved
+            desk bend from there. That keeps the product opinionated instead of sliding straight
+            into a widget playground.
           </p>
         </div>
       </section>

@@ -1,40 +1,145 @@
-import type { WorkspacePreset, WorkspacePresetOption } from "./chartPanelTypes";
+import { createEffect, createSignal } from "solid-js";
+import {
+  MAX_WORKSPACE_NAME_LENGTH,
+  normalizeWorkspaceName,
+  type WorkspacePreset,
+  type WorkspacePresetOption,
+} from "./chartPanelTypes";
+
+interface WorkspaceOption {
+  id: string;
+  name: string;
+}
 
 interface Props {
+  workspaceId: string;
+  workspaceName: string;
+  workspaceCount: number;
+  workspaces: WorkspaceOption[];
   preset: WorkspacePreset;
   options: WorkspacePresetOption[];
   panelCount: number;
   canAddChart: boolean;
+  canDeleteWorkspace: boolean;
+  onWorkspaceChange: (workspaceId: string) => void;
+  onWorkspaceNameChange: (name: string) => void;
+  onCreateWorkspace: () => void;
+  onDeleteWorkspace: () => void;
   onPresetChange: (preset: WorkspacePreset) => void;
   onAddChart: () => void;
 }
 
+const field =
+  "w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 " +
+  "focus:outline-none focus:ring-1 focus:ring-zinc-500";
+
 export default function WorkspaceToolbar(props: Props) {
+  const [nameDraft, setNameDraft] = createSignal(props.workspaceName);
+
+  createEffect(() => {
+    setNameDraft(props.workspaceName);
+  });
+
+  const commitWorkspaceName = () => {
+    const nextName = normalizeWorkspaceName(nameDraft(), props.workspaceName);
+    setNameDraft(nextName);
+    props.onWorkspaceNameChange(nextName);
+  };
+
   return (
     <div class="space-y-4">
-      <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+      <div class="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(360px,1fr)] xl:items-end">
         <div class="space-y-2">
-          <p class="app-kicker">Workspace Presets</p>
-          <h2 class="text-lg font-semibold text-zinc-100">Start with a real multi-chart setup</h2>
+          <p class="app-kicker">Saved Workspaces</p>
+          <h2 class="text-lg font-semibold text-zinc-100">Keep a few real desks, not one disposable layout</h2>
           <p class="max-w-3xl text-sm text-zinc-400">
-            Keep the layout simple for now, but make every panel independent so we can grow this
-            into a heavier workspace system later without throwing the dashboard away. On wider
-            screens you can drag the dividers now, and the workspace remembers what you changed.
+            Every desk still starts from the preset model, but now you can fork the current setup,
+            give it a real name, and bounce between different trading contexts without losing your
+            panel mix or resize work.
           </p>
         </div>
 
-        <div class="flex flex-wrap items-center gap-3">
-          <div class="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-medium uppercase tracking-[0.16em] text-zinc-400">
-            {props.panelCount} {props.panelCount === 1 ? "Panel" : "Panels"}
+        <div class="app-subpanel space-y-4 p-4">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p class="text-sm font-semibold text-zinc-100">Desk controls</p>
+              <p class="text-xs text-zinc-400">Auto-saves as you tweak charts and dividers.</p>
+            </div>
+            <div class="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-medium uppercase tracking-[0.16em] text-zinc-400">
+              {props.workspaceCount} {props.workspaceCount === 1 ? "Desk" : "Desks"}
+            </div>
           </div>
-          <button
-            type="button"
-            class="rounded-xl border border-zinc-600 px-4 py-2 text-sm font-semibold text-zinc-100 transition-colors hover:border-zinc-400 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:text-zinc-600"
-            onClick={props.onAddChart}
-            disabled={!props.canAddChart}
-          >
-            + Add Chart
-          </button>
+
+          <div class="grid gap-3 md:grid-cols-2">
+            <label class="space-y-1">
+              <span class="block text-xs text-zinc-400">Saved desk</span>
+              <select
+                class={field}
+                value={props.workspaceId}
+                onChange={(event) => props.onWorkspaceChange(event.currentTarget.value)}
+              >
+                {props.workspaces.map((workspace) => (
+                  <option value={workspace.id}>{workspace.name}</option>
+                ))}
+              </select>
+            </label>
+
+            <label class="space-y-1">
+              <span class="block text-xs text-zinc-400">Desk name</span>
+              <input
+                type="text"
+                class={field}
+                value={nameDraft()}
+                maxLength={MAX_WORKSPACE_NAME_LENGTH}
+                placeholder="Replay review desk"
+                onInput={(event) => setNameDraft(event.currentTarget.value)}
+                onBlur={commitWorkspaceName}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    commitWorkspaceName();
+                    event.currentTarget.blur();
+                  }
+
+                  if (event.key === "Escape") {
+                    setNameDraft(props.workspaceName);
+                    event.currentTarget.blur();
+                  }
+                }}
+              />
+            </label>
+          </div>
+
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-medium uppercase tracking-[0.16em] text-zinc-400">
+              {props.panelCount} {props.panelCount === 1 ? "Panel" : "Panels"}
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                class="rounded-xl border border-zinc-600 px-4 py-2 text-sm font-semibold text-zinc-100 transition-colors hover:border-zinc-400 hover:bg-zinc-900"
+                onClick={props.onCreateWorkspace}
+              >
+                Save as New Desk
+              </button>
+              <button
+                type="button"
+                class="rounded-xl border border-zinc-800 px-4 py-2 text-sm font-medium text-zinc-400 transition-colors hover:border-zinc-600 hover:bg-zinc-900 hover:text-zinc-100 disabled:cursor-not-allowed disabled:border-zinc-900 disabled:text-zinc-700"
+                onClick={props.onDeleteWorkspace}
+                disabled={!props.canDeleteWorkspace}
+              >
+                Delete Desk
+              </button>
+              <button
+                type="button"
+                class="rounded-xl border border-zinc-600 px-4 py-2 text-sm font-semibold text-zinc-100 transition-colors hover:border-zinc-400 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:text-zinc-600"
+                onClick={props.onAddChart}
+                disabled={!props.canAddChart}
+              >
+                + Add Chart
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
