@@ -14,7 +14,8 @@ export default function WorkspaceToolbar(props: Props) {
         <h2 class="text-lg font-semibold text-zinc-100">Start with a real multi-chart setup</h2>
         <p class="max-w-3xl text-sm text-zinc-400">
           Keep the layout simple for now, but make every panel independent so we can grow this
-          into a heavier workspace system later without throwing the dashboard away.
+          into a heavier workspace system later without throwing the dashboard away. On wider
+          screens you can drag the dividers now, and the workspace remembers what you changed.
         </p>
       </div>
 

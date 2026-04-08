@@ -1,22 +1,68 @@
 import { A } from "@solidjs/router";
-import { createSignal } from "solid-js";
+import { createEffect, createMemo } from "solid-js";
+import { createStore } from "solid-js/store";
 import AppShell from "../components/AppShell";
 import WorkspaceGrid from "../components/workspace/WorkspaceGrid";
 import WorkspaceToolbar from "../components/workspace/WorkspaceToolbar";
 import {
-  buildWorkspacePanels,
+  buildDefaultWorkspaceState,
+  normalizeWorkspaceState,
   WORKSPACE_PRESET_OPTIONS,
+  type ChartPanelQuery,
+  type WorkspaceLayout,
   type WorkspacePreset,
 } from "../components/workspace/chartPanelTypes";
 
+const WORKSPACE_STORAGE_KEY = "trading-lab.dashboard.workspace.v1";
+
+function loadWorkspaceState() {
+  if (typeof window === "undefined") {
+    return buildDefaultWorkspaceState();
+  }
+
+  const saved = window.localStorage.getItem(WORKSPACE_STORAGE_KEY);
+  if (!saved) {
+    return buildDefaultWorkspaceState();
+  }
+
+  try {
+    return normalizeWorkspaceState(JSON.parse(saved));
+  } catch {
+    return buildDefaultWorkspaceState();
+  }
+}
+
 export default function Dashboard() {
-  const [preset, setPreset] = createSignal<WorkspacePreset>("grid");
-  const [panels, setPanels] = createSignal(buildWorkspacePanels("grid"));
+  const [workspace, setWorkspace] = createStore(loadWorkspaceState());
+  const activePresetState = createMemo(() => workspace.presets[workspace.selectedPreset]);
 
   const handlePresetChange = (nextPreset: WorkspacePreset) => {
-    setPreset(nextPreset);
-    setPanels(buildWorkspacePanels(nextPreset));
+    setWorkspace("selectedPreset", nextPreset);
   };
+
+  const handlePanelQueryChange = (panelId: string, nextQuery: ChartPanelQuery) => {
+    const preset = workspace.selectedPreset;
+    const panelIndex = workspace.presets[preset].panels.findIndex((panel) => panel.id === panelId);
+
+    if (panelIndex === -1) {
+      return;
+    }
+
+    setWorkspace("presets", preset, "panels", panelIndex, "query", nextQuery);
+  };
+
+  const handleLayoutChange = (nextLayout: WorkspaceLayout) => {
+    const preset = workspace.selectedPreset;
+    setWorkspace("presets", preset, "layout", nextLayout);
+  };
+
+  createEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(workspace));
+  });
 
   return (
     <AppShell
@@ -47,39 +93,45 @@ export default function Dashboard() {
     >
       <section class="app-panel app-panel-section">
         <WorkspaceToolbar
-          preset={preset()}
+          preset={workspace.selectedPreset}
           options={WORKSPACE_PRESET_OPTIONS}
           onPresetChange={handlePresetChange}
         />
       </section>
 
-      <WorkspaceGrid preset={preset()} panels={panels()} />
+      <WorkspaceGrid
+        preset={workspace.selectedPreset}
+        panels={activePresetState().panels}
+        layout={activePresetState().layout}
+        onLayoutChange={handleLayoutChange}
+        onPanelQueryChange={handlePanelQueryChange}
+      />
 
       <section class="grid gap-4 lg:grid-cols-3">
         <div class="app-panel app-panel-section">
-          <p class="app-kicker">Preset MVP</p>
-          <p class="mt-2 text-sm font-semibold text-zinc-100">You can switch layouts instantly</p>
+          <p class="app-kicker">Resizable Presets</p>
+          <p class="mt-2 text-sm font-semibold text-zinc-100">Wide-screen layouts can breathe now</p>
           <p class="mt-1 text-sm text-zinc-400">
-            The dashboard now starts with `1`, `2`, or `4` independent charts instead of one
-            page-level query doing all the work.
+            `1`, `2`, and `4` chart workspaces still stay deterministic, but now you can drag the
+            dividers on desktop instead of being stuck with one rigid preset ratio.
           </p>
         </div>
 
         <div class="app-panel app-panel-section">
-          <p class="app-kicker">Independent Panels</p>
-          <p class="mt-2 text-sm font-semibold text-zinc-100">Each chart owns its own state</p>
+          <p class="app-kicker">Workspace Memory</p>
+          <p class="mt-2 text-sm font-semibold text-zinc-100">Reloads keep your setup intact</p>
           <p class="mt-1 text-sm text-zinc-400">
-            Every tile can point at its own symbol, timeframe, and source, which is the right
-            foundation for resizing, persistence, and saved workspaces later.
+            Preset choice, resize ratios, and each panel&apos;s query now stick in local storage so
+            the dashboard feels more like a real workspace and less like a disposable demo.
           </p>
         </div>
 
         <div class="app-panel app-panel-section">
           <p class="app-kicker">Next Step</p>
-          <p class="mt-2 text-sm font-semibold text-zinc-100">Resize and persist the layout</p>
+          <p class="mt-2 text-sm font-semibold text-zinc-100">Add and remove charts carefully</p>
           <p class="mt-1 text-sm text-zinc-400">
-            Once this feels good, the next clean upgrade is a resizable grid and saved workspace
-            presets instead of jumping straight into drag-and-drop chaos.
+            The clean follow-up from here is user-controlled panel count within this workspace
+            model, then we can decide later if full drag-and-drop is actually worth the pain.
           </p>
         </div>
       </section>

@@ -23,6 +23,7 @@ interface Props {
   markers?: PriceChartMarker[];
   visibleIndex?: number;
   height?: number;
+  class?: string;
 }
 
 export default function PriceChart(props: Props) {
@@ -111,7 +112,8 @@ export default function PriceChart(props: Props) {
   return (
     <div
       ref={container}
-      class="w-full rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950"
+      class={`w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 ${props.class ?? ""}`}
+      style={props.height ? { height: `${props.height}px` } : undefined}
     />
   );
 }

@@ -1,4 +1,4 @@
-import { createMemo, createResource, createSignal, Show } from "solid-js";
+import { createMemo, createResource, Show } from "solid-js";
 import PriceChart from "../PriceChart";
 import {
   BACKTEST_INTERVALS,
@@ -15,6 +15,7 @@ import type { ChartPanelConfig, ChartPanelQuery } from "./chartPanelTypes";
 
 interface Props {
   panel: ChartPanelConfig;
+  onQueryChange: (query: ChartPanelQuery) => void;
 }
 
 type LiveChartPanelQuery = Extract<ChartPanelQuery, { mode: "live" }>;
@@ -59,7 +60,7 @@ function toHistoricalQuery(query: ChartPanelQuery): ChartPanelQuery {
 }
 
 export default function ChartPanel(props: Props) {
-  const [query, setQuery] = createSignal<ChartPanelQuery>(props.panel.query);
+  const query = createMemo(() => props.panel.query);
 
   const [candles] = createResource<Candle[], ChartPanelQuery>(query, async (nextQuery) => {
     if (nextQuery.mode === "live") {
@@ -101,11 +102,17 @@ export default function ChartPanel(props: Props) {
   });
 
   const setMode = (mode: "live" | "historical") => {
-    setQuery((current) => (mode === "live" ? toLiveQuery(current) : toHistoricalQuery(current)));
+    const current = query();
+    props.onQueryChange(mode === "live" ? toLiveQuery(current) : toHistoricalQuery(current));
+  };
+
+  const updateQuery = (nextQuery: ChartPanelQuery | ((current: ChartPanelQuery) => ChartPanelQuery)) => {
+    const current = query();
+    props.onQueryChange(typeof nextQuery === "function" ? nextQuery(current) : nextQuery);
   };
 
   return (
-    <section class="app-panel app-panel-section space-y-4">
+    <section class="app-panel app-panel-section flex h-full min-h-[560px] flex-col space-y-4">
       <div class="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <div class="space-y-1">
           <p class="app-kicker">{query().mode === "live" ? "Live Preview" : "Historical Query"}</p>
@@ -150,7 +157,7 @@ export default function ChartPanel(props: Props) {
                   class={field}
                   value={query().symbol}
                   onChange={(event) =>
-                    setQuery((current) => ({ ...current, symbol: event.currentTarget.value }))
+                    updateQuery((current) => ({ ...current, symbol: event.currentTarget.value }))
                   }
                 >
                   {DATABENTO_SYMBOLS.map((symbol) => (
@@ -165,7 +172,7 @@ export default function ChartPanel(props: Props) {
                   class={field}
                   value={query().interval}
                   onChange={(event) =>
-                    setQuery((current) => ({ ...current, interval: event.currentTarget.value }))
+                    updateQuery((current) => ({ ...current, interval: event.currentTarget.value }))
                   }
                 >
                   {BACKTEST_INTERVALS.map((interval) => (
@@ -181,7 +188,7 @@ export default function ChartPanel(props: Props) {
                   class={field}
                   value={historicalQuery()?.startDate ?? ""}
                   onInput={(event) =>
-                    setQuery((current) =>
+                    updateQuery((current) =>
                       current.mode === "historical"
                         ? { ...current, startDate: event.currentTarget.value }
                         : current,
@@ -197,7 +204,7 @@ export default function ChartPanel(props: Props) {
                   class={field}
                   value={historicalQuery()?.endDate ?? ""}
                   onInput={(event) =>
-                    setQuery((current) =>
+                    updateQuery((current) =>
                       current.mode === "historical"
                         ? { ...current, endDate: event.currentTarget.value }
                         : current,
@@ -215,7 +222,7 @@ export default function ChartPanel(props: Props) {
                 class={field}
                 value={query().symbol}
                 onChange={(event) =>
-                  setQuery((current) => ({ ...current, symbol: event.currentTarget.value }))
+                  updateQuery((current) => ({ ...current, symbol: event.currentTarget.value }))
                 }
               >
                 {YFINANCE_SYMBOLS.map((symbol) => (
@@ -230,7 +237,7 @@ export default function ChartPanel(props: Props) {
                 class={field}
                 value={query().interval}
                 onChange={(event) =>
-                  setQuery((current) => ({ ...current, interval: event.currentTarget.value }))
+                  updateQuery((current) => ({ ...current, interval: event.currentTarget.value }))
                 }
               >
                 {LIVE_CHART_INTERVALS.map((interval) => (
@@ -245,7 +252,7 @@ export default function ChartPanel(props: Props) {
                 class={field}
                 value={liveQuery()?.period ?? DEFAULT_PERIOD.value}
                 onChange={(event) =>
-                  setQuery((current) =>
+                  updateQuery((current) =>
                     current.mode === "live"
                       ? { ...current, period: event.currentTarget.value }
                       : current,
@@ -264,13 +271,15 @@ export default function ChartPanel(props: Props) {
       <Show
         when={candles.error}
         fallback={
-          <Show when={!candles.loading} fallback={<div class="app-skeleton h-[360px]" />}>
-            <PriceChart candles={candles() ?? []} height={360} />
+          <Show when={!candles.loading} fallback={<div class="app-skeleton min-h-[320px] flex-1" />}>
+            <div class="min-h-[320px] flex-1">
+              <PriceChart candles={candles() ?? []} class="h-full" />
+            </div>
           </Show>
         }
       >
         {(error) => (
-          <div class="app-subpanel flex h-[360px] items-center justify-center px-6 text-center">
+          <div class="app-subpanel flex min-h-[320px] flex-1 items-center justify-center px-6 text-center">
             <div class="space-y-2">
               <p class="text-sm font-semibold text-red-300">Chart request failed</p>
               <p class="text-sm text-red-400">{error().message}</p>
@@ -280,7 +289,7 @@ export default function ChartPanel(props: Props) {
       </Show>
 
       <Show when={!candles.loading && (candles()?.length ?? 0) === 0 && !candles.error}>
-        <div class="app-subpanel px-4 py-5">
+        <div class="app-subpanel min-h-[320px] flex-1 px-4 py-5">
           <p class="text-sm font-semibold text-zinc-100">No candles returned</p>
           <p class="mt-1 text-sm text-zinc-400">
             Try a wider date range or switch to another interval so the panel has something to
