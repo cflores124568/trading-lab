@@ -2,6 +2,7 @@
 import { A, useSearchParams } from "@solidjs/router";
 import { createResource, Show, For } from "solid-js";
 import AppShell from "../../components/AppShell";
+import WorkspaceLaunchControl from "../../components/workspace/WorkspaceLaunchControl";
 import { compareBacktests, type BacktestCompare } from "../../services/api";
 
 function formatMoney(value: number | undefined): string {
@@ -85,44 +86,69 @@ export default function BacktestComparePage() {
                     {[
                       { title: "Run A", backtest: a, accent: "text-sky-300" },
                       { title: "Run B", backtest: b, accent: "text-emerald-300" },
-                    ].map(({ title, backtest, accent }) => (
-                      <div class="app-panel app-panel-section space-y-4">
-                        <div class="space-y-2">
-                          <p class={`text-xs uppercase tracking-[0.18em] ${accent}`}>{title}</p>
-                          <h2 class="text-xl font-semibold text-zinc-100">
-                            {backtest.symbol} • {backtest.strategy.type.replace(/_/g, " ")}
-                          </h2>
-                          <p class="font-mono text-xs text-zinc-500">{backtest.backtest_id}</p>
-                        </div>
+                    ].map(({ title, backtest, accent }) => {
+                      const workspaceIntent =
+                        backtest.symbol && backtest.replay_context?.interval
+                          ? {
+                              source: "backtest" as const,
+                              symbol: backtest.symbol,
+                              interval: backtest.replay_context.interval,
+                              startDate: backtest.replay_context.start_date ?? undefined,
+                              endDate: backtest.replay_context.end_date ?? undefined,
+                            }
+                          : null;
 
-                        <div class="grid grid-cols-2 gap-3">
-                          <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                            <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Total PnL</p>
-                            <p class={`mt-2 font-mono text-lg font-semibold ${backtest.metrics.total_pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
-                              {formatMoney(backtest.metrics.total_pnl)}
-                            </p>
+                      return (
+                        <div class="app-panel app-panel-section space-y-4">
+                          <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div class="space-y-2">
+                              <p class={`text-xs uppercase tracking-[0.18em] ${accent}`}>{title}</p>
+                              <h2 class="text-xl font-semibold text-zinc-100">
+                                {backtest.symbol} • {backtest.strategy.type.replace(/_/g, " ")}
+                              </h2>
+                              <p class="font-mono text-xs text-zinc-500">{backtest.backtest_id}</p>
+                            </div>
+
+                            <Show when={workspaceIntent}>
+                              {(intent) => (
+                                <WorkspaceLaunchControl
+                                  intent={intent()}
+                                  compact
+                                  buttonLabel={`Open ${title} in Workspace`}
+                                />
+                              )}
+                            </Show>
                           </div>
-                          <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                            <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Win Rate</p>
-                            <p class="mt-2 font-mono text-lg font-semibold text-zinc-100">
-                              {formatPercent(backtest.metrics.win_rate)}
-                            </p>
-                          </div>
-                          <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                            <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Max Drawdown</p>
-                            <p class="mt-2 font-mono text-sm font-semibold text-zinc-100">
-                              {formatPercent(backtest.metrics.max_drawdown)}
-                            </p>
-                          </div>
-                          <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                            <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Created</p>
-                            <p class="mt-2 text-sm font-medium text-zinc-100">
-                              {backtest.created_at.slice(0, 10)}
-                            </p>
+
+                          <div class="grid grid-cols-2 gap-3">
+                            <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                              <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Total PnL</p>
+                              <p class={`mt-2 font-mono text-lg font-semibold ${backtest.metrics.total_pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+                                {formatMoney(backtest.metrics.total_pnl)}
+                              </p>
+                            </div>
+                            <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                              <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Win Rate</p>
+                              <p class="mt-2 font-mono text-lg font-semibold text-zinc-100">
+                                {formatPercent(backtest.metrics.win_rate)}
+                              </p>
+                            </div>
+                            <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                              <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Max Drawdown</p>
+                              <p class="mt-2 font-mono text-sm font-semibold text-zinc-100">
+                                {formatPercent(backtest.metrics.max_drawdown)}
+                              </p>
+                            </div>
+                            <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                              <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Created</p>
+                              <p class="mt-2 text-sm font-medium text-zinc-100">
+                                {backtest.created_at.slice(0, 10)}
+                              </p>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </section>
 
                   <div class="app-panel app-panel-section">

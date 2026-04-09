@@ -172,6 +172,7 @@ class BacktestSummary(BaseModel):
     backtest_id:    str
     dataset_id:     str
     symbol:         Optional[str]   = None   # e.g. "NQ", "ES" — set for Databento backtests
+    replay_context: Optional[ReplayContext] = None
     strategy_type:  StrategyType
     status:         str
     total_pnl:      float

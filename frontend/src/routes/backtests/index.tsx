@@ -1,6 +1,7 @@
 import { createResource, For, Show, createSignal } from "solid-js";
 import { A, useNavigate } from "@solidjs/router";
 import AppShell from "../../components/AppShell";
+import WorkspaceLaunchControl from "../../components/workspace/WorkspaceLaunchControl";
 import { fetchBacktests, type BacktestSummary } from "../../services/api";
 
 export default function BacktestList() {
@@ -81,6 +82,16 @@ export default function BacktestList() {
                   const isSelected = () => selected().includes(bt.backtest_id);
                   const detailHref = `/backtests/${bt.backtest_id}`;
                   const replayHref = `${detailHref}#replay`;
+                  const workspaceIntent =
+                    bt.symbol && bt.replay_context?.interval
+                      ? {
+                          source: "backtest" as const,
+                          symbol: bt.symbol,
+                          interval: bt.replay_context.interval,
+                          startDate: bt.replay_context.start_date ?? undefined,
+                          endDate: bt.replay_context.end_date ?? undefined,
+                        }
+                      : null;
 
                   return (
                     <div
@@ -133,6 +144,16 @@ export default function BacktestList() {
                         </p>
 
                         <div class="flex items-center gap-2">
+                          <Show when={workspaceIntent}>
+                            {(intent) => (
+                              <div onClick={(event) => event.stopPropagation()}>
+                                <WorkspaceLaunchControl
+                                  intent={intent()}
+                                  compact
+                                />
+                              </div>
+                            )}
+                          </Show>
                           <A
                             href={detailHref}
                             class="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"

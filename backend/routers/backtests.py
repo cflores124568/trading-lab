@@ -31,7 +31,41 @@ def _load_backtest_any(backtest_id: str) -> dict | None:
     if bt is None:
         bt = get_backtest_mem(backtest_id)
 
-    return bt
+    return _ensure_backtest_replay_context(bt)
+
+
+def _ensure_backtest_replay_context(backtest: dict | None) -> dict | None:
+    """Backfill `replay_context` from a still-loaded dataset when we can.
+
+    Older saved backtests predate durable replay metadata, so the cleanest
+    upgrade path is to rebuild that context from the original in-memory dataset
+    if it's still around. When that works we persist the richer payload back to
+    storage so the next read doesn't have to guess again.
+    """
+    if backtest is None or backtest.get("replay_context"):
+        return backtest
+
+    dataset_id = backtest.get("dataset_id")
+    if not dataset_id:
+        return backtest
+
+    try:
+        dataset = get_dataset(dataset_id)
+    except Exception:
+        return backtest
+
+    replay_context = _build_replay_context(dataset)
+    if not replay_context:
+        return backtest
+
+    next_backtest = {**backtest, "replay_context": replay_context}
+
+    try:
+        save_backtest(next_backtest)
+    except Exception:
+        pass
+
+    return next_backtest
 
 
 def _build_replay_context(dataset: dict) -> dict | None:
@@ -161,15 +195,17 @@ async def list_backtests():
 
     summaries = []
     for bt in source:
+        hydrated = _ensure_backtest_replay_context(bt) or bt
         summaries.append({
-            "backtest_id": bt["backtest_id"],
-            "dataset_id": bt["dataset_id"],
-            "symbol": bt.get("symbol", ""),
-            "strategy_type": bt["strategy"]["type"],
-            "status": bt["status"],
-            "total_pnl": bt["metrics"]["total_pnl"],
-            "win_rate": bt["metrics"]["win_rate"],
-            "created_at": bt["created_at"],
+            "backtest_id": hydrated["backtest_id"],
+            "dataset_id": hydrated["dataset_id"],
+            "symbol": hydrated.get("symbol", ""),
+            "replay_context": hydrated.get("replay_context"),
+            "strategy_type": hydrated["strategy"]["type"],
+            "status": hydrated["status"],
+            "total_pnl": hydrated["metrics"]["total_pnl"],
+            "win_rate": hydrated["metrics"]["win_rate"],
+            "created_at": hydrated["created_at"],
         })
     return summaries
 

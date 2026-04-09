@@ -171,6 +171,13 @@ export interface BacktestSummary {
   backtest_id: string;
   dataset_id: string;
   symbol: string;
+  replay_context?: {
+    source: string;
+    symbol?: string;
+    interval?: string;
+    start_date?: string;
+    end_date?: string;
+  } | null;
   strategy_type: string;
   status: string;
   total_pnl: number;
@@ -193,6 +200,13 @@ export interface BacktestCompare {
   backtest_a: {
     backtest_id: string;
     symbol: string;
+    replay_context?: {
+      source: string;
+      symbol?: string;
+      interval?: string;
+      start_date?: string;
+      end_date?: string;
+    } | null;
     strategy: { type: string; params: Record<string, unknown> };
     created_at: string;
     metrics: BacktestMetrics;
@@ -200,6 +214,13 @@ export interface BacktestCompare {
   backtest_b: {
     backtest_id: string;
     symbol: string;
+    replay_context?: {
+      source: string;
+      symbol?: string;
+      interval?: string;
+      start_date?: string;
+      end_date?: string;
+    } | null;
     strategy: { type: string; params: Record<string, unknown> };
     created_at: string;
     metrics: BacktestMetrics;
