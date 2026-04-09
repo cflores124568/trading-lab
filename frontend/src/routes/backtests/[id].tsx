@@ -31,6 +31,7 @@ import {
 } from "../../services/replaySimulator";
 import { CircleCheck, CircleX, TriangleAlert } from "lucide-solid";
 import AppShell from "../../components/AppShell";
+import WorkspaceLaunchControl from "../../components/workspace/WorkspaceLaunchControl";
 
 const tickValueBySymbol = Object.fromEntries(
   DATABENTO_SYMBOLS.map((symbol) => [symbol.key, symbol.tickValue]),
@@ -171,6 +172,22 @@ export default function BacktestDetail() {
   const tradeEntryIndices = createMemo(() =>
     candles() && result() ? getTradeEntryIndices(candles() ?? [], result()?.trades ?? []) : [],
   );
+  const workspaceIntent = createMemo(() => {
+    const backtest = result();
+    const replayContext = backtest?.replay_context;
+
+    if (!backtest?.symbol || !replayContext?.interval) {
+      return null;
+    }
+
+    return {
+      source: "backtest" as const,
+      symbol: backtest.symbol,
+      interval: replayContext.interval,
+      startDate: replayContext.start_date ?? undefined,
+      endDate: replayContext.end_date ?? undefined,
+    };
+  });
 
   const replaySession = createMemo(() => {
     const backtest = result();
@@ -345,6 +362,9 @@ export default function BacktestDetail() {
                   </div>
 
                   <div class="flex flex-wrap items-center gap-3">
+                    <Show when={workspaceIntent()}>
+                      {(intent) => <WorkspaceLaunchControl intent={intent()} buttonLabel="Open in Workspace" />}
+                    </Show>
                     <a
                       href="#replay"
                       class="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white"
@@ -359,6 +379,12 @@ export default function BacktestDetail() {
                     </A>
                   </div>
                 </div>
+                <Show when={!workspaceIntent() && result()?.symbol}>
+                  <p class="text-xs text-zinc-500">
+                    `Open in Workspace` needs durable replay context, so older saved backtests
+                    still fall back to the replay section below.
+                  </p>
+                </Show>
               </section>
 
               <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">

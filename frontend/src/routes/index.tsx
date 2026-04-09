@@ -1,6 +1,6 @@
-import { A } from "@solidjs/router";
-import { batch, createEffect, createMemo } from "solid-js";
-import { createStore } from "solid-js/store";
+import { A, useLocation, useNavigate } from "@solidjs/router";
+import { batch, createEffect, createMemo, createSignal } from "solid-js";
+import { createStore, reconcile } from "solid-js/store";
 import AppShell from "../components/AppShell";
 import WorkspaceGrid from "../components/workspace/WorkspaceGrid";
 import WorkspaceToolbar from "../components/workspace/WorkspaceToolbar";
@@ -18,28 +18,20 @@ import {
   type WorkspaceLayout,
   type WorkspacePreset,
 } from "../components/workspace/chartPanelTypes";
-
-const WORKSPACE_STORAGE_KEY = "trading-lab.dashboard.workspace.v1";
-
-function loadWorkspaceState() {
-  if (typeof window === "undefined") {
-    return normalizeWorkspaceCollectionState(null);
-  }
-
-  const saved = window.localStorage.getItem(WORKSPACE_STORAGE_KEY);
-  if (!saved) {
-    return normalizeWorkspaceCollectionState(null);
-  }
-
-  try {
-    return normalizeWorkspaceCollectionState(JSON.parse(saved));
-  } catch {
-    return normalizeWorkspaceCollectionState(null);
-  }
-}
+import {
+  applyWorkspaceLaunch,
+  describeWorkspaceLaunchSource,
+  loadWorkspaceCollectionState,
+  parseWorkspaceLaunchSearch,
+  saveWorkspaceCollectionState,
+} from "../components/workspace/workspacePersistence";
 
 export default function Dashboard() {
-  const [workspace, setWorkspace] = createStore(loadWorkspaceState());
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [workspace, setWorkspace] = createStore(loadWorkspaceCollectionState());
+  const [launchNotice, setLaunchNotice] = createSignal<string | null>(null);
+  let hydratedLaunchSearch: string | null = null;
   const activeWorkspaceIndex = createMemo(() => {
     const index = workspace.workspaces.findIndex(
       (candidate) => candidate.id === workspace.selectedWorkspaceId,
@@ -57,6 +49,10 @@ export default function Dashboard() {
 
   const handleWorkspaceChange = (workspaceId: string) => {
     setWorkspace("selectedWorkspaceId", workspaceId);
+  };
+
+  const handleDefaultWorkspaceChange = (workspaceId: string) => {
+    setWorkspace("defaultWorkspaceId", workspaceId);
   };
 
   const handleWorkspaceNameChange = (nextName: string) => {
@@ -101,6 +97,9 @@ export default function Dashboard() {
     batch(() => {
       setWorkspace("workspaces", nextWorkspaces);
       setWorkspace("selectedWorkspaceId", fallbackWorkspace.id);
+      if (workspace.defaultWorkspaceId === workspace.workspaces[workspaceIndex].id) {
+        setWorkspace("defaultWorkspaceId", fallbackWorkspace.id);
+      }
     });
   };
 
@@ -184,11 +183,27 @@ export default function Dashboard() {
   };
 
   createEffect(() => {
-    if (typeof window === "undefined") {
+    const nextLaunch = parseWorkspaceLaunchSearch(location.search);
+    if (!nextLaunch || hydratedLaunchSearch === location.search) {
       return;
     }
 
-    window.localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(workspace));
+    hydratedLaunchSearch = location.search;
+    const nextState = applyWorkspaceLaunch(workspace, nextLaunch);
+    const workspaceName =
+      nextState.workspaces.find((candidate) => candidate.id === nextState.selectedWorkspaceId)?.name ??
+      "workspace";
+
+    batch(() => {
+      setWorkspace(reconcile(nextState));
+      setLaunchNotice(`Opened ${describeWorkspaceLaunchSource(nextLaunch.source)} in ${workspaceName}.`);
+    });
+
+    navigate("/", { replace: true });
+  });
+
+  createEffect(() => {
+    saveWorkspaceCollectionState(normalizeWorkspaceCollectionState(workspace));
   });
 
   return (
@@ -218,9 +233,16 @@ export default function Dashboard() {
         </>
       }
     >
+      {launchNotice() ? (
+        <div class="rounded-lg border border-emerald-700 bg-emerald-950 px-4 py-3 text-sm text-emerald-300">
+          {launchNotice()}
+        </div>
+      ) : null}
+
       <section class="app-panel app-panel-section">
         <WorkspaceToolbar
           workspaceId={activeWorkspace().id}
+          defaultWorkspaceId={workspace.defaultWorkspaceId}
           workspaceName={activeWorkspace().name}
           workspaceCount={workspace.workspaces.length}
           workspaces={workspace.workspaces.map((candidate) => ({
@@ -233,6 +255,7 @@ export default function Dashboard() {
           canAddChart={canAddChart()}
           canDeleteWorkspace={canDeleteWorkspace()}
           onWorkspaceChange={handleWorkspaceChange}
+          onDefaultWorkspaceChange={handleDefaultWorkspaceChange}
           onWorkspaceNameChange={handleWorkspaceNameChange}
           onCreateWorkspace={handleCreateWorkspace}
           onDeleteWorkspace={handleDeleteWorkspace}
@@ -252,22 +275,22 @@ export default function Dashboard() {
 
       <section class="grid gap-4 lg:grid-cols-3">
         <div class="app-panel app-panel-section">
-          <p class="app-kicker">Saved Desks</p>
+          <p class="app-kicker">Saved Workspaces</p>
           <p class="mt-2 text-sm font-semibold text-zinc-100">Keep separate setups without losing presets</p>
           <p class="mt-1 text-sm text-zinc-400">
-            Fork the current desk, give it a real name, and keep one version for replay, one for
-            backtest review, and another for live scan work without turning the dashboard into
+            Fork the current workspace, give it a real name, and keep one version for replay, one
+            for backtest review, and another for live scan work without turning the dashboard into
             generic floating widgets.
           </p>
         </div>
 
         <div class="app-panel app-panel-section">
           <p class="app-kicker">Dynamic Panels</p>
-          <p class="mt-2 text-sm font-semibold text-zinc-100">Every saved desk still grows and heals itself</p>
+          <p class="mt-2 text-sm font-semibold text-zinc-100">Every saved workspace still grows and heals itself</p>
           <p class="mt-1 text-sm text-zinc-400">
-            Add or remove charts inside any desk and the row weights plus column ratios rebalance
-            automatically, so your layout keeps feeling intentional instead of leaving behind dead
-            space.
+            Add or remove charts inside any workspace and the row weights plus column ratios
+            rebalance automatically, so your layout keeps feeling intentional instead of leaving
+            behind dead space.
           </p>
         </div>
 
@@ -276,8 +299,8 @@ export default function Dashboard() {
           <p class="mt-2 text-sm font-semibold text-zinc-100">The preset model stays in charge</p>
           <p class="mt-1 text-sm text-zinc-400">
             This still starts from `1`, `2`, and `4` chart trading setups, then lets each saved
-            desk bend from there. That keeps the product opinionated instead of sliding straight
-            into a widget playground.
+            workspace bend from there. That keeps the product opinionated instead of sliding
+            straight into a widget playground.
           </p>
         </div>
       </section>

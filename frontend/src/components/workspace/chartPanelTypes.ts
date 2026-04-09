@@ -13,8 +13,8 @@ export type ChartPanelQuery =
       mode: "historical";
       symbol: string;
       interval: string;
-      startDate: string;
-      endDate: string;
+      startDate?: string;
+      endDate?: string;
     };
 
 export interface ChartPanelConfig {
@@ -62,6 +62,7 @@ export interface SavedWorkspace extends WorkspaceState {
 
 export interface WorkspaceCollectionState {
   selectedWorkspaceId: string;
+  defaultWorkspaceId: string;
   workspaces: SavedWorkspace[];
 }
 
@@ -73,7 +74,7 @@ export interface WorkspacePresetOption {
 
 const MIN_RATIO = 0.3;
 export const MAX_WORKSPACE_PANELS = 6;
-export const DEFAULT_WORKSPACE_NAME = "Main Desk";
+export const DEFAULT_WORKSPACE_NAME = "Main Workspace";
 export const MAX_WORKSPACE_NAME_LENGTH = 36;
 
 function formatDate(daysAgo: number): string {
@@ -91,7 +92,7 @@ function createPanelId(preset: WorkspacePreset): string {
 }
 
 function createWorkspaceId(): string {
-  return `desk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `workspace-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function buildPanelTemplates(): Record<WorkspacePreset, Omit<ChartPanelConfig, "id">[]> {
@@ -448,6 +449,7 @@ export function buildDefaultWorkspaceCollectionState(): WorkspaceCollectionState
   const workspace = buildSavedWorkspace();
   return {
     selectedWorkspaceId: workspace.id,
+    defaultWorkspaceId: workspace.id,
     workspaces: [workspace],
   };
 }
@@ -473,17 +475,15 @@ function normalizeQuery(query: unknown, fallback: ChartPanelQuery): ChartPanelQu
 
   if (
     record.mode === "historical" &&
-    typeof record.startDate === "string" &&
-    typeof record.endDate === "string" &&
-    record.startDate &&
-    record.endDate
+    (typeof record.startDate === "string" || typeof record.startDate === "undefined") &&
+    (typeof record.endDate === "string" || typeof record.endDate === "undefined")
   ) {
     return {
       mode: "historical",
       symbol,
       interval,
-      startDate: record.startDate,
-      endDate: record.endDate,
+      startDate: typeof record.startDate === "string" ? record.startDate : undefined,
+      endDate: typeof record.endDate === "string" ? record.endDate : undefined,
     };
   }
 
@@ -575,10 +575,10 @@ export function createWorkspaceCopyName(baseName: string, existingNames: string[
 }
 
 /**
- * Turn whatever is in localStorage into a sane saved-desk collection.
+ * Turn whatever is in localStorage into a sane saved-workspace collection.
  *
  * Older dashboard builds only stored one workspace object, so this quietly
- * wraps that shape in a named desk instead of wiping out somebody's panels
+ * wraps that shape in a named workspace instead of wiping out somebody's panels
  * the first time they land on the new version.
  */
 export function normalizeWorkspaceCollectionState(value: unknown): WorkspaceCollectionState {
@@ -593,6 +593,7 @@ export function normalizeWorkspaceCollectionState(value: unknown): WorkspaceColl
     const migrated = buildSavedWorkspace(DEFAULT_WORKSPACE_NAME, normalizeWorkspaceState(value));
     return {
       selectedWorkspaceId: migrated.id,
+      defaultWorkspaceId: migrated.id,
       workspaces: [migrated],
     };
   }
@@ -616,7 +617,7 @@ export function normalizeWorkspaceCollectionState(value: unknown): WorkspaceColl
 
       return {
         id,
-        name: normalizeWorkspaceName(candidateRecord.name, `Desk ${index + 1}`),
+        name: normalizeWorkspaceName(candidateRecord.name, `Workspace ${index + 1}`),
         selectedPreset: normalizedState.selectedPreset,
         presets: normalizedState.presets,
       } satisfies SavedWorkspace;
@@ -632,9 +633,15 @@ export function normalizeWorkspaceCollectionState(value: unknown): WorkspaceColl
     workspaces.some((workspace) => workspace.id === record.selectedWorkspaceId)
       ? record.selectedWorkspaceId
       : workspaces[0].id;
+  const defaultWorkspaceId =
+    typeof record.defaultWorkspaceId === "string" &&
+    workspaces.some((workspace) => workspace.id === record.defaultWorkspaceId)
+      ? record.defaultWorkspaceId
+      : selectedWorkspaceId;
 
   return {
     selectedWorkspaceId,
+    defaultWorkspaceId,
     workspaces,
   };
 }

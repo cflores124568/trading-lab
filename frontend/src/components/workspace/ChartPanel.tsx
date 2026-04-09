@@ -32,7 +32,7 @@ function summarizeQuery(query: ChartPanelQuery): string {
     return `${query.symbol} on ${query.interval} for ${query.period}`;
   }
 
-  return `${query.symbol} on ${query.interval} from ${query.startDate} to ${query.endDate}`;
+  return `${query.symbol} on ${query.interval} from ${query.startDate || "Earliest"} to ${query.endDate || "Latest"}`;
 }
 
 function getLiveInterval(value: string): string {
@@ -76,7 +76,11 @@ export default function ChartPanel(props: Props) {
       );
     }
 
-    if (nextQuery.startDate > nextQuery.endDate) {
+    if (
+      nextQuery.startDate &&
+      nextQuery.endDate &&
+      nextQuery.startDate > nextQuery.endDate
+    ) {
       throw new Error("Start date must be before end date.");
     }
 
@@ -87,8 +91,8 @@ export default function ChartPanel(props: Props) {
     return fetchCandles({
       symbol: nextQuery.symbol,
       interval: getBackendInterval(selectedInterval),
-      startDate: nextQuery.startDate,
-      endDate: nextQuery.endDate,
+      startDate: nextQuery.startDate || undefined,
+      endDate: nextQuery.endDate || undefined,
       limit: 50_000,
     });
   });

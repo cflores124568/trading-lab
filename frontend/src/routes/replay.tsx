@@ -42,6 +42,8 @@ import {
   simulateReplaySession,
   type ReplayAction,
 } from "../services/replaySimulator";
+import WorkspaceLaunchControl from "../components/workspace/WorkspaceLaunchControl";
+import type { WorkspaceLaunchIntent } from "../components/workspace/workspacePersistence";
 
 const field =
   "w-full rounded px-3 py-2 text-sm bg-zinc-800 border border-zinc-700 " +
@@ -382,6 +384,20 @@ export default function ReplayLabPage() {
       return "completed";
     }
     return "active";
+  });
+  const workspaceIntent = createMemo<WorkspaceLaunchIntent | null>(() => {
+    const config = launchConfig();
+    if (!config) {
+      return null;
+    }
+
+    return {
+      source: sessionId() ? "replay-session" : "replay-lab",
+      symbol: config.symbol.symbol,
+      interval: getBackendInterval(config.interval),
+      startDate: config.startDate,
+      endDate: config.endDate,
+    };
   });
 
   const chartMarkers = createMemo<PriceChartMarker[]>(() => {
@@ -823,6 +839,14 @@ export default function ReplayLabPage() {
             </div>
 
             <div class="flex flex-col gap-3 md:flex-row">
+              <Show when={workspaceIntent()}>
+                {(intent) => (
+                  <WorkspaceLaunchControl
+                    intent={intent()}
+                    buttonLabel="Open in Workspace"
+                  />
+                )}
+              </Show>
               <button
                 class={
                   "w-full rounded-xl px-5 py-3 text-sm font-semibold transition-colors md:w-auto " +
