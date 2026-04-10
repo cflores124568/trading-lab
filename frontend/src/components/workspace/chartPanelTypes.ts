@@ -76,6 +76,7 @@ const MIN_RATIO = 0.3;
 export const MAX_WORKSPACE_PANELS = 6;
 export const DEFAULT_WORKSPACE_NAME = "Main Workspace";
 export const MAX_WORKSPACE_NAME_LENGTH = 36;
+export const MAX_PANEL_TITLE_LENGTH = 40;
 
 function formatDate(daysAgo: number): string {
   const date = new Date();
@@ -420,6 +421,15 @@ export function normalizeWorkspaceName(value: unknown, fallback = DEFAULT_WORKSP
   return cleaned || fallback;
 }
 
+export function normalizePanelTitle(value: unknown, fallback = "Chart"): string {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  const cleaned = value.trim().replace(/\s+/g, " ").slice(0, MAX_PANEL_TITLE_LENGTH);
+  return cleaned || fallback;
+}
+
 export function cloneWorkspaceState(state: WorkspaceState): WorkspaceState {
   return {
     selectedPreset: state.selectedPreset,
@@ -507,7 +517,7 @@ function normalizePanels(value: unknown, preset: WorkspacePreset): ChartPanelCon
 
     return {
       id: typeof record.id === "string" && record.id.trim() ? record.id : template.id,
-      title: typeof record.title === "string" && record.title.trim() ? record.title : template.title,
+      title: normalizePanelTitle(record.title, template.title),
       query: normalizeQuery(record.query, template.query),
     };
   });

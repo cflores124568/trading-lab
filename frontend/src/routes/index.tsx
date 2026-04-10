@@ -10,6 +10,7 @@ import {
   createWorkspaceCopyName,
   createWorkspacePanel,
   normalizeWorkspaceCollectionState,
+  normalizePanelTitle,
   normalizeWorkspaceName,
   MAX_WORKSPACE_PANELS,
   reconcileWorkspaceLayout,
@@ -119,6 +120,31 @@ export default function Dashboard() {
     }
 
     setWorkspace("workspaces", workspaceIndex, "presets", preset, "panels", panelIndex, "query", nextQuery);
+  };
+
+  const handlePanelTitleChange = (panelId: string, nextTitle: string) => {
+    const workspaceIndex = activeWorkspaceIndex();
+    const preset = workspace.workspaces[workspaceIndex].selectedPreset;
+    const panelIndex = workspace.workspaces[workspaceIndex].presets[preset].panels.findIndex(
+      (panel) => panel.id === panelId,
+    );
+
+    if (panelIndex === -1) {
+      return;
+    }
+
+    const currentTitle =
+      workspace.workspaces[workspaceIndex].presets[preset].panels[panelIndex]?.title ?? "Chart";
+    setWorkspace(
+      "workspaces",
+      workspaceIndex,
+      "presets",
+      preset,
+      "panels",
+      panelIndex,
+      "title",
+      normalizePanelTitle(nextTitle, currentTitle),
+    );
   };
 
   const handleLayoutChange = (nextLayout: WorkspaceLayout) => {
@@ -269,6 +295,7 @@ export default function Dashboard() {
         panels={activePresetState().panels}
         layout={activePresetState().layout}
         onLayoutChange={handleLayoutChange}
+        onPanelTitleChange={handlePanelTitleChange}
         onPanelQueryChange={handlePanelQueryChange}
         onPanelRemove={handleRemovePanel}
       />

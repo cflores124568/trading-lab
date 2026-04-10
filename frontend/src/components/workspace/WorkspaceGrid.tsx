@@ -17,6 +17,7 @@ interface Props {
   panels: ChartPanelConfig[];
   layout: WorkspaceLayout;
   onLayoutChange: (layout: WorkspaceLayout) => void;
+  onPanelTitleChange: (panelId: string, title: string) => void;
   onPanelQueryChange: (panelId: string, query: ChartPanelQuery) => void;
   onPanelRemove: (panelId: string) => void;
 }
@@ -162,6 +163,7 @@ function beginWeightResize(
 function PanelSlot(props: {
   panel: ChartPanelConfig | undefined;
   canRemove: boolean;
+  onPanelTitleChange: (panelId: string, title: string) => void;
   onPanelQueryChange: (panelId: string, query: ChartPanelQuery) => void;
   onPanelRemove: (panelId: string) => void;
 }) {
@@ -176,6 +178,7 @@ function PanelSlot(props: {
       <ChartPanel
         panel={panel}
         canRemove={props.canRemove}
+        onTitleChange={(title) => props.onPanelTitleChange(panel.id, title)}
         onQueryChange={(query) => props.onPanelQueryChange(panel.id, query)}
         onRemove={() => props.onPanelRemove(panel.id)}
       />
@@ -188,6 +191,7 @@ function DesktopRow(props: {
   columnRatio: number | null;
   canRemove: boolean;
   onColumnRatioChange: ((ratio: number) => void) | null;
+  onPanelTitleChange: (panelId: string, title: string) => void;
   onPanelQueryChange: (panelId: string, query: ChartPanelQuery) => void;
   onPanelRemove: (panelId: string) => void;
 }) {
@@ -204,6 +208,7 @@ function DesktopRow(props: {
           <PanelSlot
             panel={props.panels[0]}
             canRemove={props.canRemove}
+            onPanelTitleChange={props.onPanelTitleChange}
             onPanelQueryChange={props.onPanelQueryChange}
             onPanelRemove={props.onPanelRemove}
           />
@@ -217,6 +222,7 @@ function DesktopRow(props: {
             <PanelSlot
               panel={rightPanel()}
               canRemove={props.canRemove}
+              onPanelTitleChange={props.onPanelTitleChange}
               onPanelQueryChange={props.onPanelQueryChange}
               onPanelRemove={props.onPanelRemove}
             />
@@ -241,6 +247,7 @@ function FocusDesktopLayout(props: {
   panels: ChartPanelConfig[];
   layout: FocusWorkspaceLayout;
   onLayoutChange: (layout: FocusWorkspaceLayout) => void;
+  onPanelTitleChange: (panelId: string, title: string) => void;
   onPanelQueryChange: (panelId: string, query: ChartPanelQuery) => void;
   onPanelRemove: (panelId: string) => void;
 }) {
@@ -259,6 +266,7 @@ function FocusDesktopLayout(props: {
             <PanelSlot
               panel={panel}
               canRemove={props.panels.length > 1}
+              onPanelTitleChange={props.onPanelTitleChange}
               onPanelQueryChange={props.onPanelQueryChange}
               onPanelRemove={props.onPanelRemove}
             />
@@ -286,6 +294,7 @@ function TiledDesktopLayout(props: {
   panels: ChartPanelConfig[];
   layout: SplitWorkspaceLayout | GridWorkspaceLayout;
   onLayoutChange: (layout: SplitWorkspaceLayout | GridWorkspaceLayout) => void;
+  onPanelTitleChange: (panelId: string, title: string) => void;
   onPanelQueryChange: (panelId: string, query: ChartPanelQuery) => void;
   onPanelRemove: (panelId: string) => void;
 }) {
@@ -315,6 +324,7 @@ function TiledDesktopLayout(props: {
                     }
                   : null
               }
+              onPanelTitleChange={props.onPanelTitleChange}
               onPanelQueryChange={props.onPanelQueryChange}
               onPanelRemove={props.onPanelRemove}
             />
@@ -345,6 +355,7 @@ export default function WorkspaceGrid(props: Props) {
           <PanelSlot
             panel={panel}
             canRemove={props.panels.length > 1}
+            onPanelTitleChange={props.onPanelTitleChange}
             onPanelQueryChange={props.onPanelQueryChange}
             onPanelRemove={props.onPanelRemove}
           />
@@ -356,6 +367,7 @@ export default function WorkspaceGrid(props: Props) {
           panels={props.panels}
           layout={props.layout}
           onLayoutChange={props.onLayoutChange}
+          onPanelTitleChange={props.onPanelTitleChange}
           onPanelQueryChange={props.onPanelQueryChange}
           onPanelRemove={props.onPanelRemove}
         />
@@ -367,6 +379,7 @@ export default function WorkspaceGrid(props: Props) {
           panels={props.panels}
           layout={props.layout}
           onLayoutChange={props.onLayoutChange}
+          onPanelTitleChange={props.onPanelTitleChange}
           onPanelQueryChange={props.onPanelQueryChange}
           onPanelRemove={props.onPanelRemove}
         />

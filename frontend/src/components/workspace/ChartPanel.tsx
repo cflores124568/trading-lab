@@ -1,4 +1,4 @@
-import { createMemo, createResource, Show } from "solid-js";
+import { createEffect, createMemo, createResource, createSignal, Show } from "solid-js";
 import PriceChart from "../PriceChart";
 import {
   BACKTEST_INTERVALS,
@@ -11,11 +11,17 @@ import {
   YFINANCE_SYMBOLS,
 } from "../../constants";
 import { fetchCandles, fetchYfinanceCandles, type Candle } from "../../services/api";
-import type { ChartPanelConfig, ChartPanelQuery } from "./chartPanelTypes";
+import {
+  MAX_PANEL_TITLE_LENGTH,
+  normalizePanelTitle,
+  type ChartPanelConfig,
+  type ChartPanelQuery,
+} from "./chartPanelTypes";
 
 interface Props {
   panel: ChartPanelConfig;
   canRemove: boolean;
+  onTitleChange: (title: string) => void;
   onQueryChange: (query: ChartPanelQuery) => void;
   onRemove: () => void;
 }
@@ -63,6 +69,11 @@ function toHistoricalQuery(query: ChartPanelQuery): ChartPanelQuery {
 
 export default function ChartPanel(props: Props) {
   const query = createMemo(() => props.panel.query);
+  const [titleDraft, setTitleDraft] = createSignal(props.panel.title);
+
+  createEffect(() => {
+    setTitleDraft(props.panel.title);
+  });
 
   const [candles] = createResource<Candle[], ChartPanelQuery>(query, async (nextQuery) => {
     if (nextQuery.mode === "live") {
@@ -116,14 +127,46 @@ export default function ChartPanel(props: Props) {
     const current = query();
     props.onQueryChange(typeof nextQuery === "function" ? nextQuery(current) : nextQuery);
   };
+  const commitTitle = () => {
+    const nextTitle = normalizePanelTitle(titleDraft(), props.panel.title);
+    setTitleDraft(nextTitle);
+    props.onTitleChange(nextTitle);
+  };
 
   return (
     <section class="app-panel app-panel-section flex h-full min-h-[560px] flex-col space-y-4">
       <div class="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-        <div class="space-y-1">
-          <p class="app-kicker">{query().mode === "live" ? "Live Preview" : "Historical Query"}</p>
+        <div class="min-w-0 flex-1 space-y-3">
+          <div class="space-y-1">
+            <p class="app-kicker">{query().mode === "live" ? "Live Preview" : "Historical Query"}</p>
+            <p class="text-sm text-zinc-400">{panelSummary()}</p>
+          </div>
+
+          <label class="block max-w-md space-y-1">
+            <span class="block text-xs text-zinc-500">Panel title</span>
+            <input
+              type="text"
+              class={field}
+              value={titleDraft()}
+              maxLength={MAX_PANEL_TITLE_LENGTH}
+              placeholder="Higher Timeframe Bias"
+              onInput={(event) => setTitleDraft(event.currentTarget.value)}
+              onBlur={commitTitle}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  commitTitle();
+                  event.currentTarget.blur();
+                }
+
+                if (event.key === "Escape") {
+                  setTitleDraft(props.panel.title);
+                  event.currentTarget.blur();
+                }
+              }}
+            />
+          </label>
+
           <h3 class="text-base font-semibold text-zinc-100">{props.panel.title}</h3>
-          <p class="text-sm text-zinc-400">{panelSummary()}</p>
         </div>
 
         <div class="flex flex-wrap justify-end gap-2">
