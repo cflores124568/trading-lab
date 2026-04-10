@@ -3,6 +3,7 @@ import { createResource, For, Show } from "solid-js";
 import AppShell from "../components/AppShell";
 import WorkspaceLaunchControl from "../components/workspace/WorkspaceLaunchControl";
 import { fetchReplaySessions, type ReplaySessionSummary } from "../services/api";
+import { formatReplaySessionStatus } from "../services/replaySessionState";
 
 function formatMoney(value: number): string {
   return `${value >= 0 ? "+" : "-"}$${Math.abs(value).toFixed(2)}`;
@@ -22,7 +23,7 @@ export default function ReplaySessionListPage() {
   return (
     <AppShell
       title="Replay Sessions"
-      subtitle="Resume saved standalone manual sessions and keep working through historical market windows."
+      subtitle="Resume saved simulated-live sessions and keep working through old market windows without turning them into hindsight study."
       actions={
         <A
           href="/replay"
@@ -53,7 +54,7 @@ export default function ReplaySessionListPage() {
                       <div class="space-y-2">
                         <p class="text-sm font-semibold text-zinc-100">{session.name}</p>
                         <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                          {session.symbol} · {session.interval} · {session.status}
+                          {session.symbol} · {session.interval} · {formatReplaySessionStatus(session.status)}
                         </p>
                         <p class="text-sm text-zinc-400">{formatRange(session)}</p>
                         <p class="text-xs text-zinc-500">

@@ -16,16 +16,22 @@ import {
 interface Props {
   isPlaying: boolean;
   speed: number;
+  statusLabel: string;
+  statusDetail: string;
   progress: number;
   currentBar: number;
   totalBars: number;
   currentTimeLabel: string;
   currentPriceLabel: string;
   positionLabel: string;
+  canSeek: boolean;
+  canStartPlayback: boolean;
   canStepBack: boolean;
   canStepForward: boolean;
   canJumpPrevTrade: boolean;
   canJumpNextTrade: boolean;
+  canLong: boolean;
+  canShort: boolean;
   canExitPosition: boolean;
   onPlayPause: () => void;
   onSpeedChange: (speed: number) => void;
@@ -51,6 +57,18 @@ function ghostButton(enabled: boolean): string {
   ].join(" ");
 }
 
+function actionButton(enabled: boolean, tone: "green" | "rose"): string {
+  const activeTone =
+    tone === "green"
+      ? "bg-emerald-600 text-white hover:bg-emerald-500"
+      : "bg-rose-600 text-white hover:bg-rose-500";
+
+  return [
+    "px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors",
+    enabled ? activeTone : "bg-zinc-800 text-zinc-500 cursor-not-allowed",
+  ].join(" ");
+}
+
 export default function ReplayControls(props: Props) {
   return (
     <div class="flex flex-col gap-5 bg-zinc-900 border border-zinc-800 rounded-xl p-5">
@@ -58,7 +76,12 @@ export default function ReplayControls(props: Props) {
         <div class="flex flex-wrap gap-3">
           <button
             onClick={props.onPlayPause}
-            class="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-lg font-medium flex items-center gap-2 transition-colors"
+            disabled={!props.isPlaying && !props.canStartPlayback}
+            class={`px-6 py-3 rounded-lg font-medium flex items-center gap-2 transition-colors ${
+              props.isPlaying || props.canStartPlayback
+                ? "bg-emerald-600 text-white hover:bg-emerald-500"
+                : "bg-zinc-800 text-zinc-500 cursor-not-allowed"
+            }`}
           >
             {props.isPlaying ? (
               <>
@@ -81,6 +104,10 @@ export default function ReplayControls(props: Props) {
         </div>
 
         <div class="grid grid-cols-2 gap-2 text-xs text-zinc-500 min-w-72">
+          <div class="rounded-lg bg-zinc-950 px-3 py-2 col-span-2">
+            <p>{props.statusLabel}</p>
+            <p class="mt-1 text-zinc-200">{props.statusDetail}</p>
+          </div>
           <div class="rounded-lg bg-zinc-950 px-3 py-2">
             <p>Time</p>
             <p class="font-mono text-zinc-200 mt-1">{props.currentTimeLabel}</p>
@@ -108,6 +135,7 @@ export default function ReplayControls(props: Props) {
             max="1"
             step="0.001"
             value={props.progress}
+            disabled={!props.canSeek}
             onInput={(event) => props.onSeek(parseFloat(event.currentTarget.value))}
             class="w-full accent-emerald-500"
           />
@@ -115,6 +143,11 @@ export default function ReplayControls(props: Props) {
             <span>Bar {props.currentBar} / {props.totalBars}</span>
             <span>{Math.round(props.progress * 100)}%</span>
           </div>
+          {props.canSeek ? null : (
+            <p class="text-xs text-zinc-500">
+              Timeline is locked during the sim so you can't peek ahead.
+            </p>
+          )}
         </div>
 
         <div class="space-y-2">
@@ -126,6 +159,7 @@ export default function ReplayControls(props: Props) {
             {speeds.map((speed) => (
               <button
                 onClick={() => props.onSpeedChange(speed)}
+                disabled={!props.canStartPlayback && !props.isPlaying}
                 class={`px-4 py-1.5 rounded-lg text-sm transition-all flex items-center gap-1 ${
                   props.speed === speed
                     ? "bg-emerald-600 text-white"
@@ -189,14 +223,16 @@ export default function ReplayControls(props: Props) {
           <div class="flex flex-wrap gap-2">
             <button
               onClick={props.onLong}
-              class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium flex items-center gap-2 transition-colors"
+              disabled={!props.canLong}
+              class={actionButton(props.canLong, "green")}
             >
               <TrendingUp size={16} />
               Long
             </button>
             <button
               onClick={props.onShort}
-              class="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-sm font-medium flex items-center gap-2 transition-colors"
+              disabled={!props.canShort}
+              class={actionButton(props.canShort, "rose")}
             >
               <TrendingDown size={16} />
               Short

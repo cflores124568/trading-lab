@@ -42,6 +42,10 @@ import {
   simulateReplaySession,
   type ReplayAction,
 } from "../services/replaySimulator";
+import {
+  formatReplaySessionStatus,
+  getReplaySessionStatus,
+} from "../services/replaySessionState";
 import WorkspaceLaunchControl from "../components/workspace/WorkspaceLaunchControl";
 import type { WorkspaceLaunchIntent } from "../components/workspace/workspacePersistence";
 
@@ -189,6 +193,7 @@ export default function ReplayLabPage() {
   const [isSaving, setIsSaving] = createSignal(false);
 
   const [isReplayActive, setIsReplayActive] = createSignal(false);
+  const [isReviewMode, setIsReviewMode] = createSignal(false);
   const [speed, setSpeed] = createSignal(8);
   const [currentIndex, setCurrentIndex] = createSignal(0);
   const [replayActions, setReplayActions] = createSignal<ReplayAction[]>([]);
@@ -241,6 +246,7 @@ export default function ReplayLabPage() {
       setEndDate(existing.end_date ?? "");
       setSpeed(8);
       setIsReplayActive(false);
+      setIsReviewMode(existing.status === "review");
       setCurrentIndex(existing.current_bar_index);
       setReplayActions(
         existing.actions.map((action) => ({
@@ -289,6 +295,7 @@ export default function ReplayLabPage() {
   const replayIndex = createMemo(() => clampReplayIndex(currentIndex(), totalBars()));
   const replayProgress = createMemo(() => getReplayProgress(replayIndex(), totalBars()));
   const currentCandle = createMemo<Candle | undefined>(() => candles()?.[replayIndex()]);
+  const hasLaunch = createMemo(() => !!launchConfig());
 
   const replayTradeEntryIndices = createMemo(() =>
     Array.from(
@@ -317,6 +324,68 @@ export default function ReplayLabPage() {
       tickValue: config.tickValue,
       propFirmRules: config.propFirmRules,
     });
+  });
+
+  const isSessionComplete = createMemo(() => {
+    const session = replaySession();
+    return totalBars() > 0 && replayIndex() >= totalBars() - 1 && !session?.position;
+  });
+
+  const replayStatus = createMemo(() =>
+    getReplaySessionStatus({
+      hasLaunch: hasLaunch(),
+      isPlaying: isReplayActive(),
+      isComplete: isSessionComplete(),
+      isReviewMode: isReviewMode(),
+    }),
+  );
+
+  const canEditSetup = createMemo(() => !hasLaunch());
+  const canUnlockReview = createMemo(() => isSessionComplete() && !isReviewMode());
+  const canSeek = createMemo(() => isReviewMode());
+  const canStartPlayback = createMemo(
+    () => !isReviewMode() && replayIndex() < totalBars() - 1,
+  );
+  const canStepBack = createMemo(
+    () => isReviewMode() && !isReplayActive() && replayIndex() > 0,
+  );
+  const canStepForward = createMemo(
+    () => !isReplayActive() && replayIndex() < totalBars() - 1,
+  );
+  const canJumpPrevTrade = createMemo(
+    () =>
+      isReviewMode() &&
+      findJumpTarget(replayIndex(), replayTradeEntryIndices(), "prev") !== null,
+  );
+  const canJumpNextTrade = createMemo(
+    () =>
+      isReviewMode() &&
+      findJumpTarget(replayIndex(), replayTradeEntryIndices(), "next") !== null,
+  );
+  const canPlaceEntries = createMemo(
+    () => !isReviewMode() && replayIndex() < totalBars() - 1,
+  );
+  const canExitPosition = createMemo(
+    () => !!replaySession()?.position && !isReviewMode(),
+  );
+  const replayStatusDetail = createMemo(() => {
+    if (replayStatus() === "review") {
+      return "The run is done, so you can scrub and study it without changing the paper trades.";
+    }
+
+    if (replayStatus() === "completed") {
+      return "The sim is finished. Unlock review mode when you want full-chart inspection.";
+    }
+
+    if (replayStatus() === "active") {
+      return "Future candles stay hidden while the session rolls forward bar by bar.";
+    }
+
+    if (replayStatus() === "paused") {
+      return "The sim is paused at the current bar. You can step forward, trade, save, or restart.";
+    }
+
+    return "Pick a market window and launch a session to start the simulated-live run.";
   });
 
   const sessionSummary = createMemo(() => {
@@ -375,16 +444,6 @@ export default function ReplayLabPage() {
     return `${session.position.side.toUpperCase()} from $${session.position.entry_price.toFixed(2)} (${formatCurrency(session.position.unrealized_pnl)})`;
   });
 
-  const sessionStatus = createMemo(() => {
-    if (!launchConfig()) {
-      return "draft";
-    }
-    const session = replaySession();
-    if (totalBars() > 0 && replayIndex() >= totalBars() - 1 && !session?.position) {
-      return "completed";
-    }
-    return "active";
-  });
   const workspaceIntent = createMemo<WorkspaceLaunchIntent | null>(() => {
     const config = launchConfig();
     if (!config) {
@@ -451,8 +510,25 @@ export default function ReplayLabPage() {
   );
 
   const canSave = createMemo(
-    () => !!launchConfig() && !!replaySession() && !candles.loading && !isSaving(),
+    () => !!launchConfig() && !!replaySession() && !candles.loading && !isSaving() && !isReplayActive(),
   );
+
+  let announcedComplete = false;
+
+  createEffect(() => {
+    const complete = isSessionComplete();
+    if (!complete) {
+      announcedComplete = false;
+      return;
+    }
+
+    if (announcedComplete) {
+      return;
+    }
+
+    announcedComplete = true;
+    setBannerNotice("Sim run finished. Unlock review mode whenever you want to inspect the whole session.");
+  });
 
   const seekToIndex = (nextIndex: number) => {
     batch(() => {
@@ -462,7 +538,11 @@ export default function ReplayLabPage() {
   };
 
   const recordReplayAction = (type: ReplayAction["type"]) => {
-    if (!candles() || totalBars() === 0) {
+    if (!candles() || totalBars() === 0 || isReviewMode()) {
+      return;
+    }
+
+    if ((type === "buy" || type === "sell") && replayIndex() >= totalBars() - 1) {
       return;
     }
 
@@ -472,6 +552,10 @@ export default function ReplayLabPage() {
   };
 
   const jumpToTrade = (direction: "next" | "prev") => {
+    if (!isReviewMode()) {
+      return;
+    }
+
     const target = findJumpTarget(replayIndex(), replayTradeEntryIndices(), direction);
     if (target !== null) {
       seekToIndex(target);
@@ -498,6 +582,7 @@ export default function ReplayLabPage() {
     setBannerNotice(null);
     batch(() => {
       setIsReplayActive(false);
+      setIsReviewMode(false);
       setSpeed(8);
       setCurrentIndex(0);
       setReplayActions([]);
@@ -539,7 +624,7 @@ export default function ReplayLabPage() {
       commission: config.commission,
       tick_value: config.tickValue,
       current_bar_index: replayIndex(),
-      status: sessionStatus(),
+      status: replayStatus(),
       actions: replayActions().map((action) => ({
         id: action.id,
         type: action.type,
@@ -562,6 +647,7 @@ export default function ReplayLabPage() {
 
     setBannerError(null);
     setBannerNotice(null);
+    setIsReplayActive(false);
     setIsSaving(true);
 
     try {
@@ -585,8 +671,8 @@ export default function ReplayLabPage() {
 
   return (
     <AppShell
-      title={sessionId() ? "Replay Session" : "Replay Lab"}
-      subtitle="Launch a standalone historical replay session on any supported symbol and date range, then save it so you can resume the manual run later."
+      title={sessionId() ? "Replay Session" : "Simulated Live Replay"}
+      subtitle="Trade old Databento windows like they're live, keep future candles hidden during the run, and save progress when you need a break."
       actions={
         <>
           <A
@@ -631,7 +717,7 @@ export default function ReplayLabPage() {
             </h2>
             <p class="max-w-3xl text-sm text-zinc-400">
               Pick a warehouse-backed symbol, choose the candle interval, and load a historical
-              window straight into the manual replay simulator. Save whenever you want to come back later.
+              window into a forward-only paper trading sim. Save whenever you want to come back later.
             </p>
           </div>
 
@@ -648,7 +734,7 @@ export default function ReplayLabPage() {
               <div class="rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/40 px-4 py-3 md:col-span-3 xl:col-span-6">
                 <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Next Move</p>
                 <p class="mt-2 text-sm text-zinc-300">
-                  Launch a standalone replay to load up to {SESSION_LIMIT.toLocaleString()} bars
+                  Launch a simulated-live session to load up to {SESSION_LIMIT.toLocaleString()} bars
                   from the selected historical window.
                 </p>
               </div>
@@ -660,7 +746,7 @@ export default function ReplayLabPage() {
           <div class="space-y-1">
             <p class="text-sm font-semibold text-zinc-100">1. Session Setup</p>
             <p class="text-xs text-zinc-400">
-              Name the session, choose the symbol, and pick the date window you want to replay.
+              Name the sim, choose the symbol, and pick the date window you want to trade bar by bar.
             </p>
           </div>
 
@@ -671,6 +757,7 @@ export default function ReplayLabPage() {
               class={field}
               value={sessionName()}
               placeholder="NQ 15 min replay"
+              disabled={!canEditSetup()}
               onInput={(event) => setSessionName(event.currentTarget.value)}
             />
           </div>
@@ -693,6 +780,7 @@ export default function ReplayLabPage() {
               <select
                 class={field}
                 value={symbol()?.symbol ?? ""}
+                disabled={!canEditSetup()}
                 onChange={(event) => {
                   const selected = symbols()?.find(
                     (item) => item.symbol === event.currentTarget.value,
@@ -720,6 +808,7 @@ export default function ReplayLabPage() {
               <select
                 class={field}
                 value={interval().value}
+                disabled={!canEditSetup()}
                 onChange={(event) => {
                   const selected = BACKTEST_INTERVALS.find(
                     (item) => item.value === event.currentTarget.value,
@@ -741,6 +830,7 @@ export default function ReplayLabPage() {
                 type="date"
                 class={field}
                 value={startDate()}
+                disabled={!canEditSetup()}
                 onInput={(event) => setStartDate(event.currentTarget.value)}
               />
             </div>
@@ -751,6 +841,7 @@ export default function ReplayLabPage() {
                 type="date"
                 class={field}
                 value={endDate()}
+                disabled={!canEditSetup()}
                 onInput={(event) => setEndDate(event.currentTarget.value)}
               />
             </div>
@@ -761,7 +852,7 @@ export default function ReplayLabPage() {
           <div class="space-y-1">
             <p class="text-sm font-semibold text-zinc-100">2. Ruleset</p>
             <p class="text-xs text-zinc-400">
-              Evaluate your manual session against the same prop-firm guardrails used in backtests.
+              Evaluate your paper trades against the same prop-firm rules used in backtests.
             </p>
           </div>
 
@@ -774,6 +865,7 @@ export default function ReplayLabPage() {
               <select
                 class={field}
                 value={preset()?.name ?? ""}
+                disabled={!canEditSetup()}
                 onChange={(event) => {
                   const selected = presets()?.find(
                     (item) => item.name === event.currentTarget.value,
@@ -803,8 +895,8 @@ export default function ReplayLabPage() {
                     <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Selected Challenge</p>
                     <p class="mt-2 text-sm font-semibold text-zinc-100">{selectedPreset().name}</p>
                     <p class="mt-1 text-sm text-zinc-400">
-                      The replay session will score your manual trades against these rules as you
-                      step through the chart.
+                      The sim scores your manual trades against these rules while the hidden future
+                      plays out bar by bar.
                     </p>
                   </div>
 
@@ -834,9 +926,16 @@ export default function ReplayLabPage() {
             <div class="space-y-1">
               <p class="text-sm font-semibold text-zinc-100">3. Launch And Save</p>
               <p class="text-xs text-zinc-400">
-                Load the historical window, trade it manually, and save progress whenever you want.
+                Launch the sim, trade it honestly, and save progress whenever you want to stop.
               </p>
             </div>
+
+            <Show when={!canEditSetup()}>
+              <div class="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 text-xs text-zinc-400">
+                Market window and rules are locked for this run. Use `Restart` to trade the same
+                session again or `New Replay` to build a different one.
+              </div>
+            </Show>
 
             <div class="flex flex-col gap-3 md:flex-row">
               <Show when={workspaceIntent()}>
@@ -850,14 +949,14 @@ export default function ReplayLabPage() {
               <button
                 class={
                   "w-full rounded-xl px-5 py-3 text-sm font-semibold transition-colors md:w-auto " +
-                  (canLaunch()
+                  (canLaunch() && canEditSetup()
                     ? "bg-zinc-100 text-zinc-900 hover:bg-white"
                     : "cursor-not-allowed bg-zinc-700 text-zinc-400")
                 }
-                disabled={!canLaunch()}
+                disabled={!canLaunch() || !canEditSetup()}
                 onClick={launchReplay}
               >
-                {candles.loading ? "Loading Replay…" : "Launch Replay"}
+                {candles.loading ? "Loading Sim…" : "Launch Sim"}
               </button>
 
               <button
@@ -886,15 +985,29 @@ export default function ReplayLabPage() {
               <section id="replay" class="app-panel space-y-4 p-4 scroll-mt-24">
                 <div class="flex items-center justify-between gap-4">
                   <div>
-                    <p class="text-sm text-zinc-400">Standalone Historical Replay</p>
+                    <p class="text-sm text-zinc-400">Simulated Live Replay</p>
                     <p class="mt-1 text-xs text-zinc-500">
-                      Step, scrub, and trade the selected market window without tying it to a saved
-                      strategy backtest.
+                      Future candles stay hidden while you trade this historical market window like
+                      it is unfolding right now.
                     </p>
                   </div>
-                  <div class="text-right text-xs text-zinc-500">
-                    <p>Commission: ${config().commission.toFixed(2)}</p>
-                    <p>Tick value: ${config().tickValue.toFixed(2)}</p>
+                  <div class="flex flex-col items-end gap-3 text-right text-xs text-zinc-500">
+                    <div>
+                      <p>Commission: ${config().commission.toFixed(2)}</p>
+                      <p>Tick value: ${config().tickValue.toFixed(2)}</p>
+                    </div>
+                    <Show when={canUnlockReview()}>
+                      <button
+                        type="button"
+                        class="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-semibold text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+                        onClick={() => {
+                          setIsReviewMode(true);
+                          setBannerNotice("Review mode unlocked. The trade log is frozen, but you can inspect the full session now.");
+                        }}
+                      >
+                        Unlock Review Mode
+                      </button>
+                    </Show>
                   </div>
                 </div>
 
@@ -933,46 +1046,58 @@ export default function ReplayLabPage() {
                   <ReplayControls
                     isPlaying={isReplayActive()}
                     speed={speed()}
+                    statusLabel={formatReplaySessionStatus(replayStatus())}
+                    statusDetail={replayStatusDetail()}
                     progress={replayProgress()}
                     currentBar={totalBars() === 0 ? 0 : replayIndex() + 1}
                     totalBars={totalBars()}
                     currentTimeLabel={currentTimeLabel()}
                     currentPriceLabel={currentPriceLabel()}
                     positionLabel={positionLabel()}
-                    canStepBack={replayIndex() > 0}
-                    canStepForward={replayIndex() < totalBars() - 1}
-                    canJumpPrevTrade={
-                      findJumpTarget(replayIndex(), replayTradeEntryIndices(), "prev") !== null
-                    }
-                    canJumpNextTrade={
-                      findJumpTarget(replayIndex(), replayTradeEntryIndices(), "next") !== null
-                    }
-                    canExitPosition={!!replaySession()?.position}
+                    canSeek={canSeek()}
+                    canStartPlayback={canStartPlayback()}
+                    canStepBack={canStepBack()}
+                    canStepForward={canStepForward()}
+                    canJumpPrevTrade={canJumpPrevTrade()}
+                    canJumpNextTrade={canJumpNextTrade()}
+                    canLong={canPlaceEntries()}
+                    canShort={canPlaceEntries()}
+                    canExitPosition={canExitPosition()}
                     onPlayPause={() => {
                       if (isReplayActive()) {
                         setIsReplayActive(false);
                         return;
                       }
 
-                      if (replayIndex() >= totalBars() - 1) {
-                        setCurrentIndex(0);
+                      if (!canStartPlayback()) {
+                        return;
                       }
+
                       setIsReplayActive(true);
                     }}
                     onSpeedChange={setSpeed}
                     onSeek={(progress) =>
-                      seekToIndex(getReplayIndexFromProgress(progress, totalBars()))
+                      canSeek() ? seekToIndex(getReplayIndexFromProgress(progress, totalBars())) : undefined
                     }
                     onRestart={() => {
                       batch(() => {
                         setBannerNotice(null);
                         setIsReplayActive(false);
+                        setIsReviewMode(false);
                         setCurrentIndex(0);
                         setReplayActions([]);
                       });
                     }}
-                    onStepBack={() => seekToIndex(replayIndex() - 1)}
-                    onStepForward={() => seekToIndex(replayIndex() + 1)}
+                    onStepBack={() => {
+                      if (canStepBack()) {
+                        seekToIndex(replayIndex() - 1);
+                      }
+                    }}
+                    onStepForward={() => {
+                      if (canStepForward()) {
+                        seekToIndex(replayIndex() + 1);
+                      }
+                    }}
                     onJumpPrevTrade={() => jumpToTrade("prev")}
                     onJumpNextTrade={() => jumpToTrade("next")}
                     onLong={() => recordReplayAction("buy")}
@@ -1006,8 +1131,8 @@ export default function ReplayLabPage() {
                       <div class="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
                         <p class="text-sm font-semibold text-zinc-100">Persistence</p>
                         <p class="mt-2 text-sm text-zinc-400">
-                          This session can now be saved and reopened later. Use the save button
-                          after major decision points so your current bar and manual trades stay durable.
+                          This sim can be saved and reopened later. While the run is active it stays
+                          locked to forward-only trading, then review mode opens up once the session is done.
                         </p>
                       </div>
                     </div>

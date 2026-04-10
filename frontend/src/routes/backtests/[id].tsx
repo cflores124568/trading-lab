@@ -455,12 +455,16 @@ export default function BacktestDetail() {
                   <ReplayControls
                     isPlaying={isReplayActive()}
                     speed={speed()}
+                    statusLabel="Backtest Replay"
+                    statusDetail="This compare view stays flexible so you can scrub around the saved run and test your own manual decisions against it."
                     progress={replayProgress()}
                     currentBar={totalBars() === 0 ? 0 : replayIndex() + 1}
                     totalBars={totalBars()}
                     currentTimeLabel={currentTimeLabel()}
                     currentPriceLabel={currentPriceLabel()}
                     positionLabel={positionLabel()}
+                    canSeek
+                    canStartPlayback={replayIndex() < totalBars() - 1}
                     canStepBack={replayIndex() > 0}
                     canStepForward={replayIndex() < totalBars() - 1}
                     canJumpPrevTrade={
@@ -469,6 +473,8 @@ export default function BacktestDetail() {
                     canJumpNextTrade={
                       findJumpTarget(replayIndex(), tradeEntryIndices(), "next") !== null
                     }
+                    canLong
+                    canShort
                     canExitPosition={!!replaySession()?.position}
                     onPlayPause={() => {
                       if (isReplayActive()) {
