@@ -121,6 +121,7 @@ CREATE TABLE IF NOT EXISTS replay_sessions (
     interval          TEXT NOT NULL,
     start_date        TEXT,
     end_date          TEXT,
+    source_backtest   JSONB,
     prop_firm_rules   JSONB NOT NULL,
     commission        DOUBLE PRECISION NOT NULL DEFAULT 5,
     tick_value        DOUBLE PRECISION NOT NULL,
@@ -134,6 +135,9 @@ CREATE TABLE IF NOT EXISTS replay_sessions (
     created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE replay_sessions
+    ADD COLUMN IF NOT EXISTS source_backtest JSONB;
 
 CREATE INDEX IF NOT EXISTS replay_sessions_updated_at_idx
     ON replay_sessions (updated_at DESC);

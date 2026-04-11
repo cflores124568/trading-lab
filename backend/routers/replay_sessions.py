@@ -96,6 +96,7 @@ async def list_replay_sessions():
             "interval": session["interval"],
             "start_date": session.get("start_date"),
             "end_date": session.get("end_date"),
+            "source_backtest": session.get("source_backtest"),
             "status": session["status"],
             "current_bar_index": session.get("current_bar_index", 0),
             "total_pnl": metrics.get("total_pnl", 0),

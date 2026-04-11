@@ -247,12 +247,22 @@ export interface ReplaySessionAction {
   created_at: number;
 }
 
+export interface ReplaySessionSourceBacktest {
+  backtest_id: string;
+  symbol?: string;
+  interval?: string;
+  start_date?: string;
+  end_date?: string;
+  strategy_type?: string;
+}
+
 export interface ReplaySessionPayload {
   name: string;
   symbol: string;
   interval: string;
   start_date?: string;
   end_date?: string;
+  source_backtest?: ReplaySessionSourceBacktest | null;
   prop_firm_rules: PropFirmRules;
   commission: number;
   tick_value: number;
@@ -278,6 +288,7 @@ export interface ReplaySessionSummary {
   interval: string;
   start_date?: string;
   end_date?: string;
+  source_backtest?: ReplaySessionSourceBacktest | null;
   status: string;
   current_bar_index: number;
   total_pnl: number;

@@ -97,12 +97,22 @@ class ReplayAction(BaseModel):
     created_at: int = Field(ge=0)
 
 
+class ReplaySessionSourceBacktest(BaseModel):
+    backtest_id: str
+    symbol: Optional[str] = None
+    interval: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    strategy_type: Optional[str] = None
+
+
 class ReplaySessionBase(BaseModel):
     name: str
     symbol: str
     interval: str
     start_date: Optional[str] = None
     end_date: Optional[str] = None
+    source_backtest: Optional[ReplaySessionSourceBacktest] = None
     prop_firm_rules: PropFirmRules
     commission: float = Field(default=5.0, ge=0)
     tick_value: float = Field(default=1.0, gt=0)
@@ -136,6 +146,7 @@ class ReplaySessionSummary(BaseModel):
     interval: str
     start_date: Optional[str] = None
     end_date: Optional[str] = None
+    source_backtest: Optional[ReplaySessionSourceBacktest] = None
     status: str
     current_bar_index: int
     total_pnl: float

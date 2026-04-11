@@ -26,6 +26,7 @@ def _ensure_replay_sessions_schema(conn) -> None:
                     interval          TEXT NOT NULL,
                     start_date        TEXT,
                     end_date          TEXT,
+                    source_backtest   JSONB,
                     prop_firm_rules   JSONB NOT NULL,
                     commission        DOUBLE PRECISION NOT NULL DEFAULT 5,
                     tick_value        DOUBLE PRECISION NOT NULL,
@@ -41,6 +42,7 @@ def _ensure_replay_sessions_schema(conn) -> None:
                 )
                 """
             )
+            cur.execute("ALTER TABLE replay_sessions ADD COLUMN IF NOT EXISTS source_backtest JSONB")
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS replay_sessions_updated_at_idx ON replay_sessions (updated_at DESC)"
             )
@@ -57,11 +59,12 @@ def save_replay_session(result: dict) -> None:
     sql = """
         INSERT INTO replay_sessions (
             replay_session_id, name, symbol, interval, start_date, end_date,
-            prop_firm_rules, commission, tick_value, current_bar_index, status,
-            actions, trades, metrics, prop_firm_eval, equity_curve, created_at, updated_at
+            source_backtest, prop_firm_rules, commission, tick_value,
+            current_bar_index, status, actions, trades, metrics, prop_firm_eval,
+            equity_curve, created_at, updated_at
         )
         VALUES (
-            %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s,
             %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s
         )
         ON CONFLICT (replay_session_id) DO UPDATE SET
@@ -70,6 +73,7 @@ def save_replay_session(result: dict) -> None:
             interval          = EXCLUDED.interval,
             start_date        = EXCLUDED.start_date,
             end_date          = EXCLUDED.end_date,
+            source_backtest   = EXCLUDED.source_backtest,
             prop_firm_rules   = EXCLUDED.prop_firm_rules,
             commission        = EXCLUDED.commission,
             tick_value        = EXCLUDED.tick_value,
@@ -95,6 +99,7 @@ def save_replay_session(result: dict) -> None:
                     result["interval"],
                     result.get("start_date"),
                     result.get("end_date"),
+                    json.dumps(result.get("source_backtest")),
                     json.dumps(result["prop_firm_rules"]),
                     result["commission"],
                     result["tick_value"],
@@ -145,6 +150,7 @@ def _row_to_result(row) -> dict:
         "interval": row["interval"],
         "start_date": row["start_date"],
         "end_date": row["end_date"],
+        "source_backtest": _maybe_json(row.get("source_backtest")) if hasattr(row, "get") else None,
         "prop_firm_rules": _maybe_json(row["prop_firm_rules"]),
         "commission": float(row["commission"]),
         "tick_value": float(row["tick_value"]),

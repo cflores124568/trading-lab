@@ -6,6 +6,7 @@ import NewBacktest from "./routes/backtests/new";
 import BacktestDetail from "./routes/backtests/[id]";
 import BacktestComparePage from "./routes/backtests/compare";
 import ReplayLabPage from "./routes/replay";
+import ReplayComparePage from "./routes/replay-compare";
 import ReplaySessionListPage from "./routes/replay-sessions";
 
 export default function App() {
@@ -13,6 +14,7 @@ export default function App() {
     <Router>
       <Route path="/" component={Dashboard} />
       <Route path="/replay" component={ReplayLabPage} />
+      <Route path="/replay/:id/compare" component={ReplayComparePage} />
       <Route path="/replay/:id" component={ReplayLabPage} />
       <Route path="/replay-sessions" component={ReplaySessionListPage} />
       <Route path="/backtests" component={BacktestList} />

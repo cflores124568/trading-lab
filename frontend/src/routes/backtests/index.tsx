@@ -81,7 +81,7 @@ export default function BacktestList() {
                 {(bt) => {
                   const isSelected = () => selected().includes(bt.backtest_id);
                   const detailHref = `/backtests/${bt.backtest_id}`;
-                  const replayHref = `${detailHref}#replay`;
+                  const launchSimHref = `/replay?backtestId=${bt.backtest_id}`;
                   const workspaceIntent =
                     bt.symbol && bt.replay_context?.interval
                       ? {
@@ -119,7 +119,7 @@ export default function BacktestList() {
                               {bt.created_at.slice(0, 10)}
                             </p>
                             <p class="mt-2 text-xs text-zinc-400">
-                              Replay this saved run candle by candle from the detail page.
+                              Launch a simulated-live run from this backtest or open the detail page for the old flexible replay view.
                             </p>
                           </div>
                         </div>
@@ -162,11 +162,11 @@ export default function BacktestList() {
                             View
                           </A>
                           <A
-                            href={replayHref}
+                            href={launchSimHref}
                             class="rounded-lg bg-zinc-100 px-3 py-2 text-xs font-semibold text-zinc-950 transition-colors hover:bg-white"
                             onClick={(event) => event.stopPropagation()}
                           >
-                            Replay
+                            Launch Sim
                           </A>
                         </div>
                       </div>

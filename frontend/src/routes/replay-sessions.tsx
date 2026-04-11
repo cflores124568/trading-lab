@@ -57,6 +57,13 @@ export default function ReplaySessionListPage() {
                           {session.symbol} · {session.interval} · {formatReplaySessionStatus(session.status)}
                         </p>
                         <p class="text-sm text-zinc-400">{formatRange(session)}</p>
+                        <Show when={session.source_backtest}>
+                          {(source) => (
+                            <p class="text-xs text-zinc-500">
+                              Linked back to `{source().backtest_id.slice(0, 8)}` for manual-vs-system review.
+                            </p>
+                          )}
+                        </Show>
                         <p class="text-xs text-zinc-500">
                           Updated {new Date(session.updated_at).toLocaleString()}
                         </p>
@@ -105,6 +112,14 @@ export default function ReplaySessionListPage() {
                       >
                         Resume Session
                       </A>
+                      <Show when={session.source_backtest}>
+                        <A
+                          href={`/replay/${session.replay_session_id}/compare`}
+                          class="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+                        >
+                          Compare Vs System
+                        </A>
+                      </Show>
                     </div>
                   </div>
                 )}

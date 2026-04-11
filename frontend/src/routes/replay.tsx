@@ -1,4 +1,4 @@
-import { A, useNavigate, useParams } from "@solidjs/router";
+import { A, useNavigate, useParams, useSearchParams } from "@solidjs/router";
 import {
   batch,
   createEffect,
@@ -22,15 +22,19 @@ import {
 } from "../constants";
 import {
   createReplaySession,
+  fetchBacktest,
+  fetchBacktestCandles,
   fetchCandles,
   fetchPropPresets,
   fetchReplaySession,
   fetchSymbols,
   updateReplaySession,
+  type BacktestResult,
   type Candle,
   type PropFirmEvaluation,
   type PropFirmRules,
   type ReplaySessionPayload,
+  type ReplaySessionSourceBacktest,
   type SymbolInfo,
   type Trade,
 } from "../services/api";
@@ -61,6 +65,7 @@ const tickValueBySymbol = Object.fromEntries(
 ) as Record<string, number>;
 
 type ReplayLaunchConfig = {
+  mode: "standalone" | "backtest";
   symbol: SymbolInfo;
   interval: Interval;
   propFirmRules: PropFirmRules;
@@ -68,6 +73,8 @@ type ReplayLaunchConfig = {
   endDate?: string;
   commission: number;
   tickValue: number;
+  sourceBacktest?: ReplaySessionSourceBacktest | null;
+  candleSource: { kind: "db" } | { kind: "backtest"; backtestId: string };
 };
 
 function formatCurrency(value: number): string {
@@ -117,7 +124,44 @@ function defaultSessionName(config: ReplayLaunchConfig): string {
     config.startDate || config.endDate
       ? `${config.startDate || "earliest"} to ${config.endDate || "latest"}`
       : "full range";
-  return `${config.symbol.symbol} ${config.interval.label} replay (${range})`;
+  const sourceLabel = config.sourceBacktest
+    ? ` vs ${config.sourceBacktest.backtest_id.slice(0, 8)}`
+    : "";
+  return `${config.symbol.symbol} ${config.interval.label} replay${sourceLabel} (${range})`;
+}
+
+function buildSourceBacktest(backtest: BacktestResult): ReplaySessionSourceBacktest {
+  return {
+    backtest_id: backtest.backtest_id,
+    symbol: backtest.symbol ?? backtest.replay_context?.symbol ?? undefined,
+    interval: backtest.replay_context?.interval ?? undefined,
+    start_date: backtest.replay_context?.start_date ?? undefined,
+    end_date: backtest.replay_context?.end_date ?? undefined,
+    strategy_type: backtest.strategy.type,
+  };
+}
+
+function resolveReplaySymbolInfo(args: {
+  symbol: string;
+  loadedSymbols?: SymbolInfo[];
+  startDate?: string;
+  endDate?: string;
+}): SymbolInfo {
+  const matched = args.loadedSymbols?.find((item) => item.symbol === args.symbol);
+  if (matched) {
+    return matched;
+  }
+
+  return {
+    symbol: args.symbol,
+    full_name: `${args.symbol} saved source`,
+    exchange: "Saved",
+    tick_size: 0,
+    tick_value: tickValueBySymbol[args.symbol] ?? 1,
+    rows: 0,
+    start_date: args.startDate ?? "",
+    end_date: args.endDate ?? "",
+  };
 }
 
 function PropEvalPanel(props: {
@@ -174,10 +218,15 @@ function PropEvalPanel(props: {
 
 export default function ReplayLabPage() {
   const params = useParams<{ id?: string }>();
+  const [searchParams] = useSearchParams<{ backtestId?: string }>();
   const navigate = useNavigate();
   const [symbols] = createResource(fetchSymbols);
   const [presets] = createResource(fetchPropPresets);
   const [savedSession] = createResource(() => params.id, fetchReplaySession);
+  const sourceBacktestId = createMemo(() =>
+    params.id ? null : searchParams.backtestId?.trim() || null,
+  );
+  const [sourceBacktest] = createResource(sourceBacktestId, fetchBacktest);
 
   const defaultInterval = BACKTEST_INTERVALS.find((interval) => interval.value === "15m")!;
   const [sessionId, setSessionId] = createSignal<string | null>(params.id ?? null);
@@ -199,15 +248,18 @@ export default function ReplayLabPage() {
   const [replayActions, setReplayActions] = createSignal<ReplayAction[]>([]);
 
   let hydratedSessionId: string | null = null;
+  let hydratedSourceBacktestId: string | null = null;
 
   const [candles] = createResource(launchConfig, async (config) =>
-    fetchCandles({
-      symbol: config.symbol.symbol,
-      interval: getBackendInterval(config.interval),
-      startDate: config.startDate,
-      endDate: config.endDate,
-      limit: SESSION_LIMIT,
-    }),
+    config.candleSource.kind === "backtest"
+      ? fetchBacktestCandles(config.candleSource.backtestId, SESSION_LIMIT)
+      : fetchCandles({
+          symbol: config.symbol.symbol,
+          interval: getBackendInterval(config.interval),
+          startDate: config.startDate,
+          endDate: config.endDate,
+          limit: SESSION_LIMIT,
+        }),
   );
 
   createEffect(() => {
@@ -226,14 +278,19 @@ export default function ReplayLabPage() {
 
   createEffect(() => {
     const existing = savedSession();
-    const loadedSymbols = symbols();
-    if (!existing || !loadedSymbols || hydratedSessionId === existing.replay_session_id) {
+    const loadedSymbols = symbols() ?? [];
+    if (!existing || hydratedSessionId === existing.replay_session_id) {
       return;
     }
 
-    const matchedSymbol =
-      loadedSymbols.find((item) => item.symbol === existing.symbol) ?? loadedSymbols[0];
+    const matchedSymbol = resolveReplaySymbolInfo({
+      symbol: existing.symbol,
+      loadedSymbols,
+      startDate: existing.start_date ?? undefined,
+      endDate: existing.end_date ?? undefined,
+    });
     const resolvedInterval = findInterval(existing.interval);
+    const sourceBacktest = existing.source_backtest;
 
     hydratedSessionId = existing.replay_session_id;
     batch(() => {
@@ -257,6 +314,7 @@ export default function ReplayLabPage() {
         })),
       );
       setLaunchConfig({
+        mode: sourceBacktest?.backtest_id ? "backtest" : "standalone",
         symbol: matchedSymbol,
         interval: resolvedInterval,
         propFirmRules: existing.prop_firm_rules,
@@ -264,9 +322,84 @@ export default function ReplayLabPage() {
         endDate: existing.end_date ?? undefined,
         commission: existing.commission,
         tickValue: existing.tick_value,
+        sourceBacktest,
+        candleSource: sourceBacktest?.backtest_id
+          ? { kind: "backtest", backtestId: sourceBacktest.backtest_id }
+          : { kind: "db" },
       });
       setBannerError(null);
       setBannerNotice(`Loaded saved session "${existing.name}".`);
+    });
+  });
+
+  createEffect(() => {
+    const source = sourceBacktest();
+    if (!source || params.id || hydratedSourceBacktestId === source.backtest_id) {
+      return;
+    }
+
+    const replaySymbol = source.symbol || source.replay_context?.symbol;
+    if (!replaySymbol) {
+      setBannerError("This saved backtest is missing symbol context, so it can't launch a sim yet.");
+      return;
+    }
+
+    hydratedSourceBacktestId = source.backtest_id;
+    const resolvedInterval = findInterval(source.replay_context?.interval ?? "15min");
+    const start = source.replay_context?.start_date ?? undefined;
+    const end = source.replay_context?.end_date ?? undefined;
+    const resolvedSymbol = resolveReplaySymbolInfo({
+      symbol: replaySymbol,
+      loadedSymbols: symbols() ?? [],
+      startDate: start,
+      endDate: end,
+    });
+    const sourceMeta = buildSourceBacktest(source);
+    const commission = source.trades[0]?.commission ?? 5;
+    const tickValue =
+      tickValueBySymbol[replaySymbol] ?? resolvedSymbol.tick_value ?? 1;
+
+    batch(() => {
+      setSessionId(null);
+      setSessionName((previous) =>
+        previous ||
+        defaultSessionName({
+          mode: "backtest",
+          symbol: resolvedSymbol,
+          interval: resolvedInterval,
+          propFirmRules: source.prop_firm_rules,
+          startDate: start,
+          endDate: end,
+          commission,
+          tickValue,
+          sourceBacktest: sourceMeta,
+          candleSource: { kind: "backtest", backtestId: source.backtest_id },
+        }),
+      );
+      setSymbol(resolvedSymbol);
+      setInterval(resolvedInterval);
+      setPreset(source.prop_firm_rules);
+      setStartDate(start ?? "");
+      setEndDate(end ?? "");
+      setIsReplayActive(false);
+      setIsReviewMode(false);
+      setSpeed(8);
+      setCurrentIndex(0);
+      setReplayActions([]);
+      setLaunchConfig({
+        mode: "backtest",
+        symbol: resolvedSymbol,
+        interval: resolvedInterval,
+        propFirmRules: source.prop_firm_rules,
+        startDate: start,
+        endDate: end,
+        commission,
+        tickValue,
+        sourceBacktest: sourceMeta,
+        candleSource: { kind: "backtest", backtestId: source.backtest_id },
+      });
+      setBannerError(null);
+      setBannerNotice(`Loaded backtest "${source.backtest_id.slice(0, 8)}" into simulated-live mode.`);
     });
   });
 
@@ -396,6 +529,7 @@ export default function ReplayLabPage() {
 
     return [
       ["Session", sessionName() || defaultSessionName(config)],
+      ["Source", config.sourceBacktest ? `Backtest ${config.sourceBacktest.backtest_id.slice(0, 8)}` : "Standalone"],
       ["Symbol", config.symbol.symbol],
       ["Interval", config.interval.label],
       [
@@ -442,6 +576,18 @@ export default function ReplayLabPage() {
     }
 
     return `${session.position.side.toUpperCase()} from $${session.position.entry_price.toFixed(2)} (${formatCurrency(session.position.unrealized_pnl)})`;
+  });
+
+  const activeSourceBacktest = createMemo(
+    () => launchConfig()?.sourceBacktest ?? savedSession()?.source_backtest ?? null,
+  );
+
+  const compareHref = createMemo(() => {
+    if (!sessionId() || !activeSourceBacktest()?.backtest_id || !isReviewMode()) {
+      return null;
+    }
+
+    return `/replay/${sessionId()}/compare`;
   });
 
   const workspaceIntent = createMemo<WorkspaceLaunchIntent | null>(() => {
@@ -587,6 +733,7 @@ export default function ReplayLabPage() {
       setCurrentIndex(0);
       setReplayActions([]);
       setSessionName((previous) => previous || defaultSessionName({
+        mode: "standalone",
         symbol: selectedSymbol,
         interval: interval(),
         propFirmRules: selectedPreset,
@@ -594,8 +741,11 @@ export default function ReplayLabPage() {
         endDate: endDate() || undefined,
         commission: 5,
         tickValue: tickValueBySymbol[selectedSymbol.symbol] ?? selectedSymbol.tick_value ?? 1,
+        sourceBacktest: null,
+        candleSource: { kind: "db" },
       }));
       setLaunchConfig({
+        mode: "standalone",
         symbol: selectedSymbol,
         interval: interval(),
         propFirmRules: selectedPreset,
@@ -603,6 +753,8 @@ export default function ReplayLabPage() {
         endDate: endDate() || undefined,
         commission: 5,
         tickValue: tickValueBySymbol[selectedSymbol.symbol] ?? selectedSymbol.tick_value ?? 1,
+        sourceBacktest: null,
+        candleSource: { kind: "db" },
       });
     });
   };
@@ -620,6 +772,7 @@ export default function ReplayLabPage() {
       interval: getBackendInterval(config.interval),
       start_date: config.startDate,
       end_date: config.endDate,
+      source_backtest: config.sourceBacktest ?? null,
       prop_firm_rules: config.propFirmRules,
       commission: config.commission,
       tick_value: config.tickValue,
@@ -672,7 +825,11 @@ export default function ReplayLabPage() {
   return (
     <AppShell
       title={sessionId() ? "Replay Session" : "Simulated Live Replay"}
-      subtitle="Trade old Databento windows like they're live, keep future candles hidden during the run, and save progress when you need a break."
+      subtitle={
+        sourceBacktestId()
+          ? "Launch the exact market window from a saved backtest, trade it forward-only, then review how your manual calls stacked up."
+          : "Trade old Databento windows like they're live, keep future candles hidden during the run, and save progress when you need a break."
+      }
       actions={
         <>
           <A
@@ -711,13 +868,20 @@ export default function ReplayLabPage() {
 
         <section class={section}>
           <div class="space-y-2">
-            <p class="app-kicker">Standalone Session</p>
+            <p class="app-kicker">
+              {activeSourceBacktest() || sourceBacktestId() ? "Saved Backtest Source" : "Standalone Session"}
+            </p>
             <h2 class="text-lg font-semibold text-zinc-100">
-              {sessionId() ? "Resume and update a saved replay" : "Build a replay without a saved backtest"}
+              {sessionId()
+                ? "Resume and update a saved replay"
+                : activeSourceBacktest() || sourceBacktestId()
+                  ? "Trade this saved backtest window yourself"
+                  : "Build a replay without a saved backtest"}
             </h2>
             <p class="max-w-3xl text-sm text-zinc-400">
-              Pick a warehouse-backed symbol, choose the candle interval, and load a historical
-              window into a forward-only paper trading sim. Save whenever you want to come back later.
+              {activeSourceBacktest() || sourceBacktestId()
+                ? "This path keeps the session tied to one saved backtest, so the replay still means something later when you compare your manual trades against the system run."
+                : "Pick a warehouse-backed symbol, choose the candle interval, and load a historical window into a forward-only paper trading sim. Save whenever you want to come back later."}
             </p>
           </div>
 
@@ -734,8 +898,9 @@ export default function ReplayLabPage() {
               <div class="rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/40 px-4 py-3 md:col-span-3 xl:col-span-6">
                 <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Next Move</p>
                 <p class="mt-2 text-sm text-zinc-300">
-                  Launch a simulated-live session to load up to {SESSION_LIMIT.toLocaleString()} bars
-                  from the selected historical window.
+                  {sourceBacktestId()
+                    ? "Loading the saved backtest context, then locking the sim to that exact historical run."
+                    : `Launch a simulated-live session to load up to ${SESSION_LIMIT.toLocaleString()} bars from the selected historical window.`}
                 </p>
               </div>
             </Show>
@@ -746,7 +911,9 @@ export default function ReplayLabPage() {
           <div class="space-y-1">
             <p class="text-sm font-semibold text-zinc-100">1. Session Setup</p>
             <p class="text-xs text-zinc-400">
-              Name the sim, choose the symbol, and pick the date window you want to trade bar by bar.
+              {activeSourceBacktest() || sourceBacktestId()
+                ? "The source backtest locks the symbol, range, and rules once it lands so you're trading the exact run instead of a close cousin."
+                : "Name the sim, choose the symbol, and pick the date window you want to trade bar by bar."}
             </p>
           </div>
 
@@ -926,14 +1093,17 @@ export default function ReplayLabPage() {
             <div class="space-y-1">
               <p class="text-sm font-semibold text-zinc-100">3. Launch And Save</p>
               <p class="text-xs text-zinc-400">
-                Launch the sim, trade it honestly, and save progress whenever you want to stop.
+                {activeSourceBacktest() || sourceBacktestId()
+                  ? "This run is tied to a saved backtest, so once review mode opens you can compare your manual tape against the system tape."
+                  : "Launch the sim, trade it honestly, and save progress whenever you want to stop."}
               </p>
             </div>
 
             <Show when={!canEditSetup()}>
               <div class="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 text-xs text-zinc-400">
-                Market window and rules are locked for this run. Use `Restart` to trade the same
-                session again or `New Replay` to build a different one.
+                {activeSourceBacktest()
+                  ? "This session is pinned to its source backtest. Use `Restart` to trade the same run again or `New Replay` for a standalone session."
+                  : "Market window and rules are locked for this run. Use `Restart` to trade the same session again or `New Replay` to build a different one."}
               </div>
             </Show>
 
@@ -956,7 +1126,11 @@ export default function ReplayLabPage() {
                 disabled={!canLaunch() || !canEditSetup()}
                 onClick={launchReplay}
               >
-                {candles.loading ? "Loading Sim…" : "Launch Sim"}
+                {candles.loading
+                  ? "Loading Sim…"
+                  : activeSourceBacktest() || sourceBacktestId()
+                    ? "Launch Source Sim"
+                    : "Launch Sim"}
               </button>
 
               <button
@@ -987,8 +1161,9 @@ export default function ReplayLabPage() {
                   <div>
                     <p class="text-sm text-zinc-400">Simulated Live Replay</p>
                     <p class="mt-1 text-xs text-zinc-500">
-                      Future candles stay hidden while you trade this historical market window like
-                      it is unfolding right now.
+                      {config().sourceBacktest
+                        ? "Future candles stay hidden while you trade the exact saved backtest window like it's unfolding right now."
+                        : "Future candles stay hidden while you trade this historical market window like it is unfolding right now."}
                     </p>
                   </div>
                   <div class="flex flex-col items-end gap-3 text-right text-xs text-zinc-500">
@@ -996,6 +1171,14 @@ export default function ReplayLabPage() {
                       <p>Commission: ${config().commission.toFixed(2)}</p>
                       <p>Tick value: ${config().tickValue.toFixed(2)}</p>
                     </div>
+                    <Show when={config().sourceBacktest}>
+                      {(source) => (
+                        <div class="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2">
+                          <p>Source backtest: {source().backtest_id.slice(0, 8)}</p>
+                          <p>{source().strategy_type?.replace(/_/g, " ") ?? "Saved run"}</p>
+                        </div>
+                      )}
+                    </Show>
                     <Show when={canUnlockReview()}>
                       <button
                         type="button"
@@ -1134,6 +1317,31 @@ export default function ReplayLabPage() {
                           This sim can be saved and reopened later. While the run is active it stays
                           locked to forward-only trading, then review mode opens up once the session is done.
                         </p>
+                        <Show when={activeSourceBacktest()}>
+                          {(source) => (
+                            <p class="mt-3 text-sm text-zinc-400">
+                              It stays linked to backtest `{source().backtest_id.slice(0, 8)}` so the
+                              review can show missed entries, early exits, and the prop result delta.
+                            </p>
+                          )}
+                        </Show>
+                        <div class="mt-4 flex flex-wrap gap-2">
+                          <Show when={compareHref()}>
+                            {(href) => (
+                              <A
+                                href={href()}
+                                class="rounded-lg bg-zinc-100 px-3 py-2 text-xs font-semibold text-zinc-950 transition-colors hover:bg-white"
+                              >
+                                Compare Vs System
+                              </A>
+                            )}
+                          </Show>
+                          <Show when={activeSourceBacktest() && !compareHref()}>
+                            <p class="text-xs text-zinc-500">
+                              Save the session and unlock review mode to open the compare screen.
+                            </p>
+                          </Show>
+                        </div>
                       </div>
                     </div>
 

@@ -323,6 +323,12 @@ export default function BacktestDetail() {
       }
       actions={
         <>
+          <A
+            href={`/replay?backtestId=${params.id}`}
+            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+          >
+            Launch Sim Session
+          </A>
           <a
             href="#replay"
             class="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white"
@@ -365,6 +371,12 @@ export default function BacktestDetail() {
                     <Show when={workspaceIntent()}>
                       {(intent) => <WorkspaceLaunchControl intent={intent()} buttonLabel="Open in Workspace" />}
                     </Show>
+                    <A
+                      href={`/replay?backtestId=${bt().backtest_id}`}
+                      class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+                    >
+                      Launch Sim Session
+                    </A>
                     <a
                       href="#replay"
                       class="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white"
