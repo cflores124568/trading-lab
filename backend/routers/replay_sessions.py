@@ -15,6 +15,7 @@ from services.replay_session_repo import (
     save_replay_session,
 )
 from services.replay_session_store import (
+    delete_replay_session,
     get_replay_session as get_replay_session_mem,
     list_replay_sessions as list_replay_sessions_mem,
     upsert_replay_session,
@@ -23,13 +24,18 @@ from services.replay_session_store import (
 router = APIRouter()
 
 
-def _load_replay_session_any(replay_session_id: str) -> dict | None:
-    try:
-        session = get_replay_session_db(replay_session_id)
-    except Exception:
-        session = None
+def _db_required() -> bool:
+    from services.db import db_configured
+    return db_configured()
 
-    if session is None:
+
+def _load_replay_session_any(replay_session_id: str) -> dict | None:
+    if _db_required():
+        try:
+            session = get_replay_session_db(replay_session_id)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"Replay session storage unavailable: {exc}")
+    else:
         session = get_replay_session_mem(replay_session_id)
 
     return session
@@ -48,10 +54,12 @@ async def create_replay_session(request: ReplaySessionCreate):
 
     upsert_replay_session(replay_session_id, result)
 
-    try:
-        save_replay_session(result)
-    except Exception:
-        pass
+    if _db_required():
+        try:
+            save_replay_session(result)
+        except Exception as exc:
+            delete_replay_session(replay_session_id)
+            raise HTTPException(status_code=503, detail=f"Replay session save failed: {exc}")
 
     return result
 
@@ -71,19 +79,24 @@ async def update_replay_session(replay_session_id: str, request: ReplaySessionUp
 
     upsert_replay_session(replay_session_id, result)
 
-    try:
-        save_replay_session(result)
-    except Exception:
-        pass
+    if _db_required():
+        try:
+            save_replay_session(result)
+        except Exception as exc:
+            upsert_replay_session(replay_session_id, existing)
+            raise HTTPException(status_code=503, detail=f"Replay session save failed: {exc}")
 
     return result
 
 
 @router.get("/", response_model=list[ReplaySessionSummary])
 async def list_replay_sessions():
-    try:
-        source = list_replay_sessions_db()
-    except Exception:
+    if _db_required():
+        try:
+            source = list_replay_sessions_db()
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"Replay session storage unavailable: {exc}")
+    else:
         source = list_replay_sessions_mem()
 
     summaries = []

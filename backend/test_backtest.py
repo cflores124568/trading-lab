@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from main import app
 from services.backtest_store import delete_backtest
+from services.dataset_store import delete_dataset
 
 
 def _require(condition: bool, message: str) -> None:
@@ -53,7 +54,22 @@ def main() -> None:
         print(f"      Dataset id: {dataset_id}")
         print(f"      Rows: {sample_info['rows']}")
 
-        print("\n[2/5] Running a backtest through POST /api/backtests ...")
+        if os.getenv("DATABASE_URL"):
+            print("\n[2/6] Clearing in-memory dataset and checking durable dataset_id ...")
+            removed_dataset = delete_dataset(dataset_id)
+            _require(removed_dataset, "Could not remove the in-memory dataset before registry check.")
+
+            dataset_info = client.get(f"/api/data/{dataset_id}")
+            _require(dataset_info.status_code == 200, f"Dataset registry read failed: {dataset_info.text}")
+
+            dataset_candles = client.get(f"/api/data/{dataset_id}/candles")
+            _require(dataset_candles.status_code == 200, f"Dataset rehydrate failed: {dataset_candles.text}")
+            _require(len(dataset_candles.json()) > 0, "Rehydrated dataset returned no candles.")
+            print("      Dataset registry + rehydrate path still works.")
+        else:
+            print("\n[2/6] Skipping dataset registry check because DATABASE_URL is not set.")
+
+        print("\n[3/6] Running a backtest through POST /api/backtests ...")
         payload = {
             "dataset_id": dataset_id,
             "strategy": {
@@ -74,7 +90,7 @@ def main() -> None:
         print(f"      Backtest id: {backtest_id}")
         print(f"      Trades: {len(backtest['trades'])}")
 
-        print("\n[3/5] Checking GET /api/backtests list output ...")
+        print("\n[4/6] Checking GET /api/backtests list output ...")
         listed = client.get("/api/backtests/")
         _require(listed.status_code == 200, f"Backtest list failed: {listed.text}")
         summaries = listed.json()
@@ -82,7 +98,7 @@ def main() -> None:
         _require(summary is not None, "Created backtest did not show up in the list endpoint.")
         print(f"      List entries: {len(summaries)}")
 
-        print("\n[4/5] Checking GET /api/backtests/{id} detail output ...")
+        print("\n[5/6] Checking GET /api/backtests/{id} detail output ...")
         detail = client.get(f"/api/backtests/{backtest_id}")
         _require(detail.status_code == 200, f"Backtest detail failed: {detail.text}")
         detail_payload = detail.json()
@@ -90,7 +106,7 @@ def main() -> None:
         _require(detail_payload["metrics"]["total_trades"] >= 0, "Detail endpoint returned invalid metrics.")
         print(f"      Detail status: {detail_payload['status']}")
 
-        print("\n[5/6] Checking GET /api/backtests/{id}/candles replay output ...")
+        print("\n[6/6] Checking GET /api/backtests/{id}/candles replay output ...")
         candles = client.get(f"/api/backtests/{backtest_id}/candles")
         _require(candles.status_code == 200, f"Backtest candles failed: {candles.text}")
         candle_payload = candles.json()
@@ -98,7 +114,7 @@ def main() -> None:
         print(f"      Replay candles: {len(candle_payload)}")
 
         if os.getenv("DATABASE_URL"):
-            print("\n[6/6] Clearing in-memory copy and checking persisted read path ...")
+            print("\n[6/6b] Clearing in-memory copy and checking persisted read path ...")
             removed = delete_backtest(backtest_id)
             _require(removed, "Could not remove the in-memory backtest before DB fallback check.")
 
@@ -116,8 +132,6 @@ def main() -> None:
                 "Persisted detail endpoint returned the wrong backtest after in-memory clear.",
             )
             print("      DB-backed list/detail path still works.")
-        else:
-            print("\n[6/6] Skipping DB fallback check because DATABASE_URL is not set.")
 
     print("\n" + "=" * 60)
     print(" Smoke test complete")

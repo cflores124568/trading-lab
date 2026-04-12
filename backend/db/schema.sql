@@ -144,3 +144,29 @@ CREATE INDEX IF NOT EXISTS replay_sessions_updated_at_idx
 
 CREATE INDEX IF NOT EXISTS replay_sessions_symbol_idx
     ON replay_sessions (symbol);
+
+-- Durable dataset registry
+CREATE TABLE IF NOT EXISTS datasets (
+    dataset_id     TEXT PRIMARY KEY,
+    name           TEXT NOT NULL,
+    source_kind    TEXT NOT NULL,
+    symbol         TEXT,
+    interval       TEXT,
+    rows           INTEGER NOT NULL DEFAULT 0,
+    columns_json   JSONB NOT NULL DEFAULT '[]'::jsonb,
+    start_date     TIMESTAMPTZ,
+    end_date       TIMESTAMPTZ,
+    locator        JSONB,
+    is_rebuildable BOOLEAN NOT NULL DEFAULT FALSE,
+    uploaded_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS datasets_uploaded_at_idx
+    ON datasets (uploaded_at DESC);
+
+CREATE INDEX IF NOT EXISTS datasets_source_kind_idx
+    ON datasets (source_kind);
+
+CREATE INDEX IF NOT EXISTS datasets_symbol_idx
+    ON datasets (symbol);

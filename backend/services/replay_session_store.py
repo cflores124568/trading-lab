@@ -25,3 +25,11 @@ def get_replay_session(replay_session_id: str) -> Optional[dict]:
 def list_replay_sessions() -> list[dict]:
     with _store_lock:
         return [deepcopy(entry) for entry in _replay_session_store.values()]
+
+
+def delete_replay_session(replay_session_id: str) -> bool:
+    with _store_lock:
+        if replay_session_id not in _replay_session_store:
+            return False
+        del _replay_session_store[replay_session_id]
+        return True

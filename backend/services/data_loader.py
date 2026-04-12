@@ -4,7 +4,6 @@ from datetime import datetime
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from services.dataset_store import dataset_store
 import yfinance as yf
 from fastapi import HTTPException
 
@@ -103,11 +102,31 @@ def normalise_interval(raw: str) -> str:
 
 #Lazy import to keep dataset_store import at call time so works regadless of import location
 def _store():
-    try:
-        from services.dataset_store import dataset_store
-    except ImportError:
-        from dataset_store import dataset_store
+    from services.dataset_store import dataset_store
     return dataset_store
+
+
+def _db_configured() -> bool:
+    from services.db import db_configured
+    return db_configured()
+
+
+def _persist_dataset_info(info: dict, locator: dict | None = None) -> None:
+    """Write dataset metadata to Postgres when the app is DB-backed.
+
+    I want `dataset_id` to mean something beyond this one process, so if the
+    DB is configured and the registry write fails, I fail loudly here instead
+    of pretending we have durable state.
+    """
+    if not _db_configured():
+        return
+
+    from services.dataset_repo import save_dataset_info
+
+    try:
+        save_dataset_info(info, locator=locator)
+    except Exception as exc:
+        raise RuntimeError(f"Dataset registry save failed: {exc}") from exc
 
 #Internal helpers
 def _extract_arrays(df: pd.DataFrame) -> dict:
@@ -130,8 +149,11 @@ def _store_dataset(
     source: str = "parquet",
     symbol: str | None = None,
     interval: str | None = None,
+    dataset_id: str | None = None,
+    locator: dict | None = None,
+    persist: bool = True,
 ) -> dict:
-    dataset_id = str(uuid.uuid4())
+    dataset_id = dataset_id or str(uuid.uuid4())
     info = {
         "dataset_id": dataset_id,
         "name": name,
@@ -151,7 +173,150 @@ def _store_dataset(
         "df": df,
         "arrays": _extract_arrays(df)
     }
+    if persist:
+        _persist_dataset_info(info, locator=locator)
     return info
+
+
+def _normalise_loaded_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Clean a raw OHLCV frame into the shape the rest of the app expects."""
+    df = df.copy()
+
+    if "ts_event" in df.columns:
+        df["ts_event"] = pd.to_datetime(df["ts_event"])
+        df.set_index("ts_event", inplace=True)
+        df.index.name = "date"
+    elif "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"])
+        df.set_index("date", inplace=True)
+    else:
+        df.index = pd.to_datetime(df.index)
+        df.index.name = "date"
+
+    if df.index.tz is not None:
+        df.index = df.index.tz_localize(None)
+
+    df.columns = df.columns.str.lower()
+    ohlcv_cols = [c for c in ["open", "high", "low", "close", "volume"] if c in df.columns]
+    df = df[ohlcv_cols].copy()
+
+    price_cols = [c for c in ["open", "high", "low", "close"] if c in df.columns]
+    df[price_cols] = df[price_cols] / 1e9
+
+    missing = REQUIRED_COLUMNS - set(df.columns)
+    if missing:
+        raise ValueError(f"Dataset is missing required columns: {missing}")
+
+    df[list(REQUIRED_COLUMNS)] = df[list(REQUIRED_COLUMNS)].astype(np.float64)
+    df.sort_index(inplace=True)
+    if df.index.duplicated().any():
+        df = df[~df.index.duplicated(keep="last")]
+
+    return df
+
+
+def _slice_and_resample_frame(
+    df: pd.DataFrame,
+    interval: str,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> pd.DataFrame:
+    """Apply date slicing plus optional resampling in one place."""
+    if start_date:
+        df = df.loc[start_date:]
+    if end_date:
+        df = df.loc[:end_date]
+
+    if df.empty:
+        return df
+
+    if interval != "1min":
+        df = resample_ohlcv(df, interval)
+
+    return df
+
+
+def _load_parquet_frame(
+    symbol: str,
+    interval: str = "1min",
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> tuple[pd.DataFrame, str, str]:
+    """Read one Databento parquet dataset and return a ready-to-store frame."""
+    symbol_key = symbol if symbol.endswith("_c_0") else f"{symbol}_c_0"
+
+    known_symbol_keys = set(_PARQUET_SYMBOLS.keys())
+    if symbol_key not in known_symbol_keys:
+        valid = [_PARQUET_SYMBOLS[s] for s in known_symbol_keys]
+        raise ValueError(f"Unknown symbol '{symbol}'. Valid symbols: {valid}")
+
+    path = _PARQUET_DIR / f"{symbol_key}.parquet"
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Parquet file not found for '{symbol}' at {path}. "
+            "Run fetch_databento.py to download data first."
+        )
+
+    interval = normalise_interval(interval)
+    df = pd.read_parquet(path)
+    df = _normalise_loaded_frame(df)
+    df = _slice_and_resample_frame(df, interval, start_date=start_date, end_date=end_date)
+
+    if df.empty:
+        raise ValueError(
+            f"No data for '{symbol}' in the requested date range "
+            f"({start_date or 'start'} → {end_date or 'end'})."
+        )
+
+    label = _PARQUET_SYMBOLS.get(symbol_key, symbol)
+    return df, label, interval
+
+
+def _build_sample_frame(
+    bars: int,
+    interval: str,
+    base_price: float,
+    seed: int,
+) -> pd.DataFrame:
+    """Generate the synthetic bar frame without storing it yet."""
+    interval = normalise_interval(interval)
+    if interval not in FREQ_MAP:
+        raise ValueError(f"Invalid interval '{interval}'. Must be one of: {list(FREQ_MAP)}.")
+
+    rng = np.random.default_rng(seed)
+    freq = FREQ_MAP.get(interval, "1min")
+    dates = pd.bdate_range(start="2024-01-02 09:30", periods=bars, freq=freq)
+
+    dt = 1.0 / (bars / 5)
+    vol = 0.22
+    drift = 0.08
+    mean_rev = 0.025
+
+    prices = np.zeros(bars)
+    prices[0] = base_price
+
+    for i in range(1, bars):
+        dW = rng.normal(0, np.sqrt(dt))
+        revert = mean_rev * (base_price - prices[i - 1]) * dt
+        prices[i] = prices[i - 1] * np.exp((drift - 0.5 * vol**2) * dt + vol * dW) + revert
+
+    if not np.all(np.isfinite(prices)):
+        raise RuntimeError("Price simulation produced non-finite values (NaN or Inf). Check simulation parameters.")
+    if np.any(prices <= 0):
+        raise RuntimeError("Price simulation produced zero or negative prices. Check simulation parameters.")
+
+    noise_range = prices * 0.0025
+    highs = prices + rng.uniform(0, 1, bars) * noise_range
+    lows  = prices - rng.uniform(0, 1, bars) * noise_range
+    opens = prices + rng.normal(0, 0.5, bars) * noise_range
+    volume = rng.integers(800, 120_000, size=bars).astype(float)
+
+    df = pd.DataFrame(
+        {"open": opens, "high": highs, "low": lows, "close": prices, "volume": volume},
+        index=dates,
+    )
+    df.index.name = "date"
+    return df
 
 #OHLCV resampler
 def resample_ohlcv(df: pd.DataFrame, interval: str) -> pd.DataFrame:
@@ -290,98 +455,14 @@ def load_parquet(
     The dataset is registered in `dataset_store` and a DatasetInfo
     metadata dict is returned.
     """
-    # Resolve user symbol -> canoncial parquet dataset key
-    # Accept either "NQ" or "NQ_c_0"
     symbol_key = symbol if symbol.endswith("_c_0") else f"{symbol}_c_0"
- 
-    # Validate it's a symbol we know about
-    known_symbol_keys = set(_PARQUET_SYMBOLS.keys())
-    if symbol_key not in known_symbol_keys:
-        valid = [_PARQUET_SYMBOLS[s] for s in known_symbol_keys]
-        raise ValueError(
-            f"Unknown symbol '{symbol}'. Valid symbols: {valid}"
-        )
- 
-    path = _PARQUET_DIR / f"{symbol_key}.parquet"
-    if not path.exists():
-        raise FileNotFoundError(
-            f"Parquet file not found for '{symbol}' at {path}. "
-            "Run fetch_databento.py to download data first."
-        )
- 
-    # Accept both canonical ("1min") and short alias ("1m") forms
-    interval = normalise_interval(interval)
- 
-    # Read parquet 
-    df = pd.read_parquet(path)
- 
-    # Databento stores the bar timestamp in 'ts_event'; normalise to 'date'
-    if "ts_event" in df.columns:
-        df["ts_event"] = pd.to_datetime(df["ts_event"])
-        df.set_index("ts_event", inplace=True)
-        df.index.name = "date"
-    elif "date" in df.columns:
-        df["date"] = pd.to_datetime(df["date"])
-        df.set_index("date", inplace=True)
-    else:
-        # Fallback: assume the index is already a DatetimeIndex
-        df.index = pd.to_datetime(df.index)
-        df.index.name = "date"
- 
-    # Drop tz info for consistent downstream behaviour
-    if df.index.tz is not None:
-        df.index = df.index.tz_localize(None)
- 
-    # Column normalisation 
-    df.columns = df.columns.str.lower()
- 
-    # Databento OHLCV-1m columns are already open/high/low/close/volume.
-    # Drop any extra columns (symbol, instrument_id, etc.) 
-    ohlcv_cols = [c for c in ["open", "high", "low", "close", "volume"] if c in df.columns]
-    df = df[ohlcv_cols].copy()
-    # Databento stores prices as fixed-point integers scaled by 1e9
-    # So divide OHLC back to real dollar values
-    price_cols = [c for c in ["open", "high", "low", "close"] if c in df.columns]
-    df[price_cols] = df[price_cols] / 1e9
- 
-    missing = REQUIRED_COLUMNS - set(df.columns)
-    if missing:
-        raise ValueError(
-            f"Parquet file for '{symbol}' is missing required columns: {missing}"
-        )
- 
-    # Cast to float64 for C++/NumPy safety
-    df[list(REQUIRED_COLUMNS)] = df[list(REQUIRED_COLUMNS)].astype(np.float64)
- 
-    # Sort & deduplicate
-    df.sort_index(inplace=True)
-    if df.index.duplicated().any():
-        df = df[~df.index.duplicated(keep="last")]
- 
-    # Slice dates
-    if start_date:
-        df = df.loc[start_date:]
-    if end_date:
-        df = df.loc[:end_date]
- 
-    if df.empty:
-        raise ValueError(
-            f"No data for '{symbol}' in the requested date range "
-            f"({start_date or 'start'} → {end_date or 'end'})."
-        )
- 
-    # Resample if trading intervals > 1m
-    if interval != "1min":
-        df = resample_ohlcv(df, interval)
- 
-    if df.empty:
-        raise ValueError(
-            f"Resampling to '{interval}' produced an empty DataFrame. "
-            "Try a wider date range."
-        )
- 
-    # Register & return 
-    label = _PARQUET_SYMBOLS.get(symbol_key, symbol)
+    df, label, interval = _load_parquet_frame(
+        symbol=symbol,
+        interval=interval,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
     name = f"{label} {interval} (Databento)"
     return _store_dataset(
         df,
@@ -389,6 +470,13 @@ def load_parquet(
         source="databento",
         symbol=label,
         interval=interval,
+        locator={
+            "source": "databento",
+            "symbol": symbol_key,
+            "interval": interval,
+            "start_date": start_date,
+            "end_date": end_date,
+        },
     )
 
 def get_candles(
@@ -608,53 +696,141 @@ def generate_sample_data(
         raise ValueError(f"'bars' must be an integer >= 2, got {bars!r}.")
     if bars > 1_000_000:
         raise ValueError(f"'bars' exceeds maximum allowed value of 1,000,000 (got {bars}).")
-    if interval not in FREQ_MAP:
-        raise ValueError(f"Invalid interval '{interval}'. Must be one of: {list(FREQ_MAP)}.")
     if not isinstance(base_price, (int, float)) or base_price <= 0:
         raise ValueError(f"'base_price' must be a positive number, got {base_price!r}.")
     if not isinstance(seed, int) or seed < 0:
         raise ValueError(f"'seed' must be a non-negative integer, got {seed!r}.")
 
-    # Seeded RNG means the same inputs always produce the same data to keeps tests reproducible
-    rng = np.random.default_rng(seed)
-    freq = FREQ_MAP.get(interval, "1min")
-    dates = pd.bdate_range(start="2024-01-02 09:30", periods=bars, freq=freq)
-
-    #GBM (Geometric Brownian Motion), standard model for simulating asset prices
-    # Added a small mean-reversion term so prices don't drift too far from base price
-    dt = 1.0 / (bars / 5)   # time step — smaller = smoother simulation
-    vol = 0.22               #annualized volatility (~22%, typical for NQ)
-    drift = 0.08             #annualized drift (~8% upward trend)
-    mean_rev = 0.025         #how strongly prices are pulled back toward base_price
-
-    prices = np.zeros(bars)
-    prices[0] = base_price
-
-    for i in range(1, bars):
-        dW = rng.normal(0, np.sqrt(dt))  # random shock at each time step
-        revert = mean_rev * (base_price - prices[i - 1]) * dt
-        prices[i] = prices[i - 1] * np.exp((drift - 0.5 * vol**2) * dt + vol * dW) + revert
-
-    #Extreme parameter changes could theoretically break the simulation, so we validate output
-    if not np.all(np.isfinite(prices)):
-        raise RuntimeError("Price simulation produced non-finite values (NaN or Inf). Check simulation parameters.")
-    if np.any(prices <= 0):
-        raise RuntimeError("Price simulation produced zero or negative prices. Check simulation parameters.")
-
-    #Derive OHLC by adding small noise around the close; real bars deviate from close by small amounts
-    noise_range = prices * 0.0025
-    highs = prices + rng.uniform(0, 1, bars) * noise_range
-    lows  = prices - rng.uniform(0, 1, bars) * noise_range
-    opens = prices + rng.normal(0, 0.5, bars) * noise_range
-    volume = rng.integers(800, 120_000, size=bars).astype(float)
-
-    df = pd.DataFrame(
-        {"open": opens, "high": highs, "low": lows, "close": prices, "volume": volume},
-        index=dates,
+    df = _build_sample_frame(
+        bars=bars,
+        interval=interval,
+        base_price=base_price,
+        seed=seed,
     )
-    df.index.name = "date"
 
-    return _store_dataset(df, name=name, source="synthetic")
+    return _store_dataset(
+        df,
+        name=name,
+        source="synthetic",
+        interval=normalise_interval(interval),
+        locator={
+            "source": "synthetic",
+            "bars": bars,
+            "interval": normalise_interval(interval),
+            "base_price": float(base_price),
+            "seed": seed,
+        },
+    )
+
+
+def _get_persisted_dataset_record(dataset_id: str) -> dict | None:
+    """Look up a dataset row in Postgres when the registry is enabled."""
+    if not _db_configured():
+        return None
+
+    from services.dataset_repo import get_dataset_record
+    return get_dataset_record(dataset_id)
+
+
+def _list_persisted_datasets() -> list[dict]:
+    """Return persisted dataset rows, or nothing when the DB isn't configured."""
+    if not _db_configured():
+        return []
+
+    from services.dataset_repo import list_datasets as list_persisted
+    return list_persisted()
+
+
+def _dataset_info_from_record(record: dict) -> dict:
+    """Trim a registry row down to the DatasetInfo shape the API already uses."""
+    return {
+        "dataset_id": record["dataset_id"],
+        "name": record["name"],
+        "rows": int(record.get("rows", 0)),
+        "columns": list(record.get("columns", [])),
+        "start_date": record.get("start_date"),
+        "end_date": record.get("end_date"),
+        "uploaded_at": record.get("uploaded_at") or datetime.utcnow().isoformat(),
+        "source": record.get("source"),
+        "symbol": record.get("symbol"),
+        "interval": record.get("interval"),
+    }
+
+
+def _rehydrate_dataset(record: dict) -> dict:
+    """Rebuild a missing dataset from its persisted locator and warm the cache.
+
+    This is the whole point of the registry: if the process restarts, a durable
+    `dataset_id` should still know how to find its own bars again.
+    """
+    locator = record.get("locator") or {}
+    source = record.get("source")
+    dataset_id = record["dataset_id"]
+
+    if source == "timescaledb":
+        from services.db import get_ohlcv
+
+        df = get_ohlcv(
+            symbol=locator["symbol"],
+            interval=locator.get("interval") or record.get("interval") or "1min",
+            start_date=locator.get("start_date"),
+            end_date=locator.get("end_date"),
+        )
+        if df.empty:
+            raise KeyError(f"Dataset '{dataset_id}' no longer has any source bars in TimescaleDB.")
+        df.index.name = "date"
+        _store_dataset(
+            df,
+            name=record["name"],
+            source=source,
+            symbol=record.get("symbol"),
+            interval=record.get("interval"),
+            dataset_id=dataset_id,
+            locator=locator,
+            persist=False,
+        )
+        return _store()[dataset_id]
+
+    if source == "databento":
+        df, label, interval = _load_parquet_frame(
+            symbol=locator.get("symbol") or record.get("symbol") or "",
+            interval=locator.get("interval") or record.get("interval") or "1min",
+            start_date=locator.get("start_date"),
+            end_date=locator.get("end_date"),
+        )
+        _store_dataset(
+            df,
+            name=record["name"] or f"{label} {interval} (Databento)",
+            source=source,
+            symbol=record.get("symbol") or label,
+            interval=interval,
+            dataset_id=dataset_id,
+            locator=locator,
+            persist=False,
+        )
+        return _store()[dataset_id]
+
+    if source == "synthetic":
+        df = _build_sample_frame(
+            bars=int(locator["bars"]),
+            interval=locator.get("interval") or record.get("interval") or "1min",
+            base_price=float(locator["base_price"]),
+            seed=int(locator["seed"]),
+        )
+        _store_dataset(
+            df,
+            name=record["name"],
+            source=source,
+            interval=record.get("interval"),
+            dataset_id=dataset_id,
+            locator=locator,
+            persist=False,
+        )
+        return _store()[dataset_id]
+
+    raise RuntimeError(
+        f"Dataset '{dataset_id}' is persisted as '{source}', but rebuild support isn't wired in yet."
+    )
 
 def get_dataset(dataset_id: str) -> dict:
     """Look up a dataset by ID and return the full store entry (info + df + arrays).
@@ -664,14 +840,46 @@ def get_dataset(dataset_id: str) -> dict:
     if not dataset_id or not isinstance(dataset_id, str):
         raise ValueError("'dataset_id' must be a non-empty string.")
     store = _store()
-    if dataset_id not in store:
+    if dataset_id in store:
+        return store[dataset_id]
+
+    record = _get_persisted_dataset_record(dataset_id)
+    if record is None:
         raise KeyError(f"Dataset '{dataset_id}' not found.")
-    return store[dataset_id]
+
+    if not record.get("is_rebuildable"):
+        raise RuntimeError(
+            f"Dataset '{dataset_id}' exists in the registry but can't be rebuilt after restart yet."
+        )
+
+    return _rehydrate_dataset(record)
+
+
+def get_dataset_info(dataset_id: str) -> dict:
+    """Fetch dataset metadata even if the hot DataFrame cache is cold."""
+    if not dataset_id or not isinstance(dataset_id, str):
+        raise ValueError("'dataset_id' must be a non-empty string.")
+
+    store = _store()
+    if dataset_id in store:
+        return store[dataset_id]["info"]
+
+    record = _get_persisted_dataset_record(dataset_id)
+    if record is None:
+        raise KeyError(f"Dataset '{dataset_id}' not found.")
+
+    return _dataset_info_from_record(record)
 
 
 def list_datasets() -> list[dict]:
-    #Return DatasetInfo dict for every dataset in memory
-    return [v["info"] for v in _store().values()]
+    """List memory-backed datasets plus any persisted registry rows."""
+    datasets = {info["dataset_id"]: info for info in [v["info"] for v in _store().values()]}
+
+    persisted = _list_persisted_datasets()
+    for record in persisted:
+        datasets.setdefault(record["dataset_id"], _dataset_info_from_record(record))
+
+    return list(datasets.values())
 
 def load_from_db(
     symbol: str,
@@ -684,10 +892,7 @@ def load_from_db(
     Raises ValueError if the query comes back empty, or RuntimeError if the DB
     isn’t configured (propagated from the pool init).
     """
-    try:
-        from services.db import get_ohlcv
-    except ImportError:
-        from db import get_ohlcv
+    from services.db import get_ohlcv
 
     interval = normalise_interval(interval)
 
@@ -714,4 +919,11 @@ def load_from_db(
         source="timescaledb",
         symbol=symbol.upper(),
         interval=interval,
+        locator={
+            "source": "timescaledb",
+            "symbol": symbol.upper(),
+            "interval": interval,
+            "start_date": start_date,
+            "end_date": end_date,
+        },
     )

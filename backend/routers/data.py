@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Query
 from schemas import DatasetInfo, LoadSymbolRequest, SymbolInfo, ParquetLoadRequest
-from services.data_loader import(load_csv, generate_sample_data, get_dataset, list_datasets, fetch_yfinance_intraday,
-load_parquet, list_parquet_symbols, get_candles, load_from_db)
+from services.data_loader import(load_csv, generate_sample_data, get_dataset, get_dataset_info as load_dataset_info,
+list_datasets, fetch_yfinance_intraday, load_parquet, list_parquet_symbols, get_candles, load_from_db)
 from services.dataset_store import add_dataset
 from datetime import datetime
 import pandas as pd
@@ -89,6 +89,8 @@ async def upload_csv(file: UploadFile = File(...)):
         info = load_csv(contents, name=file.filename)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
     return info
 
 #Sample data
@@ -101,10 +103,13 @@ async def generate_sample(
     seed: int = Query(default=42),
 ):
     #Generate synthetic OHLCV sample data for quick testing
-    info = generate_sample_data(
-        name=name, bars=bars, interval=interval,
-        base_price=base_price, seed=seed,
-    )
+    try:
+        info = generate_sample_data(
+            name=name, bars=bars, interval=interval,
+            base_price=base_price, seed=seed,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
     return info
 
 # Parquet for Databento (in-memory path)
@@ -122,6 +127,8 @@ async def load_parquet_dataset(request: ParquetLoadRequest):
         raise HTTPException(status_code=404, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
     return info
 
 # TimescaleDB endpoints (DB path)
@@ -177,16 +184,20 @@ async def load_symbol(request: LoadSymbolRequest):
 @router.get("/", response_model=list[DatasetInfo])
 async def list_all_datasets():
     #List all available datasets
-    return list_datasets()
+    try:
+        return list_datasets()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Dataset registry error: {exc}")
 
 @router.get("/{dataset_id}", response_model=DatasetInfo)
 async def get_dataset_info(dataset_id: str):
     #Get metadata for a specific dataset
     try:
-        dataset = get_dataset(dataset_id)
+        return load_dataset_info(dataset_id)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found.")
-    return dataset["info"]
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Dataset registry error: {exc}")
 
 @router.get("/{dataset_id}/preview")
 async def preview_dataset(dataset_id: str, rows: int = Query(default=10, ge=1, le=100)):
@@ -195,6 +206,8 @@ async def preview_dataset(dataset_id: str, rows: int = Query(default=10, ge=1, l
         dataset = get_dataset(dataset_id)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found.")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Dataset load failed: {exc}")
     df = dataset["df"].head(rows).reset_index()
     df["date"] = df["date"].astype(str)
     return df.to_dict(orient="records")
@@ -214,6 +227,8 @@ async def get_dataset_candles(
         raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found.")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Dataset load failed: {exc}")
     return candles
     
 @router.get("/db/{symbol}/candles")

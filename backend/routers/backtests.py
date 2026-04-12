@@ -6,7 +6,7 @@ from services.backtest_repo import (
     get_backtest as get_backtest_db, list_backtests as list_backtests_db, save_backtest,
 )
 from services.backtest_store import (
-    add_backtest, get_backtest as get_backtest_mem, list_backtests as list_backtests_mem,
+    add_backtest, delete_backtest, get_backtest as get_backtest_mem, list_backtests as list_backtests_mem,
 )
 from services.data_loader import get_candles, get_dataset
 from services.indicators import add_all_indicators
@@ -17,18 +17,23 @@ from services.prop_firm_eval import evaluate_prop_firm
 
 router = APIRouter()
 
+
+def _db_required() -> bool:
+    from services.db import db_configured
+    return db_configured()
+
 def _load_backtest_any(backtest_id: str) -> dict | None:
     """Load a backtest from DB first, then fall back to memory.
 
     This keeps the read path simple while we straddle both storage modes. If
     Postgres is down or the row isn't there yet, the in-memory copy still works.
     """
-    try:
-        bt = get_backtest_db(backtest_id)
-    except Exception:
-        bt = None
-
-    if bt is None:
+    if _db_required():
+        try:
+            bt = get_backtest_db(backtest_id)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"Backtest storage unavailable: {exc}")
+    else:
         bt = get_backtest_mem(backtest_id)
 
     return _ensure_backtest_replay_context(bt)
@@ -128,6 +133,8 @@ async def create_backtest(request: BacktestRequest):
         dataset = get_dataset(request.dataset_id)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Dataset '{request.dataset_id}' not found.")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
 
     df = dataset["df"].copy() #isolate from in-memory store to avoid mutating cached data
 
@@ -178,19 +185,23 @@ async def create_backtest(request: BacktestRequest):
 
     add_backtest(backtest_id, result)
 
-    try:
-        save_backtest(result)
-    except Exception:
-        # DB persistence is best-effort for now; in-memory result still works
-        pass
+    if _db_required():
+        try:
+            save_backtest(result)
+        except Exception as exc:
+            delete_backtest(backtest_id)
+            raise HTTPException(status_code=503, detail=f"Backtest save failed: {exc}")
 
     return result
 
 @router.get("/", response_model=list[BacktestSummary])
 async def list_backtests():
-    try:
-        source = list_backtests_db()
-    except Exception:
+    if _db_required():
+        try:
+            source = list_backtests_db()
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"Backtest storage unavailable: {exc}")
+    else:
         source = list_backtests_mem()
 
     summaries = []

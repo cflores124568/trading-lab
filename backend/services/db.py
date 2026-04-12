@@ -19,6 +19,11 @@ import pandas as pd
 _pool = None  # psycopg2.pool.ThreadedConnectionPool
 
 
+def db_configured() -> bool:
+    """Tell the app whether a real DATABASE_URL is configured right now."""
+    return bool(os.environ.get("DATABASE_URL"))
+
+
 def _db_url() -> str:
     """Return the configured database URL or raise a helpful error."""
     url = os.environ.get("DATABASE_URL")
