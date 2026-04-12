@@ -26,6 +26,43 @@ export interface TradeAnalyticsSummary {
   daily_pnls: DailyPnlEntry[];
 }
 
+export interface PayoutPolicy {
+  label: string;
+  cadence_label: string;
+  eligible_profit_mode: "net_profit" | "profit_over_buffer";
+  request_pct: number;
+  min_payout: number;
+  max_payout?: number;
+  min_calendar_days_from_first_trade?: number;
+  winning_days_required?: number;
+  winning_day_profit?: number;
+  min_profit_goal?: number;
+  consistency_threshold?: number;
+  buffer_balance?: number;
+  assumptions: string[];
+}
+
+export interface PayoutEstimate {
+  supported: boolean;
+  eligible: boolean;
+  policy_label: string;
+  cadence_label: string;
+  estimated_payout: number;
+  eligible_profit: number;
+  request_pct: number;
+  min_payout: number;
+  max_payout?: number;
+  winning_days_hit: number;
+  winning_days_required?: number;
+  winning_day_profit?: number;
+  min_profit_goal?: number;
+  buffer_balance?: number;
+  remaining_to_buffer: number;
+  calendar_days_elapsed: number;
+  blocked_by: string[];
+  assumptions: string[];
+}
+
 function round(value: number, digits = 2): number {
   return Number(value.toFixed(digits));
 }
@@ -239,4 +276,333 @@ export function findMatchingPresetKey(
   });
 
   return found?.key ?? null;
+}
+
+function getFirstTradeTime(trades: Trade[]): number | null {
+  const timestamps = trades
+    .map((trade) => Date.parse(trade.entry_time))
+    .filter((value) => Number.isFinite(value));
+
+  return timestamps.length > 0 ? Math.min(...timestamps) : null;
+}
+
+function getLastTradeTime(trades: Trade[]): number | null {
+  const timestamps = trades
+    .map((trade) => Date.parse(trade.exit_time || trade.entry_time))
+    .filter((value) => Number.isFinite(value));
+
+  return timestamps.length > 0 ? Math.max(...timestamps) : null;
+}
+
+function getMffBufferBalance(accountSize: number): number | undefined {
+  return {
+    50_000: 52_100,
+    100_000: 103_100,
+    150_000: 154_600,
+  }[accountSize];
+}
+
+function getLucidProBufferBalance(accountSize: number): number | undefined {
+  return {
+    50_000: 52_100,
+    100_000: 103_100,
+    150_000: 154_600,
+  }[accountSize];
+}
+
+function getLucidProMinProfitGoal(accountSize: number): number | undefined {
+  return {
+    25_000: 250,
+    50_000: 500,
+    100_000: 750,
+    150_000: 1_000,
+  }[accountSize];
+}
+
+function getLucidProMaxPayout(accountSize: number): number | undefined {
+  return {
+    25_000: 1_000,
+    50_000: 2_000,
+    100_000: 2_500,
+    150_000: 3_000,
+  }[accountSize];
+}
+
+function getLucidFlexWinningDayTarget(accountSize: number): number | undefined {
+  return {
+    25_000: 100,
+    50_000: 150,
+    100_000: 200,
+    150_000: 250,
+  }[accountSize];
+}
+
+function getLucidFlexMaxPayout(accountSize: number): number | undefined {
+  return {
+    25_000: 1_000,
+    50_000: 2_000,
+    100_000: 2_500,
+    150_000: 3_000,
+  }[accountSize];
+}
+
+function getMffFlexWinningDayTarget(accountSize: number): number | undefined {
+  return {
+    25_000: 100,
+    50_000: 150,
+  }[accountSize];
+}
+
+function getMffFlexMaxPayout(accountSize: number): number | undefined {
+  return {
+    25_000: 3_000,
+    50_000: 5_000,
+  }[accountSize];
+}
+
+export function resolvePayoutPolicy(
+  presetKey: string | null,
+  rules: PropFirmRules,
+): PayoutPolicy | null {
+  const accountSize = rules.account_size;
+
+  if (presetKey?.startsWith("topstep_")) {
+    return {
+      label: "Topstep funded payout estimate",
+      cadence_label: "5 winning days",
+      eligible_profit_mode: "net_profit",
+      request_pct: 0.5,
+      max_payout: 5_000,
+      min_payout: 0,
+      winning_days_required: 5,
+      winning_day_profit: 150,
+      assumptions: [
+        "Uses the funded-account 5 winning day path from Topstep's current payout policy.",
+        "Treats modeled net profit as the payout balance proxy inside this simulator.",
+      ],
+    };
+  }
+
+  if (presetKey?.startsWith("mff_rapid_")) {
+    const bufferBalance = getMffBufferBalance(accountSize);
+    return {
+      label: "MFF Rapid first payout estimate",
+      cadence_label: "24h after first trade",
+      eligible_profit_mode: "profit_over_buffer",
+      request_pct: 0.9,
+      min_payout: 500,
+      min_calendar_days_from_first_trade: 1,
+      buffer_balance: bufferBalance,
+      assumptions: [
+        "Models the current Rapid sim-funded rules from the official payout overview.",
+        "Estimates payout from profit above the required buffer and applies the 90% trader share.",
+      ],
+    };
+  }
+
+  if (presetKey?.startsWith("mff_flex_")) {
+    const winningDayProfit = getMffFlexWinningDayTarget(accountSize);
+    const maxPayout = getMffFlexMaxPayout(accountSize);
+    if (!winningDayProfit || !maxPayout) {
+      return null;
+    }
+
+    return {
+      label: "MFF Flex first payout estimate",
+      cadence_label: "5 winning days",
+      eligible_profit_mode: "net_profit",
+      request_pct: 0.5,
+      min_payout: 250,
+      max_payout: maxPayout,
+      winning_days_required: 5,
+      winning_day_profit: winningDayProfit,
+      assumptions: [
+        "Uses the current Flex first-payout rule set from the official payout overview.",
+        "Treats the request cap as 50% of modeled net profit, capped by the plan maximum.",
+      ],
+    };
+  }
+
+  if (presetKey?.startsWith("lucid_pro_")) {
+    const bufferBalance = getLucidProBufferBalance(accountSize);
+    const minProfitGoal = getLucidProMinProfitGoal(accountSize);
+    const maxPayout = getLucidProMaxPayout(accountSize);
+    if (!bufferBalance || !minProfitGoal || !maxPayout) {
+      return null;
+    }
+
+    return {
+      label: "LucidPro first payout estimate",
+      cadence_label: "Any day after objectives",
+      eligible_profit_mode: "profit_over_buffer",
+      request_pct: 1,
+      min_payout: 500,
+      max_payout: maxPayout,
+      min_profit_goal: minProfitGoal,
+      consistency_threshold: 0.4,
+      buffer_balance: bufferBalance,
+      assumptions: [
+        "Uses payout 1 limits from LucidPro's official payout article.",
+        "Assumes this is the first payout cycle and excludes compliance or manual review checks.",
+      ],
+    };
+  }
+
+  if (presetKey?.startsWith("lucid_flex_")) {
+    const winningDayProfit = getLucidFlexWinningDayTarget(accountSize);
+    const maxPayout = getLucidFlexMaxPayout(accountSize);
+    if (!winningDayProfit || !maxPayout) {
+      return null;
+    }
+
+    return {
+      label: "LucidFlex payout estimate",
+      cadence_label: "Any day after objectives",
+      eligible_profit_mode: "net_profit",
+      request_pct: 0.5,
+      min_payout: 500,
+      max_payout: maxPayout,
+      winning_days_required: 5,
+      winning_day_profit: winningDayProfit,
+      assumptions: [
+        "Uses the current LucidFlex payout article.",
+        "Caps the request at 50% of modeled profit up to the plan maximum.",
+      ],
+    };
+  }
+
+  return null;
+}
+
+export function estimateFirstPayout(args: {
+  payoutPolicy: PayoutPolicy | null;
+  rules: PropFirmRules;
+  trades: Trade[];
+  summary: TradeAnalyticsSummary;
+}): PayoutEstimate {
+  const { payoutPolicy, rules, trades, summary } = args;
+
+  if (!payoutPolicy) {
+    return {
+      supported: false,
+      eligible: false,
+      policy_label: "Payout estimate unavailable",
+      cadence_label: "Not modeled for this preset",
+      estimated_payout: 0,
+      eligible_profit: 0,
+      request_pct: 0,
+      min_payout: 0,
+      winning_days_hit: 0,
+      remaining_to_buffer: 0,
+      calendar_days_elapsed: 0,
+      blocked_by: [
+        "This preset doesn't have a payout model wired in yet, so I'd rather show nothing than fake it.",
+      ],
+      assumptions: [
+        "Current payout support is modeled for Topstep, MFF Rapid/Flex, LucidPro, and LucidFlex first-payout flows.",
+      ],
+    };
+  }
+
+  const netProfit = round(summary.current_balance - rules.account_size);
+  const firstTradeTime = getFirstTradeTime(trades);
+  const lastTradeTime = getLastTradeTime(trades);
+  const calendarDaysElapsed =
+    firstTradeTime !== null && lastTradeTime !== null
+      ? Math.max(0, Math.floor((lastTradeTime - firstTradeTime) / 86_400_000))
+      : 0;
+  const winningDaysHit = payoutPolicy.winning_day_profit
+    ? summary.daily_pnls.filter((entry) => entry.pnl >= payoutPolicy.winning_day_profit!).length
+    : 0;
+
+  const eligibleProfit =
+    payoutPolicy.eligible_profit_mode === "profit_over_buffer"
+      ? round(
+          Math.max(0, summary.current_balance - (payoutPolicy.buffer_balance ?? summary.current_balance)),
+        )
+      : round(Math.max(0, netProfit));
+
+  const rawEstimate = eligibleProfit * payoutPolicy.request_pct;
+  const cappedEstimate = payoutPolicy.max_payout
+    ? Math.min(rawEstimate, payoutPolicy.max_payout)
+    : rawEstimate;
+  const estimatedPayout = round(Math.max(0, cappedEstimate));
+  const blockedBy: string[] = [];
+
+  if (netProfit <= 0) {
+    blockedBy.push("Need positive net profit in the payout cycle.");
+  }
+
+  if (
+    payoutPolicy.min_calendar_days_from_first_trade !== undefined &&
+    calendarDaysElapsed < payoutPolicy.min_calendar_days_from_first_trade
+  ) {
+    blockedBy.push(
+      `Need ${payoutPolicy.min_calendar_days_from_first_trade} day(s) from the first trade before a request is allowed.`,
+    );
+  }
+
+  if (
+    payoutPolicy.winning_days_required !== undefined &&
+    payoutPolicy.winning_day_profit !== undefined &&
+    winningDaysHit < payoutPolicy.winning_days_required
+  ) {
+    blockedBy.push(
+      `Need ${payoutPolicy.winning_days_required} winning day(s) of at least $${payoutPolicy.winning_day_profit}.`,
+    );
+  }
+
+  if (
+    payoutPolicy.min_profit_goal !== undefined &&
+    netProfit < payoutPolicy.min_profit_goal
+  ) {
+    blockedBy.push(`Need at least $${payoutPolicy.min_profit_goal} net profit this payout cycle.`);
+  }
+
+  if (
+    payoutPolicy.consistency_threshold !== undefined &&
+    netProfit > 0 &&
+    summary.largest_green_day / netProfit > payoutPolicy.consistency_threshold
+  ) {
+    blockedBy.push(
+      `Largest green day is above the ${Math.round(payoutPolicy.consistency_threshold * 100)}% consistency limit.`,
+    );
+  }
+
+  if (
+    payoutPolicy.buffer_balance !== undefined &&
+    summary.current_balance < payoutPolicy.buffer_balance
+  ) {
+    blockedBy.push(
+      `Need to hold the buffer balance at $${payoutPolicy.buffer_balance.toLocaleString()}.`,
+    );
+  }
+
+  if (estimatedPayout < payoutPolicy.min_payout) {
+    blockedBy.push(`Need at least a $${payoutPolicy.min_payout} payout amount to request it.`);
+  }
+
+  return {
+    supported: true,
+    eligible: blockedBy.length === 0,
+    policy_label: payoutPolicy.label,
+    cadence_label: payoutPolicy.cadence_label,
+    estimated_payout: estimatedPayout,
+    eligible_profit: eligibleProfit,
+    request_pct: payoutPolicy.request_pct,
+    min_payout: payoutPolicy.min_payout,
+    max_payout: payoutPolicy.max_payout,
+    winning_days_hit: winningDaysHit,
+    winning_days_required: payoutPolicy.winning_days_required,
+    winning_day_profit: payoutPolicy.winning_day_profit,
+    min_profit_goal: payoutPolicy.min_profit_goal,
+    buffer_balance: payoutPolicy.buffer_balance,
+    remaining_to_buffer:
+      payoutPolicy.buffer_balance !== undefined
+        ? round(Math.max(0, payoutPolicy.buffer_balance - summary.current_balance))
+        : 0,
+    calendar_days_elapsed: calendarDaysElapsed,
+    blocked_by: blockedBy,
+    assumptions: payoutPolicy.assumptions,
+  };
 }

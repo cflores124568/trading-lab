@@ -78,8 +78,6 @@ Preset families currently include:
 - My Funded Futures
 - My Funded Futures Rapid
 - My Funded Futures Flex
-- FTMO
-- Apex Trader Funding
 - Lucid Trading `LucidPro` and `LucidFlex`
 
 They are exposed through `/api/prop-firms` and used by both backtests and the

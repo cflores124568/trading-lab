@@ -59,32 +59,6 @@ def make_mff_flex(account_size: int) -> dict:
         "min_trading_days":      15,
     }
 
-def make_ftmo(account_size: int) -> dict:
-    return {
-        "name":                  f"FTMO {account_size:,}",
-        "account_size":          account_size,
-        "daily_loss_limit":      0.05,
-        "max_drawdown":          0.10,
-        "profit_target":         0.10,
-        "consistency_rule":      True,
-        "consistency_threshold": 0.30,
-        "drawdown_type":         "intraday",
-        "min_trading_days":      30,
-    }
-
-def make_apex(account_size: int) -> dict:
-    return {
-        "name":                  f"Apex Trader Funding {account_size:,}",
-        "account_size":          account_size,
-        "daily_loss_limit":      0.04,
-        "max_drawdown":          0.06,
-        "profit_target":         0.06,
-        "consistency_rule":      False,
-        "consistency_threshold": 0.0,
-        "drawdown_type":         "intraday",
-        "min_trading_days":      None,
-    }
-
 # Lucid is hardcoded per tier since their rules are in fixed dollar amounts, not percentages so the percentages differ between account sizes
 LUCID_PRESETS = {
     "lucid_pro_50k": {
@@ -173,14 +147,6 @@ PRESETS: dict[str, dict] = {
     "mff_flex_50k":   make_mff_flex(50_000),
     "mff_flex_100k":  make_mff_flex(100_000),
     "mff_flex_150k":  make_mff_flex(150_000),
-    #FTMO
-    "ftmo_50k":       make_ftmo(50_000),
-    "ftmo_100k":      make_ftmo(100_000),
-    "ftmo_150k":      make_ftmo(150_000),
-    #Apex
-    "apex_50k":       make_apex(50_000),
-    "apex_100k":      make_apex(100_000),
-    "apex_150k":      make_apex(150_000),
     #Lucid (hardcoded per tier)
     **LUCID_PRESETS,
 }

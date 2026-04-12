@@ -16,17 +16,17 @@ def _require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def _ftmo_rules() -> dict:
+def _topstep_rules() -> dict:
     return {
-        "name": "FTMO",
+        "name": "TopStep 100,000",
         "account_size": 100_000,
         "daily_loss_limit": 0.05,
-        "max_drawdown": 0.10,
-        "profit_target": 0.10,
+        "max_drawdown": 0.08,
+        "profit_target": 0.08,
         "consistency_rule": True,
-        "consistency_threshold": 0.30,
-        "drawdown_type": "eod",
-        "min_trading_days": None,
+        "consistency_threshold": 0.35,
+        "drawdown_type": "intraday",
+        "min_trading_days": 30,
     }
 
 
@@ -60,7 +60,7 @@ def main() -> None:
                 "type": "ma_crossover",
                 "params": {"fast_period": 9, "slow_period": 21},
             },
-            "prop_firm_rules": _ftmo_rules(),
+            "prop_firm_rules": _topstep_rules(),
             "initial_balance": 100_000,
             "position_size": 1.0,
             "commission": 5.0,

@@ -35,11 +35,14 @@ import {
   type ReplayAction,
 } from "../../services/replaySimulator";
 import {
+  estimateFirstPayout,
   evaluatePropFirmRules,
   findMatchingPresetKey,
   groupPropPresets,
+  resolvePayoutPolicy,
   summarizeTrades,
   type DailyPnlEntry,
+  type PayoutEstimate,
   type TradeAnalyticsSummary,
 } from "../../services/backtestAnalytics";
 import { CircleCheck, CircleX, TriangleAlert } from "lucide-solid";
@@ -316,6 +319,7 @@ function PropEvalPanel(props: {
   rules: PropFirmRules;
   evaluation: PropFirmEvaluation;
   summary: TradeAnalyticsSummary;
+  payoutEstimate?: PayoutEstimate | null;
   note?: string;
 }) {
   const details = createMemo(() => getPropEvalDetails(props.evaluation));
@@ -426,6 +430,130 @@ function PropEvalPanel(props: {
           hint={`Net PnL ${formatCurrency(actualProfitPct() * props.rules.account_size, { signed: true })}`}
         />
       </div>
+
+      <Show when={props.payoutEstimate}>
+        {(estimate) => (
+          <div class="mt-5 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+            {(() => {
+              const winningDaysRequired = estimate().winning_days_required;
+              const winningDayProfit = estimate().winning_day_profit;
+              const bufferBalance = estimate().buffer_balance;
+              const minProfitGoal = estimate().min_profit_goal;
+              const winningDaysComplete =
+                winningDaysRequired === undefined ||
+                estimate().winning_days_hit >= winningDaysRequired;
+              const profitGateComplete =
+                bufferBalance !== undefined
+                  ? estimate().remaining_to_buffer === 0
+                  : minProfitGoal === undefined ||
+                    props.summary.current_balance - props.rules.account_size >= minProfitGoal;
+
+              return (
+                <>
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div class="space-y-1">
+                <p class="text-sm font-semibold text-zinc-100">Estimated Payout</p>
+                <p class="text-xs text-zinc-500">{estimate().policy_label}</p>
+              </div>
+              <div class="rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-right">
+                <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Payout Status</p>
+                <p
+                  class={`mt-2 font-mono text-lg font-semibold ${
+                    estimate().eligible ? "text-emerald-300" : "text-yellow-300"
+                  }`}
+                >
+                  {estimate().supported
+                    ? estimate().eligible
+                      ? "Likely eligible"
+                      : "Not yet"
+                    : "Unavailable"}
+                </p>
+              </div>
+            </div>
+
+            <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <MetricCard
+                label="Estimated Payout"
+                value={formatCurrency(estimate().estimated_payout)}
+                hint={estimate().cadence_label}
+                tone={estimate().eligible ? "good" : "default"}
+              />
+              <MetricCard
+                label="Eligible Profit"
+                value={formatCurrency(estimate().eligible_profit)}
+                hint={`${formatPercent(estimate().request_pct, 0)} request model`}
+              />
+              <MetricCard
+                label="Winning Days"
+                value={
+                  winningDaysRequired
+                    ? `${estimate().winning_days_hit}/${winningDaysRequired}`
+                    : "Not used"
+                }
+                hint={
+                  winningDayProfit
+                    ? `$${winningDayProfit} minimum green day`
+                    : "No winning-day gate"
+                }
+                tone={winningDaysComplete ? "good" : "bad"}
+              />
+              <MetricCard
+                label="Buffer / Profit Gate"
+                value={
+                  bufferBalance !== undefined
+                    ? formatCurrency(bufferBalance)
+                    : minProfitGoal !== undefined
+                      ? formatCurrency(minProfitGoal)
+                      : "Not used"
+                }
+                hint={
+                  bufferBalance !== undefined
+                    ? estimate().remaining_to_buffer > 0
+                      ? `${formatCurrency(estimate().remaining_to_buffer)} still needed`
+                      : "Buffer cleared"
+                    : minProfitGoal !== undefined
+                      ? "Cycle profit goal"
+                      : "No extra gate"
+                }
+                tone={profitGateComplete ? "good" : "default"}
+              />
+            </div>
+
+            <div class="mt-4 grid gap-4 lg:grid-cols-2">
+              <div>
+                <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Blocked By</p>
+                <Show
+                  when={estimate().blocked_by.length > 0}
+                  fallback={<p class="mt-2 text-sm text-emerald-300">Nothing obvious is blocking a first payout request.</p>}
+                >
+                  <ul class="mt-2 space-y-2 text-sm text-zinc-300">
+                    <For each={estimate().blocked_by}>
+                      {(item) => (
+                        <li class="flex items-start gap-2">
+                          <TriangleAlert size={13} class="mt-0.5 text-yellow-300" />
+                          <span>{item}</span>
+                        </li>
+                      )}
+                    </For>
+                  </ul>
+                </Show>
+              </div>
+
+              <div>
+                <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Assumptions</p>
+                <ul class="mt-2 space-y-2 text-sm text-zinc-400">
+                  <For each={estimate().assumptions}>
+                    {(item) => <li>{item}</li>}
+                  </For>
+                </ul>
+              </div>
+            </div>
+                </>
+              );
+            })()}
+          </div>
+        )}
+      </Show>
 
       <Show when={!props.evaluation.passed}>
         <ul class="mt-4 space-y-2 text-sm text-red-300">
@@ -786,6 +914,35 @@ export default function BacktestDetail() {
 
     return summarizeTrades(backtest.trades, rebasedSelectedEquityCurve(), rules.account_size);
   });
+  const savedPayoutEstimate = createMemo(() => {
+    const backtest = result();
+    const summary = systemTradeSummary();
+    if (!backtest || !summary) {
+      return null;
+    }
+
+    return estimateFirstPayout({
+      payoutPolicy: resolvePayoutPolicy(savedPresetKey(), backtest.prop_firm_rules),
+      rules: backtest.prop_firm_rules,
+      trades: backtest.trades,
+      summary,
+    });
+  });
+  const selectedPayoutEstimate = createMemo(() => {
+    const backtest = result();
+    const rules = selectedPropRules();
+    const summary = selectedTradeSummary();
+    if (!backtest || !rules || !summary) {
+      return null;
+    }
+
+    return estimateFirstPayout({
+      payoutPolicy: resolvePayoutPolicy(selectedPresetKey(), rules),
+      rules,
+      trades: backtest.trades,
+      summary,
+    });
+  });
 
   const replaySession = createMemo(() => {
     const backtest = result();
@@ -816,6 +973,21 @@ export default function BacktestDetail() {
       session.equityCurve,
       backtest.prop_firm_rules.account_size,
     );
+  });
+  const replayPayoutEstimate = createMemo(() => {
+    const backtest = result();
+    const summary = replayTradeSummary();
+    const session = replaySession();
+    if (!backtest || !summary || !session) {
+      return null;
+    }
+
+    return estimateFirstPayout({
+      payoutPolicy: resolvePayoutPolicy(savedPresetKey(), backtest.prop_firm_rules),
+      rules: backtest.prop_firm_rules,
+      trades: session.trades,
+      summary,
+    });
   });
 
   const chartMarkers = createMemo<PriceChartMarker[]>(() => {
@@ -1294,13 +1466,15 @@ export default function BacktestDetail() {
                             evaluation={bt().prop_firm_eval}
                             rules={bt().prop_firm_rules}
                             summary={systemTradeSummary()!}
-                            note="This is the saved evaluation attached to the backtest."
+                            payoutEstimate={savedPayoutEstimate()}
+                            note="This is the saved evaluation attached to the backtest, plus a first-payout estimate under the same preset when that firm's payout path is modeled."
                           />
                           <PropEvalPanel
                             title="Replay Prop Eval"
                             evaluation={session().propEvaluation}
                             rules={bt().prop_firm_rules}
                             summary={replaySummary()}
+                            payoutEstimate={replayPayoutEstimate()}
                             note="Same rules, but scored against the manual replay trades you placed above."
                           />
                         </div>
@@ -1430,7 +1604,8 @@ export default function BacktestDetail() {
                         rules={selectedPropRules()!}
                         evaluation={selectedPropEvaluation()!}
                         summary={selectedTradeSummary()!}
-                        note="Shared rules covered right now: profit target, drawdown, daily loss, consistency, and min trading days. Contract caps and payout-specific rules still need a richer model."
+                        payoutEstimate={selectedPayoutEstimate()}
+                        note="This now includes a first-payout estimate when that preset has enough official payout metadata to model honestly. Contract caps, prior withdrawals, and compliance reviews still aren't part of the simulator."
                       />
 
                       <Show when={selectedPresetKey() !== savedPresetKey()}>
@@ -1439,6 +1614,7 @@ export default function BacktestDetail() {
                           rules={bt().prop_firm_rules}
                           evaluation={bt().prop_firm_eval}
                           summary={systemTradeSummary()!}
+                          payoutEstimate={savedPayoutEstimate()}
                           note="This is the original evaluation saved with the backtest."
                         />
                       </Show>
