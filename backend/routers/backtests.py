@@ -1,19 +1,14 @@
 import uuid
-from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query
 from schemas import BacktestRequest, BacktestResult, BacktestSummary, BacktestCompare
 from services.backtest_repo import (
     get_backtest as get_backtest_db, list_backtests as list_backtests_db, save_backtest,
 )
 from services.backtest_store import (
-    add_backtest, delete_backtest, get_backtest as get_backtest_mem, list_backtests as list_backtests_mem,
+    get_backtest as get_backtest_mem, list_backtests as list_backtests_mem,
 )
 from services.data_loader import get_candles, get_dataset
-from services.indicators import add_all_indicators
-from services.strategy import generate_signals
-from services.backtest_engine import run_backtest
-from services.metrics import calculate_metrics
-from services.prop_firm_eval import evaluate_prop_firm
+from services.backtest_service import build_backtest_result, build_replay_context, persist_backtest_result
 
 router = APIRouter()
 
@@ -59,7 +54,7 @@ def _ensure_backtest_replay_context(backtest: dict | None) -> dict | None:
     except Exception:
         return backtest
 
-    replay_context = _build_replay_context(dataset)
+    replay_context = build_replay_context(dataset)
     if not replay_context:
         return backtest
 
@@ -71,26 +66,6 @@ def _ensure_backtest_replay_context(backtest: dict | None) -> dict | None:
         pass
 
     return next_backtest
-
-
-def _build_replay_context(dataset: dict) -> dict | None:
-    """Persist enough source metadata to rebuild replay candles later."""
-    info = dataset.get("info", {})
-    source = info.get("source")
-    symbol = info.get("symbol")
-    interval = info.get("interval")
-
-    if source == "timescaledb" and symbol and interval:
-        return {
-            "source": source,
-            "symbol": symbol,
-            "interval": interval,
-            "start_date": info.get("start_date"),
-            "end_date": info.get("end_date"),
-        }
-
-    return None
-
 
 def _df_to_candles(df) -> list[dict]:
     if df.empty:
@@ -136,61 +111,15 @@ async def create_backtest(request: BacktestRequest):
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
-    df = dataset["df"].copy() #isolate from in-memory store to avoid mutating cached data
+    if dataset is None:
+        raise HTTPException(status_code=404, detail=f"Dataset '{request.dataset_id}' not found.")
 
-    if request.start_date:
-        df = df.loc[request.start_date:]
-    if request.end_date:
-        df = df.loc[:request.end_date]
+    try:
+        result = build_backtest_result(dataset, request, backtest_id=str(uuid.uuid4()))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
-    if df.empty:
-        raise HTTPException(status_code=400, detail="Date range produced an empty dataset.")
-
-    df = add_all_indicators(df, request.strategy.params, strategy_type=request.strategy.type)
-    df = generate_signals(df, request.strategy.type, request.strategy.params)
-
-    engine_result = run_backtest(
-        df,
-        initial_balance=request.initial_balance,
-        position_size=request.position_size,
-        commission=request.commission,
-    )
-
-    trades = engine_result["trades"]
-    equity_curve = engine_result["equity_curve"]
-
-    metrics = calculate_metrics(trades, equity_curve, request.initial_balance)
-    prop_eval = evaluate_prop_firm(
-        rules=request.prop_firm_rules.model_dump(),
-        trades=trades,
-        equity_curve=equity_curve,
-        initial_balance=request.initial_balance,
-    )
-
-    backtest_id = str(uuid.uuid4())
-    result = {
-        "backtest_id": backtest_id,
-        "dataset_id": request.dataset_id,
-        "symbol": dataset["info"].get("symbol", ""),
-        "replay_context": _build_replay_context(dataset),
-        "strategy": request.strategy.model_dump(),
-        "prop_firm_rules": request.prop_firm_rules.model_dump(),
-        "status": "completed",
-        "created_at": datetime.utcnow().isoformat(),
-        "trades": trades,
-        "metrics": metrics,
-        "prop_firm_eval": prop_eval,
-        "equity_curve": equity_curve,
-    }
-
-    add_backtest(backtest_id, result)
-
-    if _db_required():
-        try:
-            save_backtest(result)
-        except Exception as exc:
-            delete_backtest(backtest_id)
-            raise HTTPException(status_code=503, detail=f"Backtest save failed: {exc}")
+    persist_backtest_result(result)
 
     return result
 

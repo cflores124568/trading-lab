@@ -154,6 +154,86 @@ class ReplaySessionSummary(BaseModel):
     created_at: str
     updated_at: str
 
+
+class ExperimentScoringRule(str, Enum):
+    PROP_SCORE_V1 = "prop_score_v1"
+    TOTAL_PNL = "total_pnl"
+    SHARPE_RATIO = "sharpe_ratio"
+    PROFIT_FACTOR = "profit_factor"
+
+
+class ExperimentStatus(str, Enum):
+    DRAFT = "draft"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class ExperimentRunStatus(str, Enum):
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class ExperimentBase(BaseModel):
+    name: str
+    symbols: List[str] = Field(default_factory=list)
+    intervals: List[str] = Field(default_factory=list)
+    strategy_type: StrategyType
+    parameter_space: dict[str, List[Any]] = Field(default_factory=dict)
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    prop_firm_rules: PropFirmRules
+    initial_balance: float = Field(default=100_000, gt=0)
+    position_size: float = Field(default=1.0, gt=0)
+    commission: float = Field(default=5.0, ge=0)
+    scoring_rule: ExperimentScoringRule = Field(default=ExperimentScoringRule.PROP_SCORE_V1)
+
+
+class ExperimentCreate(ExperimentBase):
+    pass
+
+
+class ExperimentResult(ExperimentBase):
+    experiment_id: str
+    status: ExperimentStatus = Field(default=ExperimentStatus.DRAFT)
+    total_runs: int = 0
+    completed_runs: int = 0
+    failed_runs: int = 0
+    best_run_id: Optional[str] = None
+    best_backtest_id: Optional[str] = None
+    last_run_at: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+
+class ExperimentRunResult(BaseModel):
+    experiment_run_id: str
+    experiment_id: str
+    backtest_id: Optional[str] = None
+    symbol: str
+    interval: str
+    strategy_type: StrategyType
+    strategy_params: dict[str, Any] = Field(default_factory=dict)
+    dataset_id: Optional[str] = None
+    status: ExperimentRunStatus
+    score: Optional[float] = None
+    rank: Optional[int] = None
+    total_pnl: Optional[float] = None
+    win_rate: Optional[float] = None
+    max_drawdown: Optional[float] = None
+    profit_factor: Optional[float] = None
+    passed: Optional[bool] = None
+    error: Optional[str] = None
+    metrics: Optional[PerformanceMetrics] = None
+    prop_firm_eval: Optional[PropFirmEvaluation] = None
+    created_at: str
+    updated_at: str
+
+
+class ExperimentExecutionResult(BaseModel):
+    experiment: ExperimentResult
+    results: List[ExperimentRunResult]
+
 #Backtest request/response
 class BacktestRequest(BaseModel):
     dataset_id:      str

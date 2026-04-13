@@ -145,6 +145,65 @@ CREATE INDEX IF NOT EXISTS replay_sessions_updated_at_idx
 CREATE INDEX IF NOT EXISTS replay_sessions_symbol_idx
     ON replay_sessions (symbol);
 
+-- Experiment runner persistence
+CREATE TABLE IF NOT EXISTS experiments (
+    experiment_id    TEXT PRIMARY KEY,
+    name             TEXT NOT NULL,
+    symbols          JSONB NOT NULL,
+    intervals        JSONB NOT NULL,
+    strategy_type    TEXT NOT NULL,
+    parameter_space  JSONB NOT NULL,
+    start_date       TEXT,
+    end_date         TEXT,
+    prop_firm_rules  JSONB NOT NULL,
+    initial_balance  DOUBLE PRECISION NOT NULL DEFAULT 100000,
+    position_size    DOUBLE PRECISION NOT NULL DEFAULT 1,
+    commission       DOUBLE PRECISION NOT NULL DEFAULT 5,
+    scoring_rule     TEXT NOT NULL DEFAULT 'prop_score_v1',
+    status           TEXT NOT NULL DEFAULT 'draft',
+    total_runs       INTEGER NOT NULL DEFAULT 0,
+    completed_runs   INTEGER NOT NULL DEFAULT 0,
+    failed_runs      INTEGER NOT NULL DEFAULT 0,
+    best_run_id      TEXT,
+    best_backtest_id TEXT,
+    last_run_at      TIMESTAMPTZ,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS experiments_updated_at_idx
+    ON experiments (updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS experiment_runs (
+    experiment_run_id TEXT PRIMARY KEY,
+    experiment_id     TEXT NOT NULL,
+    backtest_id       TEXT,
+    symbol            TEXT NOT NULL,
+    interval          TEXT NOT NULL,
+    strategy_type     TEXT NOT NULL,
+    strategy_params   JSONB NOT NULL,
+    dataset_id        TEXT,
+    status            TEXT NOT NULL,
+    score             DOUBLE PRECISION,
+    rank              INTEGER,
+    total_pnl         DOUBLE PRECISION,
+    win_rate          DOUBLE PRECISION,
+    max_drawdown      DOUBLE PRECISION,
+    profit_factor     DOUBLE PRECISION,
+    passed            BOOLEAN,
+    error             TEXT,
+    metrics           JSONB,
+    prop_firm_eval    JSONB,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS experiment_runs_experiment_id_idx
+    ON experiment_runs (experiment_id);
+
+CREATE INDEX IF NOT EXISTS experiment_runs_score_idx
+    ON experiment_runs (experiment_id, score DESC NULLS LAST);
+
 -- Durable dataset registry
 CREATE TABLE IF NOT EXISTS datasets (
     dataset_id     TEXT PRIMARY KEY,

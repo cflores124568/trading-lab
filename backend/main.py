@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from routers import backtests, data, prop_firms, replay_sessions
+from routers import backtests, data, experiments, prop_firms, replay_sessions
 from services.backtest_store import list_backtests
 from services.replay_session_store import list_replay_sessions
 
@@ -34,6 +34,7 @@ app.add_middleware(
 )
 #Register API route groups
 app.include_router(backtests.router, prefix="/api/backtests", tags=["Backtests"])
+app.include_router(experiments.router, prefix="/api/experiments", tags=["Experiments"])
 app.include_router(replay_sessions.router, prefix="/api/replay-sessions", tags=["Replay Sessions"])
 app.include_router(data.router, prefix="/api/data", tags=["Market Data"])
 app.include_router(prop_firms.router, prefix="/api/prop-firms", tags=["Prop Firms"])
