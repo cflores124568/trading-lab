@@ -13,6 +13,7 @@ const navItems = [
   { href: "/replay", label: "Replay Lab" },
   { href: "/replay-sessions", label: "Replay Sessions" },
   { href: "/backtests", label: "Backtests" },
+  { href: "/experiments", label: "Experiments" },
   { href: "/backtests/new", label: "New Backtest" },
 ];
 

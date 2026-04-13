@@ -1207,6 +1207,12 @@ export default function BacktestDetail() {
       actions={
         <>
           <A
+            href={`/experiments?fromBacktestId=${params.id}`}
+            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+          >
+            Create Experiment
+          </A>
+          <A
             href={`/replay?backtestId=${params.id}`}
             class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
           >

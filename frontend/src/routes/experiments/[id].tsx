@@ -1,0 +1,399 @@
+import { A, useParams } from "@solidjs/router";
+import { batch, createMemo, createResource, createSignal, For, Show } from "solid-js";
+import AppShell from "../../components/AppShell";
+import {
+  fetchExperiment,
+  fetchExperimentResults,
+  runExperiment,
+  type ExperimentResult,
+} from "../../services/api";
+
+function formatCurrency(value?: number | null): string {
+  if (value === null || value === undefined) {
+    return "n/a";
+  }
+
+  return `${value >= 0 ? "+" : "-"}$${Math.abs(value).toFixed(2)}`;
+}
+
+function formatPercent(value?: number | null, digits = 1): string {
+  if (value === null || value === undefined) {
+    return "n/a";
+  }
+
+  return `${(value * 100).toFixed(digits)}%`;
+}
+
+function formatNumber(value?: number | null, digits = 2): string {
+  if (value === null || value === undefined) {
+    return "n/a";
+  }
+
+  if (!Number.isFinite(value)) {
+    return "inf";
+  }
+
+  return value.toFixed(digits);
+}
+
+function statusTone(status: ExperimentResult["status"]): string {
+  switch (status) {
+    case "completed":
+      return "border-emerald-800 bg-emerald-950/40 text-emerald-200";
+    case "running":
+      return "border-blue-800 bg-blue-950/40 text-blue-200";
+    case "failed":
+      return "border-red-800 bg-red-950/40 text-red-200";
+    default:
+      return "border-zinc-700 bg-zinc-900 text-zinc-200";
+  }
+}
+
+function describeStatus(status: ExperimentResult["status"]): string {
+  switch (status) {
+    case "completed":
+      return "Completed";
+    case "running":
+      return "Running";
+    case "failed":
+      return "Failed";
+    default:
+      return "Draft";
+  }
+}
+
+function formatTimestamp(value?: string | null): string {
+  if (!value) {
+    return "Not run yet";
+  }
+
+  return new Date(value).toLocaleString();
+}
+
+function formatParams(params: Record<string, unknown>): string {
+  const entries = Object.entries(params);
+  if (entries.length === 0) {
+    return "Default params";
+  }
+
+  return entries.map(([key, value]) => `${key}=${value}`).join(", ");
+}
+
+function metricCardTone(tone: "default" | "good" | "bad" = "default"): string {
+  if (tone === "good") {
+    return "border-emerald-800 bg-emerald-950/30";
+  }
+  if (tone === "bad") {
+    return "border-red-800 bg-red-950/30";
+  }
+  return "border-zinc-800 bg-zinc-950/60";
+}
+
+export default function ExperimentDetailPage() {
+  const params = useParams();
+  const experimentId = () => params.id ?? "";
+  const [busy, setBusy] = createSignal(false);
+  const [error, setError] = createSignal<string | null>(null);
+  const [experiment, { mutate: mutateExperiment, refetch: refetchExperiment }] = createResource(
+    experimentId,
+    fetchExperiment,
+  );
+  const [results, { mutate: mutateResults, refetch: refetchResults }] = createResource(
+    experimentId,
+    fetchExperimentResults,
+  );
+  const completedRuns = createMemo(
+    () => (results() ?? []).filter((run) => run.status === "completed"),
+  );
+  const failedRuns = createMemo(() => (results() ?? []).filter((run) => run.status === "failed"));
+  const bestRun = createMemo(() => completedRuns()[0] ?? null);
+
+  const handleRun = async () => {
+    batch(() => {
+      setBusy(true);
+      setError(null);
+    });
+
+    try {
+      const payload = await runExperiment(experimentId());
+      mutateExperiment(() => payload.experiment);
+      mutateResults(() => payload.results);
+      await Promise.all([refetchExperiment(), refetchResults()]);
+    } catch (errorValue) {
+      setError(errorValue instanceof Error ? errorValue.message : "Experiment run failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <AppShell
+      title={experiment()?.name ?? "Experiment"}
+      subtitle={
+        experiment()
+          ? `${experiment()!.symbols.join(", ")} | ${experiment()!.intervals.join(", ")} | ${experiment()!.strategy_type.replace(/_/g, " ")}`
+          : "Inspect the ranked sweep, the good runs, and the stuff that blew up."
+      }
+      actions={
+        <>
+          <Show when={experiment()?.best_backtest_id}>
+            {(bestBacktestId) => (
+              <A
+                href={`/backtests/${bestBacktestId()}`}
+                class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+              >
+                Best Backtest
+              </A>
+            )}
+          </Show>
+          <button
+            type="button"
+            disabled={busy()}
+            onClick={handleRun}
+            class={`rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
+              busy()
+                ? "cursor-not-allowed bg-zinc-800 text-zinc-500"
+                : "bg-zinc-100 text-zinc-950 hover:bg-white"
+            }`}
+          >
+            {busy() ? "Running batch..." : "Run Batch"}
+          </button>
+          <A
+            href="/experiments"
+            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+          >
+            Back to Experiments
+          </A>
+        </>
+      }
+    >
+      <Show
+        when={experiment()}
+        fallback={
+          <section class="app-panel app-panel-section flex min-h-60 items-center justify-center">
+            <p class="text-zinc-400">Loading experiment...</p>
+          </section>
+        }
+      >
+        {(batchResult) => (
+          <div class="space-y-6">
+            <Show when={error()}>
+              <div class="rounded-2xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">
+                {error()}
+              </div>
+            </Show>
+
+            <section class="app-panel app-panel-section space-y-5">
+              <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div class="space-y-2">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <p class="app-kicker">Experiment Snapshot</p>
+                    <span
+                      class={`rounded-full border px-2.5 py-1 text-xs font-medium ${statusTone(
+                        batchResult().status,
+                      )}`}
+                    >
+                      {describeStatus(batchResult().status)}
+                    </span>
+                  </div>
+                  <p class="max-w-3xl text-sm text-zinc-400">
+                    This batch expands `{batchResult().strategy_type}` across{" "}
+                    {batchResult().symbols.length} symbols and {batchResult().intervals.length}{" "}
+                    intervals, then ranks the saved backtests underneath it.
+                  </p>
+                </div>
+
+                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 text-right">
+                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Last Activity</p>
+                  <p class="mt-2 text-sm font-medium text-zinc-100">
+                    {formatTimestamp(batchResult().last_run_at ?? batchResult().updated_at)}
+                  </p>
+                </div>
+              </div>
+
+              <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div class={`rounded-2xl border px-4 py-3 ${metricCardTone()}`}>
+                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Coverage</p>
+                  <p class="mt-2 text-sm font-semibold text-zinc-100">
+                    {batchResult().symbols.join(", ")}
+                  </p>
+                  <p class="mt-1 text-xs text-zinc-500">{batchResult().intervals.join(", ")}</p>
+                </div>
+                <div class={`rounded-2xl border px-4 py-3 ${metricCardTone()}`}>
+                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Runs</p>
+                  <p class="mt-2 text-sm font-semibold text-zinc-100">
+                    {batchResult().completed_runs}/{batchResult().total_runs} completed
+                  </p>
+                  <p class="mt-1 text-xs text-zinc-500">{batchResult().failed_runs} failed</p>
+                </div>
+                <div
+                  class={`rounded-2xl border px-4 py-3 ${metricCardTone(
+                    bestRun() ? "good" : "default",
+                  )}`}
+                >
+                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Best Score</p>
+                  <p class="mt-2 text-sm font-semibold text-zinc-100">
+                    {formatNumber(bestRun()?.score, 2)}
+                  </p>
+                  <p class="mt-1 text-xs text-zinc-500">
+                    {bestRun() ? `${bestRun()!.symbol} ${bestRun()!.interval}` : "No completed run yet"}
+                  </p>
+                </div>
+                <div class={`rounded-2xl border px-4 py-3 ${metricCardTone()}`}>
+                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Scoring Rule</p>
+                  <p class="mt-2 text-sm font-semibold text-zinc-100">
+                    {batchResult().scoring_rule}
+                  </p>
+                  <p class="mt-1 text-xs text-zinc-500">
+                    Created {formatTimestamp(batchResult().created_at)}
+                  </p>
+                </div>
+              </div>
+
+              <div class="grid gap-4 lg:grid-cols-2">
+                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4">
+                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Parameter Space</p>
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <For each={Object.entries(batchResult().parameter_space)}>
+                      {([key, values]) => (
+                        <span class="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-200">
+                          {key}: {Array.isArray(values) ? values.join(", ") : String(values)}
+                        </span>
+                      )}
+                    </For>
+                  </div>
+                </div>
+
+                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4">
+                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Sizing + Dates</p>
+                  <div class="mt-3 grid gap-2 text-sm text-zinc-300">
+                    <p>Initial balance: ${batchResult().initial_balance.toLocaleString()}</p>
+                    <p>Position size: {batchResult().position_size}</p>
+                    <p>Commission: ${batchResult().commission.toFixed(2)}</p>
+                    <p>
+                      Range: {batchResult().start_date ?? "Start open"} to{" "}
+                      {batchResult().end_date ?? "End open"}
+                    </p>
+                    <p>Prop preset: {batchResult().prop_firm_rules.name}</p>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="app-panel app-panel-section">
+              <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                <div class="space-y-2">
+                  <p class="app-kicker">Ranked Results</p>
+                  <p class="max-w-3xl text-sm text-zinc-400">
+                    This is the part that matters for research triage: params, prop pass or fail,
+                    pnl, drawdown, profit factor, and the saved backtest link for each run.
+                  </p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                  <span>{completedRuns().length} completed</span>
+                  <span>{failedRuns().length} failed</span>
+                </div>
+              </div>
+
+              <Show when={!results.loading} fallback={<div class="app-skeleton mt-6 h-56" />}>
+                <Show
+                  when={(results() ?? []).length > 0}
+                  fallback={
+                    <div class="mt-6 rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-10 text-center text-sm text-zinc-500">
+                      No ranked runs yet. Hit `Run Batch` when you're ready.
+                    </div>
+                  }
+                >
+                  <div class="mt-6 overflow-x-auto">
+                    <table class="min-w-full border-separate border-spacing-y-2 text-sm">
+                      <thead>
+                        <tr class="text-left text-xs uppercase tracking-[0.18em] text-zinc-500">
+                          <th class="px-3 py-2">Rank</th>
+                          <th class="px-3 py-2">Market</th>
+                          <th class="px-3 py-2">Params</th>
+                          <th class="px-3 py-2">Score</th>
+                          <th class="px-3 py-2">Prop</th>
+                          <th class="px-3 py-2">PnL</th>
+                          <th class="px-3 py-2">Drawdown</th>
+                          <th class="px-3 py-2">PF</th>
+                          <th class="px-3 py-2">Backtest</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <For each={results()}>
+                          {(run) => (
+                            <tr class="rounded-2xl border border-zinc-800 bg-zinc-950/70 text-zinc-200">
+                              <td class="rounded-l-2xl px-3 py-3 font-mono text-xs text-zinc-400">
+                                {run.rank ?? "—"}
+                              </td>
+                              <td class="px-3 py-3">
+                                <div class="font-medium text-zinc-100">
+                                  {run.symbol} {run.interval}
+                                </div>
+                                <div class="mt-1 text-xs text-zinc-500">{run.status}</div>
+                              </td>
+                              <td class="max-w-xs px-3 py-3 text-xs text-zinc-300">
+                                <div>{formatParams(run.strategy_params)}</div>
+                                <Show when={run.error}>
+                                  <p class="mt-2 text-red-300">{run.error}</p>
+                                </Show>
+                              </td>
+                              <td class="px-3 py-3 font-mono text-xs">
+                                {formatNumber(run.score, 2)}
+                              </td>
+                              <td class="px-3 py-3">
+                                <span
+                                  class={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+                                    run.passed
+                                      ? "border-emerald-700 bg-emerald-950/40 text-emerald-200"
+                                      : run.status === "failed"
+                                        ? "border-zinc-700 bg-zinc-900 text-zinc-400"
+                                        : "border-red-700 bg-red-950/40 text-red-200"
+                                  }`}
+                                >
+                                  {run.status === "failed" ? "n/a" : run.passed ? "Pass" : "Fail"}
+                                </span>
+                              </td>
+                              <td
+                                class={`px-3 py-3 font-mono text-xs ${
+                                  (run.total_pnl ?? 0) >= 0 ? "text-emerald-300" : "text-red-300"
+                                }`}
+                              >
+                                {formatCurrency(run.total_pnl)}
+                              </td>
+                              <td class="px-3 py-3 font-mono text-xs">
+                                {formatPercent(run.max_drawdown, 2)}
+                              </td>
+                              <td class="px-3 py-3 font-mono text-xs">
+                                {formatNumber(run.profit_factor, 2)}
+                              </td>
+                              <td class="rounded-r-2xl px-3 py-3 text-xs">
+                                <Show
+                                  when={run.backtest_id}
+                                  fallback={<span class="text-zinc-500">No saved result</span>}
+                                >
+                                  {(backtestId) => (
+                                    <A
+                                      href={`/backtests/${backtestId()}`}
+                                      class="rounded-xl border border-zinc-700 px-3 py-2 font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+                                    >
+                                      Open
+                                    </A>
+                                  )}
+                                </Show>
+                              </td>
+                            </tr>
+                          )}
+                        </For>
+                      </tbody>
+                    </table>
+                  </div>
+                </Show>
+              </Show>
+            </section>
+          </div>
+        )}
+      </Show>
+    </AppShell>
+  );
+}

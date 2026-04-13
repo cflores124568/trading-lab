@@ -52,6 +52,13 @@ export default function BacktestList() {
           </A>
 
           <A
+            href="/experiments"
+            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+          >
+            Experiments
+          </A>
+
+          <A
             href="/backtests/new"
             class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold transition-colors hover:bg-blue-500"
           >
@@ -160,6 +167,13 @@ export default function BacktestList() {
                             onClick={(event) => event.stopPropagation()}
                           >
                             View
+                          </A>
+                          <A
+                            href={`/experiments?fromBacktestId=${bt.backtest_id}`}
+                            class="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            Sweep This
                           </A>
                           <A
                             href={launchSimHref}

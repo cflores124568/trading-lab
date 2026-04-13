@@ -1,5 +1,5 @@
 import type { UTCTimestamp } from "lightweight-charts";
-import type { Interval } from "../constants";
+import type { Interval, StrategyValue } from "../constants";
 import { getBackendInterval } from "../constants";
 /*Base API path for backend requests.
 
@@ -20,6 +20,7 @@ const API_ROUTES = {
   symbols: "/data/symbols",
   loadSymbol: "/data/load-symbol",
   backtests: "/backtests",
+  experiments: "/experiments",
   replaySessions: "/replay-sessions",
   propFirms: "/prop-firms",
 } as const;
@@ -34,7 +35,18 @@ async function api<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${BASE}${url}`, options);
   // Throw an error if the request failed
   if (!response.ok) {
-    throw new Error(`API request failed (${response.status}) for ${url}`);
+    let detail: string | undefined;
+
+    try {
+      const payload = await response.json();
+      if (typeof payload?.detail === "string" && payload.detail.trim()) {
+        detail = payload.detail;
+      }
+    } catch {
+      // Some failures don't come back as JSON. That's okay.
+    }
+
+    throw new Error(detail ?? `API request failed (${response.status}) for ${url}`);
   }
 
   return response.json();
@@ -240,6 +252,73 @@ export interface PropFirmPreset {
   min_trading_days: number | null;
 }
 
+export type ExperimentScoringRule =
+  | "prop_score_v1"
+  | "total_pnl"
+  | "sharpe_ratio"
+  | "profit_factor";
+
+export type ExperimentStatus = "draft" | "running" | "completed" | "failed";
+
+export type ExperimentRunStatus = "completed" | "failed";
+
+export interface ExperimentCreateRequest {
+  name: string;
+  symbols: string[];
+  intervals: string[];
+  strategy_type: StrategyValue;
+  parameter_space: Record<string, unknown[]>;
+  start_date?: string;
+  end_date?: string;
+  prop_firm_rules: PropFirmRules;
+  initial_balance: number;
+  position_size: number;
+  commission: number;
+  scoring_rule: ExperimentScoringRule;
+}
+
+export interface ExperimentResult extends ExperimentCreateRequest {
+  experiment_id: string;
+  status: ExperimentStatus;
+  total_runs: number;
+  completed_runs: number;
+  failed_runs: number;
+  best_run_id?: string | null;
+  best_backtest_id?: string | null;
+  last_run_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExperimentRunResult {
+  experiment_run_id: string;
+  experiment_id: string;
+  backtest_id?: string | null;
+  symbol: string;
+  interval: string;
+  strategy_type: StrategyValue;
+  strategy_params: Record<string, unknown>;
+  dataset_id?: string | null;
+  status: ExperimentRunStatus;
+  score?: number | null;
+  rank?: number | null;
+  total_pnl?: number | null;
+  win_rate?: number | null;
+  max_drawdown?: number | null;
+  profit_factor?: number | null;
+  passed?: boolean | null;
+  error?: string | null;
+  metrics?: PerformanceMetrics | null;
+  prop_firm_eval?: PropFirmEvaluation | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExperimentExecutionResult {
+  experiment: ExperimentResult;
+  results: ExperimentRunResult[];
+}
+
 export interface ReplaySessionAction {
   id: string;
   bar_index: number;
@@ -364,6 +443,34 @@ export const fetchDbSymbolInfo = async (symbol: string): Promise<DbSymbolInfo> =
 //Fetch list of previous backtests
 export const fetchBacktests = async (): Promise<BacktestSummary[]> => {
   return api<BacktestSummary[]>(API_ROUTES.backtests);
+};
+
+export const fetchExperiments = async (): Promise<ExperimentResult[]> => {
+  return api<ExperimentResult[]>(API_ROUTES.experiments);
+};
+
+export const fetchExperiment = async (id: string): Promise<ExperimentResult> => {
+  return api<ExperimentResult>(`${API_ROUTES.experiments}/${id}`);
+};
+
+export const fetchExperimentResults = async (id: string): Promise<ExperimentRunResult[]> => {
+  return api<ExperimentRunResult[]>(`${API_ROUTES.experiments}/${id}/results`);
+};
+
+export const createExperiment = async (
+  payload: ExperimentCreateRequest,
+): Promise<ExperimentResult> => {
+  return api<ExperimentResult>(API_ROUTES.experiments, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+};
+
+export const runExperiment = async (id: string): Promise<ExperimentExecutionResult> => {
+  return api<ExperimentExecutionResult>(`${API_ROUTES.experiments}/${id}/run`, {
+    method: "POST",
+  });
 };
 
 export const fetchReplaySessions = async (): Promise<ReplaySessionSummary[]> => {
