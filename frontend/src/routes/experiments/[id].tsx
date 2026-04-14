@@ -2,7 +2,6 @@ import { A, useParams } from "@solidjs/router";
 import { batch, createMemo, createResource, createSignal, For, Show } from "solid-js";
 import AppShell from "../../components/AppShell";
 import {
-  demoteExperimentRun,
   fetchExperiment,
   fetchExperimentResults,
   promoteExperimentRun,
@@ -140,16 +139,14 @@ export default function ExperimentDetailPage() {
     );
   };
 
-  const handleCandidateToggle = async (runId: string, isCandidate: boolean) => {
+  const handleCandidatePromote = async (runId: string) => {
     batch(() => {
       setCandidateBusyId(runId);
       setError(null);
     });
 
     try {
-      const nextRun = isCandidate
-        ? await demoteExperimentRun(experimentId(), runId)
-        : await promoteExperimentRun(experimentId(), runId);
+      const nextRun = await promoteExperimentRun(experimentId(), runId);
       patchRun(nextRun);
       await refetchExperiment();
     } catch (errorValue) {
@@ -431,26 +428,48 @@ export default function ExperimentDetailPage() {
                                   when={run.status === "completed" && run.backtest_id}
                                   fallback={<span class="text-zinc-500">Unavailable</span>}
                                 >
-                                  <button
-                                    type="button"
-                                    disabled={candidateBusyId() === run.experiment_run_id}
-                                    onClick={() =>
-                                      handleCandidateToggle(run.experiment_run_id, run.is_candidate)
-                                    }
-                                    class={`rounded-xl px-3 py-2 font-medium transition-colors ${
-                                      candidateBusyId() === run.experiment_run_id
-                                        ? "cursor-not-allowed bg-zinc-800 text-zinc-500"
-                                        : run.is_candidate
-                                          ? "border border-emerald-700 bg-emerald-950/40 text-emerald-200 hover:bg-emerald-950/60"
-                                          : "border border-zinc-700 text-zinc-200 hover:border-zinc-500 hover:bg-zinc-900"
-                                    }`}
-                                  >
-                                    {candidateBusyId() === run.experiment_run_id
-                                      ? "Updating..."
-                                      : run.is_candidate
-                                        ? "Unmark"
-                                        : "Promote"}
-                                  </button>
+                                  <div class="space-y-2">
+                                    <Show
+                                      when={run.candidate_id && run.is_candidate}
+                                      fallback={
+                                        <button
+                                          type="button"
+                                          disabled={candidateBusyId() === run.experiment_run_id}
+                                          onClick={() => handleCandidatePromote(run.experiment_run_id)}
+                                          class={`rounded-xl px-3 py-2 font-medium transition-colors ${
+                                            candidateBusyId() === run.experiment_run_id
+                                              ? "cursor-not-allowed bg-zinc-800 text-zinc-500"
+                                              : "border border-zinc-700 text-zinc-200 hover:border-zinc-500 hover:bg-zinc-900"
+                                          }`}
+                                        >
+                                          {candidateBusyId() === run.experiment_run_id
+                                            ? "Promoting..."
+                                            : run.candidate_id
+                                              ? "Promote Again"
+                                              : "Promote"}
+                                        </button>
+                                      }
+                                    >
+                                      {(candidateId) => (
+                                        <A
+                                          href={`/candidates/${candidateId()}`}
+                                          class="inline-flex rounded-xl border border-emerald-700 bg-emerald-950/40 px-3 py-2 font-medium text-emerald-200 transition-colors hover:bg-emerald-950/60"
+                                        >
+                                          Open Candidate
+                                        </A>
+                                      )}
+                                    </Show>
+                                    <Show when={run.candidate_id && !run.is_candidate}>
+                                      {(candidateId) => (
+                                        <A
+                                          href={`/candidates/${candidateId()}`}
+                                          class="inline-flex text-[11px] text-zinc-500 transition-colors hover:text-zinc-300"
+                                        >
+                                          View history
+                                        </A>
+                                      )}
+                                    </Show>
+                                  </div>
                                 </Show>
                                 <Show when={run.is_candidate && run.promoted_at}>
                                   {(promotedAt) => (

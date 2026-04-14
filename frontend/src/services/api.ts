@@ -21,6 +21,7 @@ const API_ROUTES = {
   loadSymbol: "/data/load-symbol",
   backtests: "/backtests",
   experiments: "/experiments",
+  candidates: "/candidates",
   replaySessions: "/replay-sessions",
   propFirms: "/prop-firms",
 } as const;
@@ -261,6 +262,14 @@ export type ExperimentScoringRule =
 export type ExperimentStatus = "draft" | "running" | "completed" | "failed";
 
 export type ExperimentRunStatus = "completed" | "failed";
+export type CandidateLifecycleStatus =
+  | "candidate"
+  | "approved"
+  | "paper_ready"
+  | "paper_running"
+  | "paper_paused"
+  | "rejected";
+export type PaperBotStatus = "draft" | "ready" | "paper_running" | "stopped";
 
 export interface ExperimentCreateRequest {
   name: string;
@@ -293,6 +302,7 @@ export interface ExperimentResult extends ExperimentCreateRequest {
 export interface ExperimentRunResult {
   experiment_run_id: string;
   experiment_id: string;
+  candidate_id?: string | null;
   backtest_id?: string | null;
   symbol: string;
   interval: string;
@@ -319,6 +329,79 @@ export interface ExperimentRunResult {
 export interface ExperimentExecutionResult {
   experiment: ExperimentResult;
   results: ExperimentRunResult[];
+}
+
+export interface CandidateNote {
+  note_id: string;
+  body: string;
+  author: string;
+  created_at: string;
+}
+
+export interface CandidateAuditEvent {
+  event_id: string;
+  event_type: string;
+  actor: string;
+  summary: string;
+  changes: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface PaperBotConfig {
+  paper_bot_id: string;
+  candidate_id: string;
+  symbol: string;
+  interval: string;
+  strategy_type: StrategyValue;
+  strategy_params: Record<string, unknown>;
+  guardrails: Record<string, unknown>;
+  status: PaperBotStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CandidateResult {
+  candidate_id: string;
+  experiment_id: string;
+  experiment_name: string;
+  experiment_run_id: string;
+  backtest_id: string;
+  symbol: string;
+  interval: string;
+  strategy_type: StrategyValue;
+  strategy_params: Record<string, unknown>;
+  prop_firm_rules: PropFirmRules;
+  experiment_snapshot: {
+    name: string;
+    symbols: string[];
+    intervals: string[];
+    start_date?: string | null;
+    end_date?: string | null;
+    scoring_rule?: string | null;
+    status?: string | null;
+    created_at?: string | null;
+    last_run_at?: string | null;
+  };
+  score?: number | null;
+  rank?: number | null;
+  total_pnl?: number | null;
+  win_rate?: number | null;
+  max_drawdown?: number | null;
+  profit_factor?: number | null;
+  passed?: boolean | null;
+  metrics?: PerformanceMetrics | null;
+  prop_firm_eval?: PropFirmEvaluation | null;
+  lifecycle_status: CandidateLifecycleStatus;
+  promotion_reason: string;
+  promoted_by: string;
+  promoted_at: string;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  paper_bot?: PaperBotConfig | null;
+  notes: CandidateNote[];
+  audit_log: CandidateAuditEvent[];
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ReplaySessionAction {
@@ -451,6 +534,14 @@ export const fetchExperiments = async (): Promise<ExperimentResult[]> => {
   return api<ExperimentResult[]>(API_ROUTES.experiments);
 };
 
+export const fetchCandidates = async (): Promise<CandidateResult[]> => {
+  return api<CandidateResult[]>(API_ROUTES.candidates);
+};
+
+export const fetchCandidate = async (id: string): Promise<CandidateResult> => {
+  return api<CandidateResult>(`${API_ROUTES.candidates}/${id}`);
+};
+
 export const fetchExperiment = async (id: string): Promise<ExperimentResult> => {
   return api<ExperimentResult>(`${API_ROUTES.experiments}/${id}`);
 };
@@ -497,6 +588,53 @@ export const demoteExperimentRun = async (
       method: "DELETE",
     },
   );
+};
+
+export const updateCandidateStatus = async (
+  candidateId: string,
+  status: CandidateLifecycleStatus,
+  actor = "local-user",
+): Promise<CandidateResult> => {
+  return api<CandidateResult>(`${API_ROUTES.candidates}/${candidateId}/status`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status, actor }),
+  });
+};
+
+export const addCandidateNote = async (
+  candidateId: string,
+  body: string,
+  author = "local-user",
+): Promise<CandidateResult> => {
+  return api<CandidateResult>(`${API_ROUTES.candidates}/${candidateId}/notes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body, author }),
+  });
+};
+
+export const createCandidatePaperBot = async (
+  candidateId: string,
+  actor = "local-user",
+): Promise<CandidateResult> => {
+  return api<CandidateResult>(`${API_ROUTES.candidates}/${candidateId}/paper-bot`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ actor }),
+  });
+};
+
+export const updateCandidatePaperBotStatus = async (
+  candidateId: string,
+  status: PaperBotStatus,
+  actor = "local-user",
+): Promise<CandidateResult> => {
+  return api<CandidateResult>(`${API_ROUTES.candidates}/${candidateId}/paper-bot/status`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status, actor }),
+  });
 };
 
 export const fetchReplaySessions = async (): Promise<ReplaySessionSummary[]> => {
