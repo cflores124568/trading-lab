@@ -235,6 +235,12 @@ Key routes:
 | GET | `/api/backtests/{id}` | Fetch a saved backtest |
 | GET | `/api/backtests/{id}/candles` | Rebuild replay candles for a saved backtest |
 | GET | `/api/backtests/compare?a={}&b={}` | Compare two saved runs |
+| GET | `/api/candidates` | List promoted research candidates |
+| GET | `/api/candidates/{id}` | Fetch one candidate detail + audit trail |
+| PATCH | `/api/candidates/{id}/status` | Move a candidate through review states |
+| POST | `/api/candidates/{id}/notes` | Add a review note |
+| POST | `/api/candidates/{id}/paper-bot` | Create the paper bot config stub |
+| PATCH | `/api/candidates/{id}/paper-bot/status` | Move the paper bot stub between draft/ready/running/stopped |
 | POST | `/api/replay-sessions` | Create a standalone replay session |
 | PUT | `/api/replay-sessions/{id}` | Update an existing replay session |
 | GET | `/api/replay-sessions` | List saved replay sessions |
@@ -253,6 +259,7 @@ Implemented:
 - SolidJS dashboard and charting UI
 - saved backtest persistence
 - backtest list/detail/compare flows
+- candidate registry, review detail, and paper-bot handoff stub
 - interactive replay for saved backtests
 - standalone replay session launch, save, and resume flow
 - shared app shell and replay-first UX
@@ -266,13 +273,13 @@ Not built yet:
 
 Near-term roadmap:
 
-1. Deepen standalone replay from "works and persists" into a more complete paper-trading workflow
+1. Turn the paper-bot stub into a real paper trading loop with durable execution logs
 2. Tighten prop-firm evaluation so replay sessions and backtests share the same fully enforced rules
 3. Add more realistic execution details like richer order handling and session-aware constraints
 4. Deploy a recruiter-friendly hosted demo
 5. Add authentication once the single-user flow feels settled
 
-The next major milestone is polishing standalone replay into something that feels less like a saved-backtest companion and more like its own serious manual trading lab.
+The next major milestone is taking the new candidate pipeline from "research handoff exists" into "paper execution behaves like a serious trading lab instead of a stub."
 
 ## Resume-Friendly Summary
 
