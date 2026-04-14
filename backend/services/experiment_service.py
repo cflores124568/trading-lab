@@ -123,6 +123,7 @@ def run_experiment(experiment: dict) -> tuple[dict, list[dict]]:
             runs.append({
                 "experiment_run_id": str(uuid.uuid4()),
                 "experiment_id": experiment["experiment_id"],
+                "candidate_id": None,
                 "backtest_id": backtest["backtest_id"],
                 "symbol": plan["symbol"],
                 "interval": plan["interval"],
@@ -149,6 +150,7 @@ def run_experiment(experiment: dict) -> tuple[dict, list[dict]]:
             runs.append({
                 "experiment_run_id": str(uuid.uuid4()),
                 "experiment_id": experiment["experiment_id"],
+                "candidate_id": None,
                 "backtest_id": None,
                 "symbol": plan["symbol"],
                 "interval": plan["interval"],
@@ -305,16 +307,28 @@ def list_experiment_runs(experiment_id: str) -> list[dict]:
     return list_experiment_runs_mem(experiment_id)
 
 
-def set_experiment_run_candidate(
+def get_experiment_run(experiment_id: str, experiment_run_id: str) -> dict | None:
+    runs = list_experiment_runs(experiment_id)
+    return next(
+        (run.copy() for run in runs if run["experiment_run_id"] == experiment_run_id),
+        None,
+    )
+
+
+def update_experiment_run_candidate_state(
     experiment_id: str,
     experiment_run_id: str,
+    *,
+    candidate_id: str | None,
     is_candidate: bool,
-) -> dict:
-    """Mark one finished experiment run as a Phase 2 candidate.
+    promoted_at: str | None,
+    strict: bool = True,
+) -> dict | None:
+    """Mirror candidate state back onto the saved experiment result row.
 
-    I’m keeping this intentionally small for now. The only job is to let the
-    ranked experiment output say "this one is worth carrying forward" without
-    pretending we already built the whole bot handoff system.
+    The candidate record is the real Phase 2 source of truth, but keeping a
+    light pointer on the experiment run makes the ranking table much easier to
+    scan without forcing every page to do extra joins.
     """
     experiment = get_experiment_any(experiment_id)
     if experiment is None:
@@ -329,17 +343,20 @@ def set_experiment_run_candidate(
     next_runs: list[dict] = []
 
     for run in runs:
-        candidate = run.copy()
-        if candidate["experiment_run_id"] == experiment_run_id:
-            if candidate["status"] != "completed" or not candidate.get("backtest_id"):
+        next_run = run.copy()
+        if next_run["experiment_run_id"] == experiment_run_id:
+            if next_run["status"] != "completed" or not next_run.get("backtest_id"):
                 raise ValueError("Only completed runs with saved backtests can become candidates.")
-            candidate["is_candidate"] = is_candidate
-            candidate["promoted_at"] = now if is_candidate else None
-            candidate["updated_at"] = now
-            updated_run = candidate
-        next_runs.append(candidate)
+            next_run["candidate_id"] = candidate_id
+            next_run["is_candidate"] = is_candidate
+            next_run["promoted_at"] = promoted_at if is_candidate else None
+            next_run["updated_at"] = now
+            updated_run = next_run
+        next_runs.append(next_run)
 
     if updated_run is None:
+        if not strict:
+            return None
         raise LookupError(
             f"Experiment run '{experiment_run_id}' was not found in experiment '{experiment_id}'."
         )
@@ -356,6 +373,20 @@ def set_experiment_run_candidate(
         save_experiment(updated_experiment)
 
     return updated_run
+
+
+def set_experiment_run_candidate(
+    experiment_id: str,
+    experiment_run_id: str,
+    is_candidate: bool,
+) -> dict | None:
+    return update_experiment_run_candidate_state(
+        experiment_id,
+        experiment_run_id,
+        candidate_id=None,
+        is_candidate=is_candidate,
+        promoted_at=datetime.utcnow().isoformat() if is_candidate else None,
+    )
 
 
 def get_experiment_any(experiment_id: str) -> dict | None:

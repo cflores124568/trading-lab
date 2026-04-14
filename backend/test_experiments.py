@@ -107,23 +107,79 @@ def main() -> None:
             _require(payload["results"][0]["backtest_id"], "Completed run is missing backtest linkage.")
             print(f"      Ranked runs: {len(payload['results'])}")
 
-            print("\n[4/5] Reading persisted results from the results endpoint ...")
+            print("\n[4/6] Reading persisted results from the results endpoint ...")
             results = client.get(f"/api/experiments/{experiment_id}/results")
             _require(results.status_code == 200, f"Experiment results failed: {results.text}")
             _require(len(results.json()) == 4, "Results endpoint returned the wrong number of rows.")
             print("      Results endpoint still lines up with the saved batch.")
 
-            print("\n[5/5] Promoting the top ranked run into a candidate ...")
+            print("\n[5/6] Promoting the top ranked run into a candidate ...")
             top_run_id = payload["results"][0]["experiment_run_id"]
             promote = client.post(f"/api/experiments/{experiment_id}/runs/{top_run_id}/promote")
             _require(promote.status_code == 200, f"Experiment promote failed: {promote.text}")
             _require(promote.json()["is_candidate"] is True, "Promoted run should be marked as a candidate.")
             _require(promote.json()["promoted_at"], "Promoted run should keep the promotion timestamp.")
+            _require(promote.json()["candidate_id"], "Promoted run should point at a saved candidate.")
 
             persisted = client.get(f"/api/experiments/{experiment_id}/results")
             _require(persisted.status_code == 200, f"Candidate results reload failed: {persisted.text}")
             _require(persisted.json()[0]["is_candidate"] is True, "Candidate flag did not persist to results.")
             print("      Candidate flag persisted on the saved ranked run.")
+
+            print("\n[6/6] Walking the candidate review + paper stub flow ...")
+            candidates = client.get("/api/candidates/")
+            _require(candidates.status_code == 200, f"Candidate list failed: {candidates.text}")
+            _require(len(candidates.json()) == 1, "Expected exactly one candidate after promotion.")
+            candidate = candidates.json()[0]
+            candidate_id = candidate["candidate_id"]
+            _require(candidate["experiment_id"] == experiment_id, "Candidate lost its experiment provenance.")
+            _require(candidate["backtest_id"] == payload["results"][0]["backtest_id"], "Candidate lost its backtest link.")
+            _require(candidate["lifecycle_status"] == "candidate", "Fresh candidate should start in candidate state.")
+
+            approved = client.patch(
+                f"/api/candidates/{candidate_id}/status",
+                json={"status": "approved", "actor": "smoke-test"},
+            )
+            _require(approved.status_code == 200, f"Candidate approve failed: {approved.text}")
+            _require(approved.json()["approved_at"], "Approved candidate should keep an approval timestamp.")
+            _require(approved.json()["approved_by"] == "smoke-test", "Approval actor should be saved.")
+
+            noted = client.post(
+                f"/api/candidates/{candidate_id}/notes",
+                json={"body": "looks good enough for paper draft", "author": "smoke-test"},
+            )
+            _require(noted.status_code == 200, f"Candidate note failed: {noted.text}")
+            _require(len(noted.json()["notes"]) == 1, "Candidate note did not persist.")
+
+            drafted = client.post(
+                f"/api/candidates/{candidate_id}/paper-bot",
+                json={"actor": "smoke-test"},
+            )
+            _require(drafted.status_code == 200, f"Paper bot draft create failed: {drafted.text}")
+            _require(drafted.json()["paper_bot"]["status"] == "draft", "Paper bot should start as draft.")
+
+            ready = client.patch(
+                f"/api/candidates/{candidate_id}/paper-bot/status",
+                json={"status": "ready", "actor": "smoke-test"},
+            )
+            _require(ready.status_code == 200, f"Paper bot ready failed: {ready.text}")
+            _require(ready.json()["lifecycle_status"] == "paper_ready", "Candidate should move into paper_ready.")
+
+            running = client.patch(
+                f"/api/candidates/{candidate_id}/paper-bot/status",
+                json={"status": "paper_running", "actor": "smoke-test"},
+            )
+            _require(running.status_code == 200, f"Paper bot start failed: {running.text}")
+            _require(running.json()["lifecycle_status"] == "paper_running", "Candidate should move into paper_running.")
+
+            paused = client.patch(
+                f"/api/candidates/{candidate_id}/paper-bot/status",
+                json={"status": "stopped", "actor": "smoke-test"},
+            )
+            _require(paused.status_code == 200, f"Paper bot stop failed: {paused.text}")
+            _require(paused.json()["lifecycle_status"] == "paper_paused", "Stopped paper bot should map to paper_paused.")
+            _require(len(paused.json()["audit_log"]) >= 5, "Candidate audit log should capture the review flow.")
+            print("      Candidate review state, notes, and paper handoff all persisted.")
     finally:
         experiment_service.load_from_db = original_loader
         experiment_service._db_required = original_db_required

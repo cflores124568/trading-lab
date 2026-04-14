@@ -174,6 +174,22 @@ class ExperimentRunStatus(str, Enum):
     FAILED = "failed"
 
 
+class CandidateLifecycleStatus(str, Enum):
+    CANDIDATE = "candidate"
+    APPROVED = "approved"
+    PAPER_READY = "paper_ready"
+    PAPER_RUNNING = "paper_running"
+    PAPER_PAUSED = "paper_paused"
+    REJECTED = "rejected"
+
+
+class PaperBotStatus(str, Enum):
+    DRAFT = "draft"
+    READY = "ready"
+    PAPER_RUNNING = "paper_running"
+    STOPPED = "stopped"
+
+
 class ExperimentBase(BaseModel):
     name: str
     symbols: List[str] = Field(default_factory=list)
@@ -209,6 +225,7 @@ class ExperimentResult(ExperimentBase):
 class ExperimentRunResult(BaseModel):
     experiment_run_id: str
     experiment_id: str
+    candidate_id: Optional[str] = None
     backtest_id: Optional[str] = None
     symbol: str
     interval: str
@@ -235,6 +252,88 @@ class ExperimentRunResult(BaseModel):
 class ExperimentExecutionResult(BaseModel):
     experiment: ExperimentResult
     results: List[ExperimentRunResult]
+
+
+class CandidateNote(BaseModel):
+    note_id: str
+    body: str
+    author: str = "local-user"
+    created_at: str
+
+
+class CandidateAuditEvent(BaseModel):
+    event_id: str
+    event_type: str
+    actor: str = "local-user"
+    summary: str
+    changes: dict[str, Any] = Field(default_factory=dict)
+    created_at: str
+
+
+class PaperBotConfig(BaseModel):
+    paper_bot_id: str
+    candidate_id: str
+    symbol: str
+    interval: str
+    strategy_type: StrategyType
+    strategy_params: dict[str, Any] = Field(default_factory=dict)
+    guardrails: dict[str, Any] = Field(default_factory=dict)
+    status: PaperBotStatus = Field(default=PaperBotStatus.DRAFT)
+    created_at: str
+    updated_at: str
+
+
+class CandidateResult(BaseModel):
+    candidate_id: str
+    experiment_id: str
+    experiment_name: str
+    experiment_run_id: str
+    backtest_id: str
+    symbol: str
+    interval: str
+    strategy_type: StrategyType
+    strategy_params: dict[str, Any] = Field(default_factory=dict)
+    prop_firm_rules: PropFirmRules
+    experiment_snapshot: dict[str, Any] = Field(default_factory=dict)
+    score: Optional[float] = None
+    rank: Optional[int] = None
+    total_pnl: Optional[float] = None
+    win_rate: Optional[float] = None
+    max_drawdown: Optional[float] = None
+    profit_factor: Optional[float] = None
+    passed: Optional[bool] = None
+    metrics: Optional[PerformanceMetrics] = None
+    prop_firm_eval: Optional[PropFirmEvaluation] = None
+    lifecycle_status: CandidateLifecycleStatus = Field(default=CandidateLifecycleStatus.CANDIDATE)
+    promotion_reason: str
+    promoted_by: str = "local-user"
+    promoted_at: str
+    approved_by: Optional[str] = None
+    approved_at: Optional[str] = None
+    paper_bot: Optional[PaperBotConfig] = None
+    notes: List[CandidateNote] = Field(default_factory=list)
+    audit_log: List[CandidateAuditEvent] = Field(default_factory=list)
+    created_at: str
+    updated_at: str
+
+
+class CandidateStatusUpdate(BaseModel):
+    status: CandidateLifecycleStatus
+    actor: str = Field(default="local-user")
+
+
+class CandidateNoteCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=4000)
+    author: str = Field(default="local-user")
+
+
+class CandidatePaperBotCreate(BaseModel):
+    actor: str = Field(default="local-user")
+
+
+class CandidatePaperBotStatusUpdate(BaseModel):
+    status: PaperBotStatus
+    actor: str = Field(default="local-user")
 
 #Backtest request/response
 class BacktestRequest(BaseModel):

@@ -55,6 +55,7 @@ def _ensure_experiments_schema(conn) -> None:
                 CREATE TABLE IF NOT EXISTS experiment_runs (
                     experiment_run_id TEXT PRIMARY KEY,
                     experiment_id     TEXT NOT NULL,
+                    candidate_id      TEXT,
                     backtest_id       TEXT,
                     symbol            TEXT NOT NULL,
                     interval          TEXT NOT NULL,
@@ -80,6 +81,9 @@ def _ensure_experiments_schema(conn) -> None:
                 """
             )
             cur.execute(
+                "ALTER TABLE experiment_runs ADD COLUMN IF NOT EXISTS candidate_id TEXT"
+            )
+            cur.execute(
                 "ALTER TABLE experiment_runs ADD COLUMN IF NOT EXISTS is_candidate BOOLEAN NOT NULL DEFAULT FALSE"
             )
             cur.execute(
@@ -93,6 +97,9 @@ def _ensure_experiments_schema(conn) -> None:
             )
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS experiment_runs_score_idx ON experiment_runs (experiment_id, score DESC NULLS LAST)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS experiment_runs_candidate_id_idx ON experiment_runs (candidate_id)"
             )
         conn.commit()
         _schema_ready = True
@@ -199,13 +206,13 @@ def replace_experiment_runs(experiment_id: str, runs: list[dict]) -> None:
     delete_sql = "DELETE FROM experiment_runs WHERE experiment_id = %s"
     insert_sql = """
         INSERT INTO experiment_runs (
-            experiment_run_id, experiment_id, backtest_id, symbol, interval,
+            experiment_run_id, experiment_id, candidate_id, backtest_id, symbol, interval,
             strategy_type, strategy_params, dataset_id, status, score, rank,
             total_pnl, win_rate, max_drawdown, profit_factor, passed, error,
             metrics, prop_firm_eval, is_candidate, promoted_at, created_at, updated_at
         )
         VALUES (
-            %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s, %s, %s,
             %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s
         )
     """
@@ -220,6 +227,7 @@ def replace_experiment_runs(experiment_id: str, runs: list[dict]) -> None:
                     [
                         run["experiment_run_id"],
                         run["experiment_id"],
+                        run.get("candidate_id"),
                         run.get("backtest_id"),
                         run["symbol"],
                         run["interval"],
@@ -293,6 +301,7 @@ def _row_to_run(row) -> dict:
     return {
         "experiment_run_id": row["experiment_run_id"],
         "experiment_id": row["experiment_id"],
+        "candidate_id": row.get("candidate_id") if hasattr(row, "get") else row["candidate_id"],
         "backtest_id": row["backtest_id"],
         "symbol": row["symbol"],
         "interval": row["interval"],

@@ -177,6 +177,7 @@ CREATE INDEX IF NOT EXISTS experiments_updated_at_idx
 CREATE TABLE IF NOT EXISTS experiment_runs (
     experiment_run_id TEXT PRIMARY KEY,
     experiment_id     TEXT NOT NULL,
+    candidate_id      TEXT,
     backtest_id       TEXT,
     symbol            TEXT NOT NULL,
     interval          TEXT NOT NULL,
@@ -201,6 +202,9 @@ CREATE TABLE IF NOT EXISTS experiment_runs (
 );
 
 ALTER TABLE experiment_runs
+    ADD COLUMN IF NOT EXISTS candidate_id TEXT;
+
+ALTER TABLE experiment_runs
     ADD COLUMN IF NOT EXISTS is_candidate BOOLEAN NOT NULL DEFAULT FALSE;
 
 ALTER TABLE experiment_runs
@@ -211,6 +215,56 @@ CREATE INDEX IF NOT EXISTS experiment_runs_experiment_id_idx
 
 CREATE INDEX IF NOT EXISTS experiment_runs_score_idx
     ON experiment_runs (experiment_id, score DESC NULLS LAST);
+
+CREATE INDEX IF NOT EXISTS experiment_runs_candidate_id_idx
+    ON experiment_runs (candidate_id);
+
+-- Phase 2 research candidates
+CREATE TABLE IF NOT EXISTS candidates (
+    candidate_id        TEXT PRIMARY KEY,
+    experiment_id       TEXT NOT NULL,
+    experiment_name     TEXT NOT NULL,
+    experiment_run_id   TEXT NOT NULL UNIQUE,
+    backtest_id         TEXT NOT NULL,
+    symbol              TEXT NOT NULL,
+    interval            TEXT NOT NULL,
+    strategy_type       TEXT NOT NULL,
+    strategy_params     JSONB NOT NULL,
+    prop_firm_rules     JSONB NOT NULL,
+    experiment_snapshot JSONB NOT NULL,
+    score               DOUBLE PRECISION,
+    rank                INTEGER,
+    total_pnl           DOUBLE PRECISION,
+    win_rate            DOUBLE PRECISION,
+    max_drawdown        DOUBLE PRECISION,
+    profit_factor       DOUBLE PRECISION,
+    passed              BOOLEAN,
+    metrics             JSONB,
+    prop_firm_eval      JSONB,
+    lifecycle_status    TEXT NOT NULL DEFAULT 'candidate',
+    promotion_reason    TEXT NOT NULL,
+    promoted_by         TEXT NOT NULL DEFAULT 'local-user',
+    promoted_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    approved_by         TEXT,
+    approved_at         TIMESTAMPTZ,
+    paper_bot           JSONB,
+    notes               JSONB NOT NULL DEFAULT '[]'::jsonb,
+    audit_log           JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS candidates_updated_at_idx
+    ON candidates (updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS candidates_status_idx
+    ON candidates (lifecycle_status);
+
+CREATE INDEX IF NOT EXISTS candidates_experiment_id_idx
+    ON candidates (experiment_id);
+
+CREATE INDEX IF NOT EXISTS candidates_backtest_id_idx
+    ON candidates (backtest_id);
 
 -- Durable dataset registry
 CREATE TABLE IF NOT EXISTS datasets (

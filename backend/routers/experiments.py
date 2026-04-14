@@ -6,13 +6,16 @@ from schemas import (
     ExperimentResult,
     ExperimentRunResult,
 )
+from services.candidate_service import (
+    promote_experiment_run_candidate,
+    reject_experiment_run_candidate,
+)
 from services.experiment_service import (
     create_experiment_record,
     get_experiment_any,
     list_experiment_runs,
     list_experiments_any,
     run_experiment,
-    set_experiment_run_candidate,
 )
 
 router = APIRouter()
@@ -87,11 +90,7 @@ async def get_experiment_results(experiment_id: str):
 @router.post("/{experiment_id}/runs/{experiment_run_id}/promote", response_model=ExperimentRunResult)
 async def promote_experiment_run(experiment_id: str, experiment_run_id: str):
     try:
-        return set_experiment_run_candidate(
-            experiment_id=experiment_id,
-            experiment_run_id=experiment_run_id,
-            is_candidate=True,
-        )
+        return promote_experiment_run_candidate(experiment_id=experiment_id, experiment_run_id=experiment_run_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except ValueError as exc:
@@ -103,11 +102,7 @@ async def promote_experiment_run(experiment_id: str, experiment_run_id: str):
 @router.delete("/{experiment_id}/runs/{experiment_run_id}/promote", response_model=ExperimentRunResult)
 async def demote_experiment_run(experiment_id: str, experiment_run_id: str):
     try:
-        return set_experiment_run_candidate(
-            experiment_id=experiment_id,
-            experiment_run_id=experiment_run_id,
-            is_candidate=False,
-        )
+        return reject_experiment_run_candidate(experiment_id=experiment_id, experiment_run_id=experiment_run_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except ValueError as exc:
