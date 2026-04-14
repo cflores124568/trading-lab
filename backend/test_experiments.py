@@ -107,11 +107,23 @@ def main() -> None:
             _require(payload["results"][0]["backtest_id"], "Completed run is missing backtest linkage.")
             print(f"      Ranked runs: {len(payload['results'])}")
 
-            print("\n[4/4] Reading persisted results from the results endpoint ...")
+            print("\n[4/5] Reading persisted results from the results endpoint ...")
             results = client.get(f"/api/experiments/{experiment_id}/results")
             _require(results.status_code == 200, f"Experiment results failed: {results.text}")
             _require(len(results.json()) == 4, "Results endpoint returned the wrong number of rows.")
             print("      Results endpoint still lines up with the saved batch.")
+
+            print("\n[5/5] Promoting the top ranked run into a candidate ...")
+            top_run_id = payload["results"][0]["experiment_run_id"]
+            promote = client.post(f"/api/experiments/{experiment_id}/runs/{top_run_id}/promote")
+            _require(promote.status_code == 200, f"Experiment promote failed: {promote.text}")
+            _require(promote.json()["is_candidate"] is True, "Promoted run should be marked as a candidate.")
+            _require(promote.json()["promoted_at"], "Promoted run should keep the promotion timestamp.")
+
+            persisted = client.get(f"/api/experiments/{experiment_id}/results")
+            _require(persisted.status_code == 200, f"Candidate results reload failed: {persisted.text}")
+            _require(persisted.json()[0]["is_candidate"] is True, "Candidate flag did not persist to results.")
+            print("      Candidate flag persisted on the saved ranked run.")
     finally:
         experiment_service.load_from_db = original_loader
         experiment_service._db_required = original_db_required

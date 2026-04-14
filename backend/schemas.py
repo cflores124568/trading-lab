@@ -226,6 +226,8 @@ class ExperimentRunResult(BaseModel):
     error: Optional[str] = None
     metrics: Optional[PerformanceMetrics] = None
     prop_firm_eval: Optional[PropFirmEvaluation] = None
+    is_candidate: bool = False
+    promoted_at: Optional[str] = None
     created_at: str
     updated_at: str
 

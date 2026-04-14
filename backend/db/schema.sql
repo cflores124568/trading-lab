@@ -194,9 +194,17 @@ CREATE TABLE IF NOT EXISTS experiment_runs (
     error             TEXT,
     metrics           JSONB,
     prop_firm_eval    JSONB,
+    is_candidate      BOOLEAN NOT NULL DEFAULT FALSE,
+    promoted_at       TIMESTAMPTZ,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE experiment_runs
+    ADD COLUMN IF NOT EXISTS is_candidate BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE experiment_runs
+    ADD COLUMN IF NOT EXISTS promoted_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS experiment_runs_experiment_id_idx
     ON experiment_runs (experiment_id);

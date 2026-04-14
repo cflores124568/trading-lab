@@ -140,6 +140,8 @@ def run_experiment(experiment: dict) -> tuple[dict, list[dict]]:
                 "error": None,
                 "metrics": backtest["metrics"],
                 "prop_firm_eval": backtest["prop_firm_eval"],
+                "is_candidate": False,
+                "promoted_at": None,
                 "created_at": run_started_at,
                 "updated_at": datetime.utcnow().isoformat(),
             })
@@ -164,6 +166,8 @@ def run_experiment(experiment: dict) -> tuple[dict, list[dict]]:
                 "error": str(exc),
                 "metrics": None,
                 "prop_firm_eval": None,
+                "is_candidate": False,
+                "promoted_at": None,
                 "created_at": run_started_at,
                 "updated_at": datetime.utcnow().isoformat(),
             })
@@ -299,6 +303,59 @@ def list_experiment_runs(experiment_id: str) -> list[dict]:
     if _db_required():
         return list_experiment_runs_db(experiment_id)
     return list_experiment_runs_mem(experiment_id)
+
+
+def set_experiment_run_candidate(
+    experiment_id: str,
+    experiment_run_id: str,
+    is_candidate: bool,
+) -> dict:
+    """Mark one finished experiment run as a Phase 2 candidate.
+
+    I’m keeping this intentionally small for now. The only job is to let the
+    ranked experiment output say "this one is worth carrying forward" without
+    pretending we already built the whole bot handoff system.
+    """
+    experiment = get_experiment_any(experiment_id)
+    if experiment is None:
+        raise LookupError(f"Experiment '{experiment_id}' not found.")
+
+    runs = list_experiment_runs(experiment_id)
+    if not runs:
+        raise ValueError("This experiment does not have saved runs yet.")
+
+    now = datetime.utcnow().isoformat()
+    updated_run = None
+    next_runs: list[dict] = []
+
+    for run in runs:
+        candidate = run.copy()
+        if candidate["experiment_run_id"] == experiment_run_id:
+            if candidate["status"] != "completed" or not candidate.get("backtest_id"):
+                raise ValueError("Only completed runs with saved backtests can become candidates.")
+            candidate["is_candidate"] = is_candidate
+            candidate["promoted_at"] = now if is_candidate else None
+            candidate["updated_at"] = now
+            updated_run = candidate
+        next_runs.append(candidate)
+
+    if updated_run is None:
+        raise LookupError(
+            f"Experiment run '{experiment_run_id}' was not found in experiment '{experiment_id}'."
+        )
+
+    replace_experiment_runs_mem(experiment_id, next_runs)
+    updated_experiment = {
+        **experiment,
+        "updated_at": now,
+    }
+    add_experiment(experiment_id, updated_experiment)
+
+    if _db_required():
+        replace_experiment_runs_db(experiment_id, next_runs)
+        save_experiment(updated_experiment)
+
+    return updated_run
 
 
 def get_experiment_any(experiment_id: str) -> dict | None:

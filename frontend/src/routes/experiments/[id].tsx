@@ -2,8 +2,10 @@ import { A, useParams } from "@solidjs/router";
 import { batch, createMemo, createResource, createSignal, For, Show } from "solid-js";
 import AppShell from "../../components/AppShell";
 import {
+  demoteExperimentRun,
   fetchExperiment,
   fetchExperimentResults,
+  promoteExperimentRun,
   runExperiment,
   type ExperimentResult,
 } from "../../services/api";
@@ -93,6 +95,7 @@ export default function ExperimentDetailPage() {
   const params = useParams();
   const experimentId = () => params.id ?? "";
   const [busy, setBusy] = createSignal(false);
+  const [candidateBusyId, setCandidateBusyId] = createSignal<string | null>(null);
   const [error, setError] = createSignal<string | null>(null);
   const [experiment, { mutate: mutateExperiment, refetch: refetchExperiment }] = createResource(
     experimentId,
@@ -106,6 +109,9 @@ export default function ExperimentDetailPage() {
     () => (results() ?? []).filter((run) => run.status === "completed"),
   );
   const failedRuns = createMemo(() => (results() ?? []).filter((run) => run.status === "failed"));
+  const candidateRuns = createMemo(() =>
+    completedRuns().filter((run) => run.is_candidate),
+  );
   const bestRun = createMemo(() => completedRuns()[0] ?? null);
 
   const handleRun = async () => {
@@ -123,6 +129,35 @@ export default function ExperimentDetailPage() {
       setError(errorValue instanceof Error ? errorValue.message : "Experiment run failed.");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const patchRun = (nextRun: Awaited<ReturnType<typeof promoteExperimentRun>>) => {
+    mutateResults((current) =>
+      (current ?? []).map((run) =>
+        run.experiment_run_id === nextRun.experiment_run_id ? nextRun : run,
+      ),
+    );
+  };
+
+  const handleCandidateToggle = async (runId: string, isCandidate: boolean) => {
+    batch(() => {
+      setCandidateBusyId(runId);
+      setError(null);
+    });
+
+    try {
+      const nextRun = isCandidate
+        ? await demoteExperimentRun(experimentId(), runId)
+        : await promoteExperimentRun(experimentId(), runId);
+      patchRun(nextRun);
+      await refetchExperiment();
+    } catch (errorValue) {
+      setError(
+        errorValue instanceof Error ? errorValue.message : "Candidate update failed.",
+      );
+    } finally {
+      setCandidateBusyId(null);
     }
   };
 
@@ -228,6 +263,21 @@ export default function ExperimentDetailPage() {
                 </div>
                 <div
                   class={`rounded-2xl border px-4 py-3 ${metricCardTone(
+                    candidateRuns().length > 0 ? "good" : "default",
+                  )}`}
+                >
+                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Candidates</p>
+                  <p class="mt-2 text-sm font-semibold text-zinc-100">
+                    {candidateRuns().length}
+                  </p>
+                  <p class="mt-1 text-xs text-zinc-500">
+                    {candidateRuns().length > 0
+                      ? "Marked for the Phase 2 handoff"
+                      : "No promoted runs yet"}
+                  </p>
+                </div>
+                <div
+                  class={`rounded-2xl border px-4 py-3 ${metricCardTone(
                     bestRun() ? "good" : "default",
                   )}`}
                 >
@@ -291,6 +341,7 @@ export default function ExperimentDetailPage() {
                 </div>
                 <div class="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
                   <span>{completedRuns().length} completed</span>
+                  <span>{candidateRuns().length} candidates</span>
                   <span>{failedRuns().length} failed</span>
                 </div>
               </div>
@@ -316,6 +367,7 @@ export default function ExperimentDetailPage() {
                           <th class="px-3 py-2">PnL</th>
                           <th class="px-3 py-2">Drawdown</th>
                           <th class="px-3 py-2">PF</th>
+                          <th class="px-3 py-2">Candidate</th>
                           <th class="px-3 py-2">Backtest</th>
                         </tr>
                       </thead>
@@ -330,7 +382,14 @@ export default function ExperimentDetailPage() {
                                 <div class="font-medium text-zinc-100">
                                   {run.symbol} {run.interval}
                                 </div>
-                                <div class="mt-1 text-xs text-zinc-500">{run.status}</div>
+                                <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                                  <span>{run.status}</span>
+                                  <Show when={run.is_candidate}>
+                                    <span class="rounded-full border border-emerald-700 bg-emerald-950/40 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-emerald-200">
+                                      Candidate
+                                    </span>
+                                  </Show>
+                                </div>
                               </td>
                               <td class="max-w-xs px-3 py-3 text-xs text-zinc-300">
                                 <div>{formatParams(run.strategy_params)}</div>
@@ -366,6 +425,40 @@ export default function ExperimentDetailPage() {
                               </td>
                               <td class="px-3 py-3 font-mono text-xs">
                                 {formatNumber(run.profit_factor, 2)}
+                              </td>
+                              <td class="px-3 py-3 text-xs">
+                                <Show
+                                  when={run.status === "completed" && run.backtest_id}
+                                  fallback={<span class="text-zinc-500">Unavailable</span>}
+                                >
+                                  <button
+                                    type="button"
+                                    disabled={candidateBusyId() === run.experiment_run_id}
+                                    onClick={() =>
+                                      handleCandidateToggle(run.experiment_run_id, run.is_candidate)
+                                    }
+                                    class={`rounded-xl px-3 py-2 font-medium transition-colors ${
+                                      candidateBusyId() === run.experiment_run_id
+                                        ? "cursor-not-allowed bg-zinc-800 text-zinc-500"
+                                        : run.is_candidate
+                                          ? "border border-emerald-700 bg-emerald-950/40 text-emerald-200 hover:bg-emerald-950/60"
+                                          : "border border-zinc-700 text-zinc-200 hover:border-zinc-500 hover:bg-zinc-900"
+                                    }`}
+                                  >
+                                    {candidateBusyId() === run.experiment_run_id
+                                      ? "Updating..."
+                                      : run.is_candidate
+                                        ? "Unmark"
+                                        : "Promote"}
+                                  </button>
+                                </Show>
+                                <Show when={run.is_candidate && run.promoted_at}>
+                                  {(promotedAt) => (
+                                    <p class="mt-2 text-[11px] text-zinc-500">
+                                      {formatTimestamp(promotedAt())}
+                                    </p>
+                                  )}
+                                </Show>
                               </td>
                               <td class="rounded-r-2xl px-3 py-3 text-xs">
                                 <Show

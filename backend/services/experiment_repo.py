@@ -72,10 +72,18 @@ def _ensure_experiments_schema(conn) -> None:
                     error             TEXT,
                     metrics           JSONB,
                     prop_firm_eval    JSONB,
+                    is_candidate      BOOLEAN NOT NULL DEFAULT FALSE,
+                    promoted_at       TIMESTAMPTZ,
                     created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
                 """
+            )
+            cur.execute(
+                "ALTER TABLE experiment_runs ADD COLUMN IF NOT EXISTS is_candidate BOOLEAN NOT NULL DEFAULT FALSE"
+            )
+            cur.execute(
+                "ALTER TABLE experiment_runs ADD COLUMN IF NOT EXISTS promoted_at TIMESTAMPTZ"
             )
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS experiments_updated_at_idx ON experiments (updated_at DESC)"
@@ -194,11 +202,11 @@ def replace_experiment_runs(experiment_id: str, runs: list[dict]) -> None:
             experiment_run_id, experiment_id, backtest_id, symbol, interval,
             strategy_type, strategy_params, dataset_id, status, score, rank,
             total_pnl, win_rate, max_drawdown, profit_factor, passed, error,
-            metrics, prop_firm_eval, created_at, updated_at
+            metrics, prop_firm_eval, is_candidate, promoted_at, created_at, updated_at
         )
         VALUES (
             %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s, %s, %s,
-            %s, %s, %s::jsonb, %s::jsonb, %s, %s
+            %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s
         )
     """
 
@@ -229,6 +237,8 @@ def replace_experiment_runs(experiment_id: str, runs: list[dict]) -> None:
                         run.get("error"),
                         json.dumps(run.get("metrics")),
                         json.dumps(run.get("prop_firm_eval")),
+                        run.get("is_candidate", False),
+                        run.get("promoted_at"),
                         run["created_at"],
                         run["updated_at"],
                     ],
@@ -300,6 +310,8 @@ def _row_to_run(row) -> dict:
         "error": row["error"],
         "metrics": _maybe_json(row["metrics"]),
         "prop_firm_eval": _maybe_json(row["prop_firm_eval"]),
+        "is_candidate": bool(row["is_candidate"]),
+        "promoted_at": _maybe_iso(row.get("promoted_at") if hasattr(row, "get") else row["promoted_at"]),
         "created_at": _maybe_iso(row["created_at"]),
         "updated_at": _maybe_iso(row["updated_at"]),
     }

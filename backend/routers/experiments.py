@@ -12,6 +12,7 @@ from services.experiment_service import (
     list_experiment_runs,
     list_experiments_any,
     run_experiment,
+    set_experiment_run_candidate,
 )
 
 router = APIRouter()
@@ -81,3 +82,35 @@ async def get_experiment_results(experiment_id: str):
         return list_experiment_runs(experiment_id)
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Experiment results unavailable: {exc}")
+
+
+@router.post("/{experiment_id}/runs/{experiment_run_id}/promote", response_model=ExperimentRunResult)
+async def promote_experiment_run(experiment_id: str, experiment_run_id: str):
+    try:
+        return set_experiment_run_candidate(
+            experiment_id=experiment_id,
+            experiment_run_id=experiment_run_id,
+            is_candidate=True,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Experiment candidate promote failed: {exc}")
+
+
+@router.delete("/{experiment_id}/runs/{experiment_run_id}/promote", response_model=ExperimentRunResult)
+async def demote_experiment_run(experiment_id: str, experiment_run_id: str):
+    try:
+        return set_experiment_run_candidate(
+            experiment_id=experiment_id,
+            experiment_run_id=experiment_run_id,
+            is_candidate=False,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Experiment candidate demote failed: {exc}")

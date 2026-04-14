@@ -310,6 +310,8 @@ export interface ExperimentRunResult {
   error?: string | null;
   metrics?: PerformanceMetrics | null;
   prop_firm_eval?: PropFirmEvaluation | null;
+  is_candidate: boolean;
+  promoted_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -471,6 +473,30 @@ export const runExperiment = async (id: string): Promise<ExperimentExecutionResu
   return api<ExperimentExecutionResult>(`${API_ROUTES.experiments}/${id}/run`, {
     method: "POST",
   });
+};
+
+export const promoteExperimentRun = async (
+  experimentId: string,
+  experimentRunId: string,
+): Promise<ExperimentRunResult> => {
+  return api<ExperimentRunResult>(
+    `${API_ROUTES.experiments}/${experimentId}/runs/${experimentRunId}/promote`,
+    {
+      method: "POST",
+    },
+  );
+};
+
+export const demoteExperimentRun = async (
+  experimentId: string,
+  experimentRunId: string,
+): Promise<ExperimentRunResult> => {
+  return api<ExperimentRunResult>(
+    `${API_ROUTES.experiments}/${experimentId}/runs/${experimentRunId}/promote`,
+    {
+      method: "DELETE",
+    },
+  );
 };
 
 export const fetchReplaySessions = async (): Promise<ReplaySessionSummary[]> => {
