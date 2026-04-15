@@ -266,6 +266,52 @@ CREATE INDEX IF NOT EXISTS candidates_experiment_id_idx
 CREATE INDEX IF NOT EXISTS candidates_backtest_id_idx
     ON candidates (backtest_id);
 
+-- Phase 3 durable paper runtime shell
+CREATE TABLE IF NOT EXISTS paper_sessions (
+    paper_session_id TEXT PRIMARY KEY,
+    candidate_id     TEXT NOT NULL UNIQUE,
+    paper_bot_id     TEXT,
+    name             TEXT NOT NULL,
+    symbol           TEXT NOT NULL,
+    interval         TEXT NOT NULL,
+    strategy_type    TEXT NOT NULL,
+    strategy_params  JSONB NOT NULL,
+    prop_firm_rules  JSONB NOT NULL,
+    guardrails       JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status           TEXT NOT NULL DEFAULT 'draft',
+    current_position JSONB NOT NULL DEFAULT '{}'::jsonb,
+    metrics_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+    guardrail_state  JSONB NOT NULL DEFAULT '{}'::jsonb,
+    last_bar_time    TIMESTAMPTZ,
+    last_event_at    TIMESTAMPTZ,
+    created_by       TEXT NOT NULL DEFAULT 'local-user',
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS paper_sessions_updated_at_idx
+    ON paper_sessions (updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS paper_sessions_status_idx
+    ON paper_sessions (status);
+
+CREATE TABLE IF NOT EXISTS paper_events (
+    paper_event_id   TEXT PRIMARY KEY,
+    paper_session_id TEXT NOT NULL,
+    candidate_id     TEXT NOT NULL,
+    event_type       TEXT NOT NULL,
+    actor            TEXT NOT NULL DEFAULT 'local-user',
+    summary          TEXT NOT NULL,
+    payload          JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS paper_events_session_created_idx
+    ON paper_events (paper_session_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS paper_events_candidate_created_idx
+    ON paper_events (candidate_id, created_at DESC);
+
 -- Durable dataset registry
 CREATE TABLE IF NOT EXISTS datasets (
     dataset_id     TEXT PRIMARY KEY,

@@ -190,6 +190,15 @@ class PaperBotStatus(str, Enum):
     STOPPED = "stopped"
 
 
+class PaperSessionStatus(str, Enum):
+    DRAFT = "draft"
+    READY = "ready"
+    RUNNING = "running"
+    PAUSED = "paused"
+    STOPPED = "stopped"
+    FAILED = "failed"
+
+
 class ExperimentBase(BaseModel):
     name: str
     symbols: List[str] = Field(default_factory=list)
@@ -279,8 +288,76 @@ class PaperBotConfig(BaseModel):
     strategy_params: dict[str, Any] = Field(default_factory=dict)
     guardrails: dict[str, Any] = Field(default_factory=dict)
     status: PaperBotStatus = Field(default=PaperBotStatus.DRAFT)
+    paper_session_id: Optional[str] = None
+    last_event_at: Optional[str] = None
     created_at: str
     updated_at: str
+
+
+class PaperSessionBase(BaseModel):
+    candidate_id: str
+    paper_bot_id: Optional[str] = None
+    name: str
+    symbol: str
+    interval: str
+    strategy_type: StrategyType
+    strategy_params: dict[str, Any] = Field(default_factory=dict)
+    prop_firm_rules: PropFirmRules
+    guardrails: dict[str, Any] = Field(default_factory=dict)
+    status: PaperSessionStatus = Field(default=PaperSessionStatus.DRAFT)
+    current_position: dict[str, Any] = Field(default_factory=dict)
+    metrics_snapshot: dict[str, Any] = Field(default_factory=dict)
+    guardrail_state: dict[str, Any] = Field(default_factory=dict)
+    last_bar_time: Optional[str] = None
+    last_event_at: Optional[str] = None
+    created_by: str = "local-user"
+
+
+class PaperSessionCreate(BaseModel):
+    actor: str = Field(default="local-user")
+    name: Optional[str] = None
+
+
+class PaperSessionStatusUpdate(BaseModel):
+    status: PaperSessionStatus
+    actor: str = Field(default="local-user")
+    summary: Optional[str] = None
+
+
+class PaperSessionResult(PaperSessionBase):
+    paper_session_id: str
+    created_at: str
+    updated_at: str
+
+
+class PaperSessionSummary(BaseModel):
+    paper_session_id: str
+    candidate_id: str
+    name: str
+    symbol: str
+    interval: str
+    status: PaperSessionStatus
+    last_event_at: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+
+class PaperEventCreate(BaseModel):
+    event_type: str = Field(min_length=1, max_length=80)
+    summary: str = Field(min_length=1, max_length=1000)
+    actor: str = Field(default="local-user")
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class PaperEventResult(BaseModel):
+    paper_event_id: str
+    paper_session_id: str
+    candidate_id: str
+    event_type: str
+    actor: str = "local-user"
+    summary: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    created_at: str
 
 
 class CandidateResult(BaseModel):
