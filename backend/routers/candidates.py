@@ -5,6 +5,8 @@ from schemas import (
     CandidatePaperBotCreate,
     CandidatePaperBotStatusUpdate,
     CandidateResult,
+    PaperSessionCreate,
+    PaperSessionResult,
     CandidateStatusUpdate,
 )
 from services.candidate_service import (
@@ -14,6 +16,10 @@ from services.candidate_service import (
     list_candidates_any,
     update_candidate_paper_bot_status,
     update_candidate_status,
+)
+from services.paper_session_service import (
+    create_paper_session_for_candidate,
+    get_paper_session_by_candidate_any,
 )
 
 router = APIRouter()
@@ -89,3 +95,32 @@ async def patch_candidate_paper_bot_status(
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Paper bot status update failed: {exc}")
+
+
+@router.post("/{candidate_id}/paper-session", response_model=PaperSessionResult)
+async def create_candidate_paper_session(candidate_id: str, request: PaperSessionCreate):
+    try:
+        return create_paper_session_for_candidate(
+            candidate_id,
+            actor=request.actor,
+            name=request.name,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Paper session create failed: {exc}")
+
+
+@router.get("/{candidate_id}/paper-session", response_model=PaperSessionResult)
+async def get_candidate_paper_session(candidate_id: str):
+    try:
+        session = get_paper_session_by_candidate_any(candidate_id)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Paper session storage unavailable: {exc}")
+
+    if session is None:
+        raise HTTPException(status_code=404, detail=f"Candidate '{candidate_id}' has no paper session yet.")
+
+    return session

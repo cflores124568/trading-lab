@@ -3,9 +3,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from routers import backtests, candidates, data, experiments, prop_firms, replay_sessions
+from routers import backtests, candidates, data, experiments, paper_sessions, prop_firms, replay_sessions
 from services.backtest_store import list_backtests
 from services.candidate_store import list_candidates
+from services.paper_session_store import list_paper_sessions
 from services.replay_session_store import list_replay_sessions
 
 load_dotenv()
@@ -37,6 +38,7 @@ app.add_middleware(
 app.include_router(backtests.router, prefix="/api/backtests", tags=["Backtests"])
 app.include_router(candidates.router, prefix="/api/candidates", tags=["Candidates"])
 app.include_router(experiments.router, prefix="/api/experiments", tags=["Experiments"])
+app.include_router(paper_sessions.router, prefix="/api/paper-sessions", tags=["Paper Sessions"])
 app.include_router(replay_sessions.router, prefix="/api/replay-sessions", tags=["Replay Sessions"])
 app.include_router(data.router, prefix="/api/data", tags=["Market Data"])
 app.include_router(prop_firms.router, prefix="/api/prop-firms", tags=["Prop Firms"])
@@ -47,6 +49,7 @@ async def health():
         "status": "ok",
         "backtests_in_memory": len(list_backtests()),
         "candidates_in_memory": len(list_candidates()),
+        "paper_sessions_in_memory": len(list_paper_sessions()),
         "replay_sessions_in_memory": len(list_replay_sessions()),
     }
     # Show DB status; fails gracefully if not configured yet
