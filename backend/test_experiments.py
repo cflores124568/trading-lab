@@ -107,13 +107,13 @@ def main() -> None:
             _require(payload["results"][0]["backtest_id"], "Completed run is missing backtest linkage.")
             print(f"      Ranked runs: {len(payload['results'])}")
 
-            print("\n[4/6] Reading persisted results from the results endpoint ...")
+            print("\n[4/7] Reading persisted results from the results endpoint ...")
             results = client.get(f"/api/experiments/{experiment_id}/results")
             _require(results.status_code == 200, f"Experiment results failed: {results.text}")
             _require(len(results.json()) == 4, "Results endpoint returned the wrong number of rows.")
             print("      Results endpoint still lines up with the saved batch.")
 
-            print("\n[5/6] Promoting the top ranked run into a candidate ...")
+            print("\n[5/7] Promoting the top ranked run into a candidate ...")
             top_run_id = payload["results"][0]["experiment_run_id"]
             promote = client.post(f"/api/experiments/{experiment_id}/runs/{top_run_id}/promote")
             _require(promote.status_code == 200, f"Experiment promote failed: {promote.text}")
@@ -126,7 +126,7 @@ def main() -> None:
             _require(persisted.json()[0]["is_candidate"] is True, "Candidate flag did not persist to results.")
             print("      Candidate flag persisted on the saved ranked run.")
 
-            print("\n[6/6] Walking the candidate review + paper stub flow ...")
+            print("\n[6/7] Walking the candidate review + paper stub flow ...")
             candidates = client.get("/api/candidates/")
             _require(candidates.status_code == 200, f"Candidate list failed: {candidates.text}")
             _require(len(candidates.json()) == 1, "Expected exactly one candidate after promotion.")
@@ -180,6 +180,55 @@ def main() -> None:
             _require(paused.json()["lifecycle_status"] == "paper_paused", "Stopped paper bot should map to paper_paused.")
             _require(len(paused.json()["audit_log"]) >= 5, "Candidate audit log should capture the review flow.")
             print("      Candidate review state, notes, and paper handoff all persisted.")
+
+            print("\n[7/7] Creating the durable paper session shell and event log ...")
+            session = client.post(
+                f"/api/candidates/{candidate_id}/paper-session",
+                json={"actor": "smoke-test"},
+            )
+            _require(session.status_code == 200, f"Paper session create failed: {session.text}")
+            paper_session = session.json()
+            paper_session_id = paper_session["paper_session_id"]
+            _require(paper_session["candidate_id"] == candidate_id, "Paper session lost its candidate link.")
+            _require(paper_session["status"] == "paused", "Stopped paper bot should map to a paused paper session shell.")
+
+            fetched_by_candidate = client.get(f"/api/candidates/{candidate_id}/paper-session")
+            _require(
+                fetched_by_candidate.status_code == 200,
+                f"Candidate paper session fetch failed: {fetched_by_candidate.text}",
+            )
+            _require(
+                fetched_by_candidate.json()["paper_session_id"] == paper_session_id,
+                "Candidate paper session route returned the wrong session.",
+            )
+
+            sessions = client.get("/api/paper-sessions/")
+            _require(sessions.status_code == 200, f"Paper session list failed: {sessions.text}")
+            _require(len(sessions.json()) == 1, "Expected exactly one paper session.")
+
+            event = client.post(
+                f"/api/paper-sessions/{paper_session_id}/events",
+                json={
+                    "event_type": "heartbeat",
+                    "summary": "Session scaffold is alive and ready for runner work.",
+                    "actor": "smoke-test",
+                    "payload": {"phase": 3},
+                },
+            )
+            _require(event.status_code == 200, f"Paper event append failed: {event.text}")
+            _require(event.json()["event_type"] == "heartbeat", "Paper event type did not persist.")
+
+            ready_session = client.patch(
+                f"/api/paper-sessions/{paper_session_id}/status",
+                json={"status": "ready", "actor": "smoke-test"},
+            )
+            _require(ready_session.status_code == 200, f"Paper session ready failed: {ready_session.text}")
+            _require(ready_session.json()["status"] == "ready", "Paper session status did not update.")
+
+            events = client.get(f"/api/paper-sessions/{paper_session_id}/events")
+            _require(events.status_code == 200, f"Paper event list failed: {events.text}")
+            _require(len(events.json()) >= 3, "Paper session should have creation, manual, and status events.")
+            print("      Paper session shell, status, and event log all persisted.")
     finally:
         experiment_service.load_from_db = original_loader
         experiment_service._db_required = original_db_required
