@@ -278,6 +278,7 @@ export type PaperSessionStatus =
   | "paused"
   | "stopped"
   | "failed";
+export type PaperSessionTradeAction = "buy" | "sell" | "mark" | "exit";
 
 export interface ExperimentCreateRequest {
   name: string;
@@ -382,7 +383,11 @@ export interface PaperSessionResult {
   prop_firm_rules: PropFirmRules;
   guardrails: Record<string, unknown>;
   status: PaperSessionStatus;
+  commission: number;
+  tick_value: number;
   current_position: Record<string, unknown>;
+  trade_log: Trade[];
+  equity_curve: number[];
   metrics_snapshot: Record<string, unknown>;
   guardrail_state: Record<string, unknown>;
   last_bar_time?: string | null;
@@ -759,6 +764,29 @@ export const createPaperSessionEvent = async (
       summary: payload.summary,
       actor: payload.actor ?? "local-user",
       payload: payload.payload ?? {},
+    }),
+  });
+};
+
+export const executePaperSessionAction = async (
+  paperSessionId: string,
+  payload: {
+    action: PaperSessionTradeAction;
+    price: number;
+    filledAt: string;
+    actor?: string;
+    note?: string;
+  },
+): Promise<PaperSessionResult> => {
+  return api<PaperSessionResult>(`${API_ROUTES.paperSessions}/${paperSessionId}/execute`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: payload.action,
+      price: payload.price,
+      filled_at: payload.filledAt,
+      actor: payload.actor ?? "local-user",
+      note: payload.note,
     }),
   });
 };

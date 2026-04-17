@@ -3,12 +3,13 @@ import { batch, createMemo, createResource, createSignal, For, Show } from "soli
 import AppShell from "../../components/AppShell";
 import {
   createPaperSessionEvent,
+  executePaperSessionAction,
   fetchCandidate,
   fetchPaperSession,
   fetchPaperSessionEvents,
   updatePaperSessionStatus,
-  type PaperSessionStatus,
 } from "../../services/api";
+import type { PaperSessionStatus, PaperSessionTradeAction, Trade } from "../../services/api";
 
 function describeStatus(status: string): string {
   return status.replace(/_/g, " ");
@@ -37,6 +38,81 @@ function formatTimestamp(value?: string | null): string {
   }
 
   return new Date(value).toLocaleString();
+}
+
+function formatCurrency(value?: number | null, signed = false): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "n/a";
+  }
+
+  const abs = Math.abs(value).toFixed(2);
+  if (signed) {
+    return `${value >= 0 ? "+" : "-"}$${abs}`;
+  }
+
+  return `${value < 0 ? "-" : ""}$${abs}`;
+}
+
+function formatNumber(value?: number | null, digits = 2): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "n/a";
+  }
+
+  return value.toFixed(digits);
+}
+
+function formatPercent(value?: number | null, digits = 1): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "n/a";
+  }
+
+  return `${(value * 100).toFixed(digits)}%`;
+}
+
+function numberFromUnknown(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+function stringFromUnknown(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function nowLocalInputValue(): string {
+  const now = new Date();
+  const adjusted = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+  return adjusted.toISOString().slice(0, 16);
+}
+
+function localInputToIso(value: string): string {
+  if (!value.trim()) {
+    return new Date().toISOString();
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return parsed.toISOString();
+}
+
+function positionLabel(side?: string | null): string {
+  if (side === "buy") {
+    return "Long";
+  }
+  if (side === "sell") {
+    return "Short";
+  }
+  return "Flat";
 }
 
 function formatParams(params: Record<string, unknown>): string {
@@ -209,10 +285,23 @@ export default function PaperSessionDetailPage() {
   const [error, setError] = createSignal<string | null>(null);
   const [eventType, setEventType] = createSignal("operator_note");
   const [eventSummary, setEventSummary] = createSignal("");
+  const [executionAction, setExecutionAction] = createSignal<PaperSessionTradeAction>("buy");
+  const [executionPrice, setExecutionPrice] = createSignal("");
+  const [executionTime, setExecutionTime] = createSignal(nowLocalInputValue());
+  const [executionNote, setExecutionNote] = createSignal("");
 
   const availableActions = createMemo(() =>
     session() ? statusActions(session()!.status) : [],
   );
+  const currentPosition = createMemo(() => (session()?.current_position ?? {}) as Record<string, unknown>);
+  const hasOpenPosition = createMemo(() => Boolean(stringFromUnknown(currentPosition().entry_time)));
+  const metricsSnapshot = createMemo(
+    () => (session()?.metrics_snapshot ?? {}) as Record<string, unknown>,
+  );
+  const guardrailState = createMemo(
+    () => (session()?.guardrail_state ?? {}) as Record<string, unknown>,
+  );
+  const tradeLog = createMemo(() => session()?.trade_log ?? []);
 
   const runSessionAction = async (key: string, work: () => Promise<void>) => {
     batch(() => {
@@ -249,6 +338,33 @@ export default function PaperSessionDetailPage() {
         summary,
       });
       setEventSummary("");
+      await Promise.all([refetchSession(), refetchEvents()]);
+    });
+  };
+
+  const handleExecution = async () => {
+    const price = Number(executionPrice().trim());
+    if (!Number.isFinite(price) || price <= 0) {
+      setError("Use a real fill price first.");
+      return;
+    }
+
+    await runSessionAction("execute", async () => {
+      const nextSession = await executePaperSessionAction(paperSessionId(), {
+        action: executionAction(),
+        price,
+        filledAt: localInputToIso(executionTime()),
+        note: executionNote().trim() || undefined,
+      });
+      mutateSession(() => nextSession);
+      setExecutionNote("");
+      setExecutionPrice("");
+      setExecutionTime(nowLocalInputValue());
+      if (executionAction() === "exit") {
+        setExecutionAction("buy");
+      } else if (executionAction() === "buy" || executionAction() === "sell") {
+        setExecutionAction("mark");
+      }
       await Promise.all([refetchSession(), refetchEvents()]);
     });
   };
@@ -337,30 +453,40 @@ export default function PaperSessionDetailPage() {
 
               <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                  <p class="app-kicker">Candidate</p>
+                  <p class="app-kicker">Marked Equity</p>
                   <p class="mt-2 text-sm font-semibold text-zinc-100">
-                    <code>{entry().candidate_id.slice(0, 8)}</code>
+                    {formatCurrency(numberFromUnknown(metricsSnapshot().marked_equity))}
                   </p>
-                  <p class="mt-1 text-xs text-zinc-500">The research handoff this runtime shell belongs to.</p>
+                  <p class="mt-1 text-xs text-zinc-500">
+                    Realized equity plus whatever the open position is doing right now.
+                  </p>
                 </div>
                 <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                  <p class="app-kicker">Paper Bot</p>
+                  <p class="app-kicker">Total PnL</p>
                   <p class="mt-2 text-sm font-semibold text-zinc-100">
-                    <code>{(entry().paper_bot_id ?? "n/a").slice(0, 8)}</code>
+                    {formatCurrency(numberFromUnknown(metricsSnapshot().total_pnl), true)}
                   </p>
-                  <p class="mt-1 text-xs text-zinc-500">Still linked back to the candidate draft config.</p>
+                  <p class="mt-1 text-xs text-zinc-500">
+                    Closed-trade performance so far in this paper session.
+                  </p>
                 </div>
                 <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                  <p class="app-kicker">Prop Preset</p>
+                  <p class="app-kicker">Closed Trades</p>
                   <p class="mt-2 text-sm font-semibold text-zinc-100">
-                    {entry().prop_firm_rules.name}
+                    {tradeLog().length}
                   </p>
-                  <p class="mt-1 text-xs text-zinc-500">Guardrails came over with the session shell.</p>
+                  <p class="mt-1 text-xs text-zinc-500">
+                    Win rate {formatPercent(numberFromUnknown(metricsSnapshot().win_rate), 1)}
+                  </p>
                 </div>
                 <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                  <p class="app-kicker">Updated</p>
-                  <p class="mt-2 text-sm font-semibold text-zinc-100">{formatTimestamp(entry().updated_at)}</p>
-                  <p class="mt-1 text-xs text-zinc-500">Any status change or note bumps this.</p>
+                  <p class="app-kicker">Open Position</p>
+                  <p class="mt-2 text-sm font-semibold text-zinc-100">
+                    {positionLabel(stringFromUnknown(currentPosition().side))}
+                  </p>
+                  <p class="mt-1 text-xs text-zinc-500">
+                    Unrealized {formatCurrency(numberFromUnknown(metricsSnapshot().unrealized_pnl), true)}
+                  </p>
                 </div>
               </div>
 
@@ -382,6 +508,95 @@ export default function PaperSessionDetailPage() {
 
             <section class="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
               <div class="space-y-6">
+                <section class="app-panel app-panel-section space-y-4">
+                  <div class="space-y-2">
+                    <p class="app-kicker">Paper Execution</p>
+                    <p class="text-sm text-zinc-400">
+                      This is the first real paper loop: open a position, mark it as price moves, and flatten it into the session trade log.
+                    </p>
+                  </div>
+
+                  <div class="grid gap-3 md:grid-cols-2">
+                    <div class="app-subpanel px-4 py-4">
+                      <p class="text-sm font-medium text-zinc-100">Session setup</p>
+                      <p class="mt-3 text-sm text-zinc-300">
+                        Prop preset: {entry().prop_firm_rules.name}
+                      </p>
+                      <p class="mt-1 text-sm text-zinc-300">
+                        Commission: {formatCurrency(entry().commission)}
+                      </p>
+                      <p class="mt-1 text-sm text-zinc-300">
+                        Tick value: {formatCurrency(entry().tick_value)}
+                      </p>
+                    </div>
+                    <div class="app-subpanel px-4 py-4">
+                      <p class="text-sm font-medium text-zinc-100">Current position</p>
+                      <p class="mt-3 text-sm text-zinc-300">
+                        {positionLabel(stringFromUnknown(currentPosition().side))}
+                      </p>
+                      <p class="mt-1 text-sm text-zinc-300">
+                        Entry: {formatTimestamp(stringFromUnknown(currentPosition().entry_time))}
+                      </p>
+                      <p class="mt-1 text-sm text-zinc-300">
+                        Mark: {formatNumber(numberFromUnknown(currentPosition().mark_price), 4)}
+                      </p>
+                      <p class="mt-1 text-sm text-zinc-300">
+                        Unrealized: {formatCurrency(numberFromUnknown(currentPosition().unrealized_pnl), true)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div class="grid gap-3 md:grid-cols-[180px_160px_1fr]">
+                    <select
+                      value={executionAction()}
+                      onChange={(event) => setExecutionAction(event.currentTarget.value as PaperSessionTradeAction)}
+                      class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                    >
+                      <option value="buy">Buy / Long</option>
+                      <option value="sell">Sell / Short</option>
+                      <option value="mark">Mark Position</option>
+                      <option value="exit">Exit Position</option>
+                    </select>
+                    <input
+                      value={executionPrice()}
+                      onInput={(event) => setExecutionPrice(event.currentTarget.value)}
+                      placeholder="Fill price"
+                      inputmode="decimal"
+                      class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                    />
+                    <input
+                      type="datetime-local"
+                      value={executionTime()}
+                      onInput={(event) => setExecutionTime(event.currentTarget.value)}
+                      class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                    />
+                  </div>
+
+                  <textarea
+                    value={executionNote()}
+                    onInput={(event) => setExecutionNote(event.currentTarget.value)}
+                    rows={2}
+                    placeholder="Optional execution note..."
+                    class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                  />
+
+                  <div class="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={busyAction() === "execute"}
+                      onClick={handleExecution}
+                      class="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+                    >
+                      {busyAction() === "execute" ? "Submitting..." : "Submit Action"}
+                    </button>
+                    <Show when={hasOpenPosition()}>
+                      <span class="rounded-full border border-zinc-700 px-3 py-2 text-xs text-zinc-400">
+                        Position is open, so `mark` and `exit` are the useful next clicks.
+                      </span>
+                    </Show>
+                  </div>
+                </section>
+
                 <section class="app-panel app-panel-section space-y-4">
                   <div class="space-y-2">
                     <p class="app-kicker">Manual Event Log</p>
@@ -453,14 +668,101 @@ export default function PaperSessionDetailPage() {
                   <div class="space-y-2">
                     <p class="app-kicker">Runtime Snapshot</p>
                     <p class="text-sm text-zinc-400">
-                      Empty in places right now, which is fine. This page gives Phase 3 a real place to start storing live paper state.
+                      The session now keeps enough runtime state to actually behave like a paper workflow instead of just a handoff stub.
                     </p>
                   </div>
                   <div class="space-y-4">
+                    <div class="grid gap-3 md:grid-cols-2">
+                      <div class="app-subpanel px-4 py-4">
+                        <p class="text-sm font-medium text-zinc-100">Prop state</p>
+                        <p class="mt-3 text-sm text-zinc-300">
+                          Passed: {String(Boolean(guardrailState().passed))}
+                        </p>
+                        <p class="mt-1 text-sm text-zinc-300">
+                          Drawdown breached: {String(Boolean(guardrailState().drawdown_breached))}
+                        </p>
+                        <p class="mt-1 text-sm text-zinc-300">
+                          Daily loss breached: {String(Boolean(guardrailState().daily_loss_breached))}
+                        </p>
+                        <p class="mt-1 text-sm text-zinc-300">
+                          Profit target hit: {String(Boolean(guardrailState().profit_target_hit))}
+                        </p>
+                      </div>
+                      <div class="app-subpanel px-4 py-4">
+                        <p class="text-sm font-medium text-zinc-100">Performance</p>
+                        <p class="mt-3 text-sm text-zinc-300">
+                          Profit factor: {formatNumber(numberFromUnknown(metricsSnapshot().profit_factor))}
+                        </p>
+                        <p class="mt-1 text-sm text-zinc-300">
+                          Max drawdown: {formatPercent(numberFromUnknown(metricsSnapshot().max_drawdown), 2)}
+                        </p>
+                        <p class="mt-1 text-sm text-zinc-300">
+                          Best trade: {formatCurrency(numberFromUnknown(metricsSnapshot().best_trade), true)}
+                        </p>
+                        <p class="mt-1 text-sm text-zinc-300">
+                          Worst trade: {formatCurrency(numberFromUnknown(metricsSnapshot().worst_trade), true)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div class="app-subpanel px-4 py-4">
+                      <div class="flex items-center justify-between gap-3">
+                        <p class="text-sm font-medium text-zinc-100">Closed trades</p>
+                        <span class="text-xs text-zinc-500">{tradeLog().length} total</span>
+                      </div>
+                      <Show
+                        when={tradeLog().length > 0}
+                        fallback={<p class="mt-3 text-sm text-zinc-500">No closed paper trades yet.</p>}
+                      >
+                        <div class="mt-3 space-y-3">
+                          <For each={[...tradeLog()].reverse().slice(0, 6)}>
+                            {(trade: Trade) => (
+                              <article class="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3">
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                  <span class="text-sm font-medium text-zinc-100">
+                                    {positionLabel(trade.side)}
+                                  </span>
+                                  <span
+                                    class={`text-sm font-semibold ${
+                                      trade.pnl >= 0 ? "text-emerald-300" : "text-red-300"
+                                    }`}
+                                  >
+                                    {formatCurrency(trade.pnl, true)}
+                                  </span>
+                                </div>
+                                <p class="mt-2 text-xs text-zinc-500">
+                                  {formatTimestamp(trade.entry_time)}
+                                  {" -> "}
+                                  {formatTimestamp(trade.exit_time)}
+                                </p>
+                                <p class="mt-1 text-xs text-zinc-500">
+                                  {formatNumber(trade.entry_price, 4)}
+                                  {" -> "}
+                                  {formatNumber(trade.exit_price, 4)}
+                                </p>
+                              </article>
+                            )}
+                          </For>
+                        </div>
+                      </Show>
+                    </div>
+
                     <div class="app-subpanel px-4 py-4">
                       <p class="text-sm font-medium text-zinc-100">Current position</p>
                       <pre class="mt-3 overflow-x-auto text-xs text-zinc-400">
                         {formatJson(entry().current_position)}
+                      </pre>
+                    </div>
+                    <div class="app-subpanel px-4 py-4">
+                      <p class="text-sm font-medium text-zinc-100">Trade log</p>
+                      <pre class="mt-3 overflow-x-auto text-xs text-zinc-400">
+                        {JSON.stringify(entry().trade_log, null, 2)}
+                      </pre>
+                    </div>
+                    <div class="app-subpanel px-4 py-4">
+                      <p class="text-sm font-medium text-zinc-100">Equity curve</p>
+                      <pre class="mt-3 overflow-x-auto text-xs text-zinc-400">
+                        {JSON.stringify(entry().equity_curve, null, 2)}
                       </pre>
                     </div>
                     <div class="app-subpanel px-4 py-4">
