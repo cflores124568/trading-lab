@@ -3,12 +3,14 @@ from fastapi import APIRouter, HTTPException
 from schemas import (
     PaperEventCreate,
     PaperEventResult,
+    PaperSessionExecutionRequest,
     PaperSessionResult,
     PaperSessionStatusUpdate,
     PaperSessionSummary,
 )
 from services.paper_session_service import (
     add_paper_session_event,
+    execute_paper_session_action,
     get_paper_session_any,
     list_paper_events_any,
     list_paper_sessions_any,
@@ -106,3 +108,25 @@ async def create_paper_session_event(
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Paper event append failed: {exc}")
+
+
+@router.post("/{paper_session_id}/execute", response_model=PaperSessionResult)
+async def execute_session_action(
+    paper_session_id: str,
+    request: PaperSessionExecutionRequest,
+):
+    try:
+        return execute_paper_session_action(
+            paper_session_id,
+            action=request.action.value,
+            price=request.price,
+            filled_at=request.filled_at,
+            actor=request.actor,
+            note=request.note,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Paper session execution failed: {exc}")

@@ -225,10 +225,55 @@ def main() -> None:
             _require(ready_session.status_code == 200, f"Paper session ready failed: {ready_session.text}")
             _require(ready_session.json()["status"] == "ready", "Paper session status did not update.")
 
+            opened = client.post(
+                f"/api/paper-sessions/{paper_session_id}/execute",
+                json={
+                    "action": "buy",
+                    "price": 5201.25,
+                    "filled_at": "2026-04-17T09:30:00",
+                    "actor": "smoke-test",
+                },
+            )
+            _require(opened.status_code == 200, f"Paper position open failed: {opened.text}")
+            _require(opened.json()["status"] == "running", "Opening a paper trade should move the session into running.")
+            _require(opened.json()["current_position"]["side"] == "buy", "Open paper position lost its side.")
+
+            marked = client.post(
+                f"/api/paper-sessions/{paper_session_id}/execute",
+                json={
+                    "action": "mark",
+                    "price": 5203.00,
+                    "filled_at": "2026-04-17T09:35:00",
+                    "actor": "smoke-test",
+                },
+            )
+            _require(marked.status_code == 200, f"Paper position mark failed: {marked.text}")
+            _require(
+                marked.json()["current_position"]["unrealized_pnl"] > 0,
+                "Marked paper position should have positive unrealized PnL here.",
+            )
+
+            closed = client.post(
+                f"/api/paper-sessions/{paper_session_id}/execute",
+                json={
+                    "action": "exit",
+                    "price": 5204.50,
+                    "filled_at": "2026-04-17T09:40:00",
+                    "actor": "smoke-test",
+                },
+            )
+            _require(closed.status_code == 200, f"Paper position exit failed: {closed.text}")
+            _require(not closed.json()["current_position"], "Closed paper position should clear current_position.")
+            _require(len(closed.json()["trade_log"]) == 1, "Paper session should keep the closed trade in its trade log.")
+            _require(
+                closed.json()["metrics_snapshot"]["total_trades"] == 1,
+                "Paper session metrics did not refresh after closing the trade.",
+            )
+
             events = client.get(f"/api/paper-sessions/{paper_session_id}/events")
             _require(events.status_code == 200, f"Paper event list failed: {events.text}")
-            _require(len(events.json()) >= 3, "Paper session should have creation, manual, and status events.")
-            print("      Paper session shell, status, and event log all persisted.")
+            _require(len(events.json()) >= 6, "Paper session should keep creation, manual, status, and execution events.")
+            print("      Paper session shell, execution loop, status, and event log all persisted.")
     finally:
         experiment_service.load_from_db = original_loader
         experiment_service._db_required = original_db_required
