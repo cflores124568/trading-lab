@@ -199,6 +199,13 @@ class PaperSessionStatus(str, Enum):
     FAILED = "failed"
 
 
+class PaperSessionTradeAction(str, Enum):
+    BUY = "buy"
+    SELL = "sell"
+    MARK = "mark"
+    EXIT = "exit"
+
+
 class ExperimentBase(BaseModel):
     name: str
     symbols: List[str] = Field(default_factory=list)
@@ -305,7 +312,11 @@ class PaperSessionBase(BaseModel):
     prop_firm_rules: PropFirmRules
     guardrails: dict[str, Any] = Field(default_factory=dict)
     status: PaperSessionStatus = Field(default=PaperSessionStatus.DRAFT)
+    commission: float = Field(default=5.0, ge=0)
+    tick_value: float = Field(default=1.0, gt=0)
     current_position: dict[str, Any] = Field(default_factory=dict)
+    trade_log: List[Trade] = Field(default_factory=list)
+    equity_curve: List[float] = Field(default_factory=list)
     metrics_snapshot: dict[str, Any] = Field(default_factory=dict)
     guardrail_state: dict[str, Any] = Field(default_factory=dict)
     last_bar_time: Optional[str] = None
@@ -322,6 +333,14 @@ class PaperSessionStatusUpdate(BaseModel):
     status: PaperSessionStatus
     actor: str = Field(default="local-user")
     summary: Optional[str] = None
+
+
+class PaperSessionExecutionRequest(BaseModel):
+    action: PaperSessionTradeAction
+    price: float = Field(gt=0)
+    filled_at: str
+    actor: str = Field(default="local-user")
+    note: Optional[str] = None
 
 
 class PaperSessionResult(PaperSessionBase):

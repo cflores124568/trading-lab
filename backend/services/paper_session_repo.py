@@ -41,7 +41,11 @@ def _ensure_paper_sessions_schema(conn) -> None:
                     prop_firm_rules  JSONB NOT NULL,
                     guardrails       JSONB NOT NULL DEFAULT '{}'::jsonb,
                     status           TEXT NOT NULL DEFAULT 'draft',
+                    commission       DOUBLE PRECISION NOT NULL DEFAULT 5,
+                    tick_value       DOUBLE PRECISION NOT NULL DEFAULT 1,
                     current_position JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    trade_log        JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    equity_curve     JSONB NOT NULL DEFAULT '[]'::jsonb,
                     metrics_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
                     guardrail_state  JSONB NOT NULL DEFAULT '{}'::jsonb,
                     last_bar_time    TIMESTAMPTZ,
@@ -51,6 +55,18 @@ def _ensure_paper_sessions_schema(conn) -> None:
                     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
                 """
+            )
+            cur.execute(
+                "ALTER TABLE paper_sessions ADD COLUMN IF NOT EXISTS commission DOUBLE PRECISION NOT NULL DEFAULT 5"
+            )
+            cur.execute(
+                "ALTER TABLE paper_sessions ADD COLUMN IF NOT EXISTS tick_value DOUBLE PRECISION NOT NULL DEFAULT 1"
+            )
+            cur.execute(
+                "ALTER TABLE paper_sessions ADD COLUMN IF NOT EXISTS trade_log JSONB NOT NULL DEFAULT '[]'::jsonb"
+            )
+            cur.execute(
+                "ALTER TABLE paper_sessions ADD COLUMN IF NOT EXISTS equity_curve JSONB NOT NULL DEFAULT '[]'::jsonb"
             )
             cur.execute(
                 """
@@ -89,12 +105,13 @@ def save_paper_session(session: dict) -> None:
         INSERT INTO paper_sessions (
             paper_session_id, candidate_id, paper_bot_id, name, symbol, interval,
             strategy_type, strategy_params, prop_firm_rules, guardrails, status,
-            current_position, metrics_snapshot, guardrail_state, last_bar_time,
+            commission, tick_value, current_position, trade_log, equity_curve,
+            metrics_snapshot, guardrail_state, last_bar_time,
             last_event_at, created_by, created_at, updated_at
         )
         VALUES (
             %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s,
-            %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s
+            %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s
         )
         ON CONFLICT (paper_session_id) DO UPDATE SET
             candidate_id     = EXCLUDED.candidate_id,
@@ -107,7 +124,11 @@ def save_paper_session(session: dict) -> None:
             prop_firm_rules  = EXCLUDED.prop_firm_rules,
             guardrails       = EXCLUDED.guardrails,
             status           = EXCLUDED.status,
+            commission       = EXCLUDED.commission,
+            tick_value       = EXCLUDED.tick_value,
             current_position = EXCLUDED.current_position,
+            trade_log        = EXCLUDED.trade_log,
+            equity_curve     = EXCLUDED.equity_curve,
             metrics_snapshot = EXCLUDED.metrics_snapshot,
             guardrail_state  = EXCLUDED.guardrail_state,
             last_bar_time    = EXCLUDED.last_bar_time,
@@ -133,7 +154,11 @@ def save_paper_session(session: dict) -> None:
                     json.dumps(session.get("prop_firm_rules") or {}),
                     json.dumps(session.get("guardrails") or {}),
                     session["status"],
+                    float(session.get("commission") or 5.0),
+                    float(session.get("tick_value") or 1.0),
                     json.dumps(session.get("current_position") or {}),
+                    json.dumps(session.get("trade_log") or []),
+                    json.dumps(session.get("equity_curve") or []),
                     json.dumps(session.get("metrics_snapshot") or {}),
                     json.dumps(session.get("guardrail_state") or {}),
                     session.get("last_bar_time"),
@@ -247,7 +272,11 @@ def _row_to_session(row) -> dict:
         "prop_firm_rules": _maybe_json(row["prop_firm_rules"]) or {},
         "guardrails": _maybe_json(row["guardrails"]) or {},
         "status": row["status"],
+        "commission": float(row.get("commission") or 5.0),
+        "tick_value": float(row.get("tick_value") or 1.0),
         "current_position": _maybe_json(row["current_position"]) or {},
+        "trade_log": _maybe_json(row.get("trade_log")) or [],
+        "equity_curve": _maybe_json(row.get("equity_curve")) or [],
         "metrics_snapshot": _maybe_json(row["metrics_snapshot"]) or {},
         "guardrail_state": _maybe_json(row["guardrail_state"]) or {},
         "last_bar_time": _maybe_iso(row["last_bar_time"]),

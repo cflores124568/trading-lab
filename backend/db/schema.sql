@@ -279,7 +279,11 @@ CREATE TABLE IF NOT EXISTS paper_sessions (
     prop_firm_rules  JSONB NOT NULL,
     guardrails       JSONB NOT NULL DEFAULT '{}'::jsonb,
     status           TEXT NOT NULL DEFAULT 'draft',
+    commission       DOUBLE PRECISION NOT NULL DEFAULT 5,
+    tick_value       DOUBLE PRECISION NOT NULL DEFAULT 1,
     current_position JSONB NOT NULL DEFAULT '{}'::jsonb,
+    trade_log        JSONB NOT NULL DEFAULT '[]'::jsonb,
+    equity_curve     JSONB NOT NULL DEFAULT '[]'::jsonb,
     metrics_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
     guardrail_state  JSONB NOT NULL DEFAULT '{}'::jsonb,
     last_bar_time    TIMESTAMPTZ,
@@ -311,6 +315,18 @@ CREATE INDEX IF NOT EXISTS paper_events_session_created_idx
 
 CREATE INDEX IF NOT EXISTS paper_events_candidate_created_idx
     ON paper_events (candidate_id, created_at DESC);
+
+ALTER TABLE paper_sessions
+    ADD COLUMN IF NOT EXISTS commission DOUBLE PRECISION NOT NULL DEFAULT 5;
+
+ALTER TABLE paper_sessions
+    ADD COLUMN IF NOT EXISTS tick_value DOUBLE PRECISION NOT NULL DEFAULT 1;
+
+ALTER TABLE paper_sessions
+    ADD COLUMN IF NOT EXISTS trade_log JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+ALTER TABLE paper_sessions
+    ADD COLUMN IF NOT EXISTS equity_curve JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 -- Durable dataset registry
 CREATE TABLE IF NOT EXISTS datasets (
