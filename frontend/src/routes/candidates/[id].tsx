@@ -1,8 +1,9 @@
-import { A, useParams } from "@solidjs/router";
+import { A, useNavigate, useParams } from "@solidjs/router";
 import { batch, createResource, createSignal, For, Show } from "solid-js";
 import AppShell from "../../components/AppShell";
 import {
   addCandidateNote,
+  createCandidatePaperSession,
   createCandidatePaperBot,
   fetchCandidate,
   updateCandidatePaperBotStatus,
@@ -89,6 +90,7 @@ function metricCard(label: string, value: string, note: string, tone = "border-z
 
 export default function CandidateDetailPage() {
   const params = useParams();
+  const navigate = useNavigate();
   const candidateId = () => params.id ?? "";
   const [candidate, { mutate, refetch }] = createResource(candidateId, fetchCandidate);
   const [error, setError] = createSignal<string | null>(null);
@@ -134,6 +136,23 @@ export default function CandidateDetailPage() {
   const handlePaperStop = () =>
     runAction("paper-stop", () => updateCandidatePaperBotStatus(candidateId(), "stopped"));
 
+  const handleCreatePaperSession = async () => {
+    batch(() => {
+      setBusyAction("session-create");
+      setError(null);
+    });
+
+    try {
+      const session = await createCandidatePaperSession(candidateId());
+      await refetch();
+      navigate(`/paper-sessions/${session.paper_session_id}`);
+    } catch (errorValue) {
+      setError(errorValue instanceof Error ? errorValue.message : "Paper session create failed.");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
   const handleNoteSave = async () => {
     const body = noteDraft().trim();
     if (!body) {
@@ -164,6 +183,12 @@ export default function CandidateDetailPage() {
             class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
           >
             Back to Candidates
+          </A>
+          <A
+            href="/paper-sessions"
+            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+          >
+            Paper Sessions
           </A>
           <Show when={candidate()}>
             {(entry) => (
@@ -425,6 +450,15 @@ export default function CandidateDetailPage() {
                           <p class="mt-1">
                             Drawdown seen: {formatPercent(entry().max_drawdown, 2)}
                           </p>
+                          <Show when={paperBot().paper_session_id}>
+                            <p class="mt-3">
+                              Session linked:{" "}
+                              <code>{paperBot().paper_session_id?.slice(0, 8)}</code>
+                            </p>
+                            <p class="mt-1 text-zinc-500">
+                              Last event {formatTimestamp(paperBot().last_event_at)}
+                            </p>
+                          </Show>
                         </div>
 
                         <div class="flex flex-wrap gap-2">
@@ -457,6 +491,30 @@ export default function CandidateDetailPage() {
                             >
                               {busyAction() === "paper-stop" ? "Stopping..." : "Stop / Pause"}
                             </button>
+                          </Show>
+                          <Show
+                            when={paperBot().paper_session_id}
+                            fallback={
+                              <button
+                                type="button"
+                                disabled={busyAction() === "session-create"}
+                                onClick={handleCreatePaperSession}
+                                class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                              >
+                                {busyAction() === "session-create"
+                                  ? "Creating session..."
+                                  : "Create Paper Session"}
+                              </button>
+                            }
+                          >
+                            {(paperSessionId) => (
+                              <A
+                                href={`/paper-sessions/${paperSessionId()}`}
+                                class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+                              >
+                                Open Paper Session
+                              </A>
+                            )}
                           </Show>
                         </div>
                       </div>

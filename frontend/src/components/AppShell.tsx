@@ -15,6 +15,7 @@ const navItems = [
   { href: "/backtests", label: "Backtests" },
   { href: "/experiments", label: "Experiments" },
   { href: "/candidates", label: "Candidates" },
+  { href: "/paper-sessions", label: "Paper Sessions" },
   { href: "/backtests/new", label: "New Backtest" },
 ];
 

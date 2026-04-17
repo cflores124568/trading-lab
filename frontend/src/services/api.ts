@@ -23,6 +23,7 @@ const API_ROUTES = {
   experiments: "/experiments",
   candidates: "/candidates",
   replaySessions: "/replay-sessions",
+  paperSessions: "/paper-sessions",
   propFirms: "/prop-firms",
 } as const;
 
@@ -270,6 +271,13 @@ export type CandidateLifecycleStatus =
   | "paper_paused"
   | "rejected";
 export type PaperBotStatus = "draft" | "ready" | "paper_running" | "stopped";
+export type PaperSessionStatus =
+  | "draft"
+  | "ready"
+  | "running"
+  | "paused"
+  | "stopped"
+  | "failed";
 
 export interface ExperimentCreateRequest {
   name: string;
@@ -356,8 +364,55 @@ export interface PaperBotConfig {
   strategy_params: Record<string, unknown>;
   guardrails: Record<string, unknown>;
   status: PaperBotStatus;
+  paper_session_id?: string | null;
+  last_event_at?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface PaperSessionResult {
+  paper_session_id: string;
+  candidate_id: string;
+  paper_bot_id?: string | null;
+  name: string;
+  symbol: string;
+  interval: string;
+  strategy_type: StrategyValue;
+  strategy_params: Record<string, unknown>;
+  prop_firm_rules: PropFirmRules;
+  guardrails: Record<string, unknown>;
+  status: PaperSessionStatus;
+  current_position: Record<string, unknown>;
+  metrics_snapshot: Record<string, unknown>;
+  guardrail_state: Record<string, unknown>;
+  last_bar_time?: string | null;
+  last_event_at?: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaperSessionSummary {
+  paper_session_id: string;
+  candidate_id: string;
+  name: string;
+  symbol: string;
+  interval: string;
+  status: PaperSessionStatus;
+  last_event_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaperEventResult {
+  paper_event_id: string;
+  paper_session_id: string;
+  candidate_id: string;
+  event_type: string;
+  actor: string;
+  summary: string;
+  payload: Record<string, unknown>;
+  created_at: string;
 }
 
 export interface CandidateResult {
@@ -634,6 +689,77 @@ export const updateCandidatePaperBotStatus = async (
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status, actor }),
+  });
+};
+
+export const createCandidatePaperSession = async (
+  candidateId: string,
+  options: { actor?: string; name?: string } = {},
+): Promise<PaperSessionResult> => {
+  return api<PaperSessionResult>(`${API_ROUTES.candidates}/${candidateId}/paper-session`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      actor: options.actor ?? "local-user",
+      name: options.name,
+    }),
+  });
+};
+
+export const fetchCandidatePaperSession = async (
+  candidateId: string,
+): Promise<PaperSessionResult> => {
+  return api<PaperSessionResult>(`${API_ROUTES.candidates}/${candidateId}/paper-session`);
+};
+
+export const fetchPaperSessions = async (): Promise<PaperSessionSummary[]> => {
+  return api<PaperSessionSummary[]>(API_ROUTES.paperSessions);
+};
+
+export const fetchPaperSession = async (paperSessionId: string): Promise<PaperSessionResult> => {
+  return api<PaperSessionResult>(`${API_ROUTES.paperSessions}/${paperSessionId}`);
+};
+
+export const fetchPaperSessionEvents = async (
+  paperSessionId: string,
+): Promise<PaperEventResult[]> => {
+  return api<PaperEventResult[]>(`${API_ROUTES.paperSessions}/${paperSessionId}/events`);
+};
+
+export const updatePaperSessionStatus = async (
+  paperSessionId: string,
+  status: PaperSessionStatus,
+  options: { actor?: string; summary?: string } = {},
+): Promise<PaperSessionResult> => {
+  return api<PaperSessionResult>(`${API_ROUTES.paperSessions}/${paperSessionId}/status`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      status,
+      actor: options.actor ?? "local-user",
+      summary: options.summary,
+    }),
+  });
+};
+
+export const createPaperSessionEvent = async (
+  paperSessionId: string,
+  payload: {
+    eventType: string;
+    summary: string;
+    actor?: string;
+    payload?: Record<string, unknown>;
+  },
+): Promise<PaperEventResult> => {
+  return api<PaperEventResult>(`${API_ROUTES.paperSessions}/${paperSessionId}/events`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      event_type: payload.eventType,
+      summary: payload.summary,
+      actor: payload.actor ?? "local-user",
+      payload: payload.payload ?? {},
+    }),
   });
 };
 

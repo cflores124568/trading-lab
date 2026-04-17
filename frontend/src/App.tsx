@@ -9,6 +9,8 @@ import CandidateDetailPage from "./routes/candidates/[id]";
 import CandidateRegistryPage from "./routes/candidates/index";
 import ExperimentsIndexPage from "./routes/experiments/index";
 import ExperimentDetailPage from "./routes/experiments/[id]";
+import PaperSessionDetailPage from "./routes/paper-sessions/[id]";
+import PaperSessionListPage from "./routes/paper-sessions/index";
 import ReplayLabPage from "./routes/replay";
 import ReplayComparePage from "./routes/replay-compare";
 import ReplaySessionListPage from "./routes/replay-sessions";
@@ -27,6 +29,8 @@ export default function App() {
       <Route path="/backtests/:id" component={BacktestDetail} />
       <Route path="/candidates" component={CandidateRegistryPage} />
       <Route path="/candidates/:id" component={CandidateDetailPage} />
+      <Route path="/paper-sessions" component={PaperSessionListPage} />
+      <Route path="/paper-sessions/:id" component={PaperSessionDetailPage} />
       <Route path="/experiments" component={ExperimentsIndexPage} />
       <Route path="/experiments/:id" component={ExperimentDetailPage} />
     </Router>
