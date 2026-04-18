@@ -3,14 +3,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from threading import Event, Lock, Thread
+from typing import Any
 
+import pandas as pd
+from services.backtest_repo import get_backtest as get_backtest_db
+from services.backtest_store import get_backtest as get_backtest_mem
 from schemas import PaperSessionStatus
-from services.db import db_configured, get_next_ohlcv_bar
+from services.db import db_configured, get_next_ohlcv_bar, get_ohlcv
+from services.indicators import add_all_indicators
 from services.paper_session_service import (
     _append_candidate_session_audit,
     _append_paper_event_any,
     _ensure_session_defaults,
-    _has_open_position,
     _make_paper_event,
     _now,
     _normalize_timestamp,
@@ -20,6 +24,7 @@ from services.paper_session_service import (
     _sync_candidate_paper_session,
     execute_paper_session_action,
 )
+from services.strategy import generate_signals
 
 DEFAULT_RUNNER_POLL_INTERVAL_MS = 750
 MIN_RUNNER_POLL_INTERVAL_MS = 100
@@ -35,6 +40,7 @@ class _RunnerHandle:
 _registry_lock = Lock()
 _runner_handles: dict[str, _RunnerHandle] = {}
 _session_locks: dict[str, Lock] = {}
+_signal_bar_history: dict[str, list[dict[str, Any]]] = {}
 
 
 def start_historical_runner(
@@ -77,6 +83,11 @@ def start_historical_runner(
             state["bars_processed"] = 0
             state["last_candle_time"] = None
             state["last_price"] = None
+            state["last_signal"] = 0
+            state["last_signal_action"] = None
+            state["last_signal_reason"] = None
+            state["parity_check"] = {}
+            _reset_signal_history(paper_session_id)
 
         state["mode"] = "running"
         state["poll_interval_ms"] = poll
@@ -227,6 +238,7 @@ def step_historical_runner(
 
         refreshed = _ensure_session_defaults(_require_paper_session(paper_session_id))
         now = _now()
+        refreshed["status"] = PaperSessionStatus.PAUSED.value
         _append_paper_event_any(
             _make_paper_event(
                 paper_session_id=paper_session_id,
@@ -246,6 +258,19 @@ def step_historical_runner(
         refreshed["last_event_at"] = now
         refreshed["updated_at"] = now
         _save_paper_session_any(refreshed)
+        candidate = _require_candidate(refreshed["candidate_id"])
+        _sync_candidate_paper_session(
+            candidate,
+            paper_session_id,
+            now,
+            session_status=refreshed["status"],
+        )
+        _append_candidate_session_audit(
+            candidate,
+            actor=actor,
+            summary=f"Stepped the historical runner by {completed} bar(s).",
+            created_at=now,
+        )
         return _ensure_session_defaults(_require_paper_session(paper_session_id))
 
 
@@ -254,6 +279,7 @@ def stop_all_historical_runners() -> None:
     with _registry_lock:
         handles = list(_runner_handles.items())
         _runner_handles.clear()
+        _signal_bar_history.clear()
 
     for _, handle in handles:
         handle.stop_event.set()
@@ -308,8 +334,10 @@ def _advance_one_bar_locked(
     if next_bar is None:
         now = _now()
         previous_mode = state.get("mode")
+        parity_check = _build_runner_parity_check(session, now=now)
         state["mode"] = "completed"
         state["last_error"] = None
+        state["parity_check"] = parity_check
         state["updated_at"] = now
         session["runner_state"] = state
         if keep_running and session["status"] == PaperSessionStatus.RUNNING.value:
@@ -331,6 +359,7 @@ def _advance_one_bar_locked(
                         "start_date": state.get("start_date"),
                         "end_date": state.get("end_date"),
                         "bars_processed": state.get("bars_processed"),
+                        "parity_check": parity_check,
                     },
                 )
             )
@@ -352,21 +381,25 @@ def _advance_one_bar_locked(
 
     bar_time = _normalize_timestamp(next_bar["time"])
     close_price = round(float(next_bar["close"]), 4)
-    auto_marked = False
+    signal_history = _get_signal_history(session, state)
+    signal_history.append(_normalize_bar(next_bar))
+    _set_signal_history(session["paper_session_id"], signal_history)
+    signal = _compute_strategy_signal(session, signal_history)
+    actions, action_label = _plan_signal_actions(session, signal)
 
-    if _has_open_position(session):
+    for action in actions:
         execute_paper_session_action(
             paper_session_id,
-            action="mark",
+            action=action,
             price=close_price,
             filled_at=bar_time,
             actor=actor,
-            note="Runner auto-marked the open position at bar close.",
+            note=_runner_note_for_action(action, signal),
             sync_candidate=False,
         )
-        auto_marked = True
         session = _ensure_session_defaults(_require_paper_session(paper_session_id))
-    else:
+
+    if not actions:
         now = _now()
         session["last_bar_time"] = bar_time
         session["last_event_at"] = now
@@ -378,6 +411,9 @@ def _advance_one_bar_locked(
     state["bars_processed"] = int(state.get("bars_processed") or 0) + 1
     state["last_candle_time"] = bar_time
     state["last_price"] = close_price
+    state["last_signal"] = signal
+    state["last_signal_action"] = action_label
+    state["last_signal_reason"] = _signal_reason(signal)
     state["last_error"] = None
     state["updated_at"] = _now()
 
@@ -391,7 +427,10 @@ def _advance_one_bar_locked(
     payload = {
         "bar_time": bar_time,
         "close_price": close_price,
-        "auto_marked": auto_marked,
+        "signal": signal,
+        "signal_action": action_label,
+        "executed_actions": actions,
+        "auto_marked": "mark" in actions,
         "bars_processed": state["bars_processed"],
     }
     if not keep_running:
@@ -501,6 +540,194 @@ def _session_lock(paper_session_id: str) -> Lock:
         return lock
 
 
+def _reset_signal_history(paper_session_id: str) -> None:
+    with _registry_lock:
+        _signal_bar_history.pop(paper_session_id, None)
+
+
+def _set_signal_history(paper_session_id: str, bars: list[dict[str, Any]]) -> None:
+    with _registry_lock:
+        _signal_bar_history[paper_session_id] = bars
+
+
+def _get_signal_history(session: dict, state: dict) -> list[dict[str, Any]]:
+    paper_session_id = session["paper_session_id"]
+    with _registry_lock:
+        existing = _signal_bar_history.get(paper_session_id)
+    if existing is not None:
+        return [*existing]
+
+    if not session.get("last_bar_time"):
+        return []
+
+    history_df = get_ohlcv(
+        symbol=session["symbol"],
+        interval=session["interval"],
+        start_date=state.get("start_date"),
+        end_date=session["last_bar_time"],
+    )
+    if history_df.empty:
+        return []
+
+    bars: list[dict[str, Any]] = []
+    for ts, row in history_df.iterrows():
+        bars.append(
+            {
+                "time": ts.isoformat() if hasattr(ts, "isoformat") else str(ts),
+                "open": float(row["open"]),
+                "high": float(row["high"]),
+                "low": float(row["low"]),
+                "close": float(row["close"]),
+                "volume": float(row["volume"]),
+            }
+        )
+    _set_signal_history(paper_session_id, bars)
+    return bars
+
+
+def _normalize_bar(bar: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "time": _normalize_timestamp(str(bar["time"])),
+        "open": round(float(bar["open"]), 6),
+        "high": round(float(bar["high"]), 6),
+        "low": round(float(bar["low"]), 6),
+        "close": round(float(bar["close"]), 6),
+        "volume": float(bar["volume"]),
+    }
+
+
+def _compute_strategy_signal(session: dict, bars: list[dict[str, Any]]) -> int:
+    if not bars:
+        return 0
+
+    df = pd.DataFrame.from_records(bars)
+    df["ts"] = pd.to_datetime(df["time"], utc=True, errors="coerce")
+    df = df.dropna(subset=["ts"]).set_index("ts")
+    if df.empty:
+        return 0
+
+    for column in ["open", "high", "low", "close", "volume"]:
+        df[column] = df[column].astype(float)
+
+    strategy_type = str(session.get("strategy_type") or "").strip()
+    strategy_params = dict(session.get("strategy_params") or {})
+    if not strategy_type:
+        return 0
+
+    enriched = add_all_indicators(df, strategy_params, strategy_type=strategy_type)
+    signaled = generate_signals(enriched, strategy_type, strategy_params)
+    signal_value = signaled.iloc[-1].get("signal", 0)
+    try:
+        return int(signal_value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _plan_signal_actions(session: dict, signal: int) -> tuple[list[str], str]:
+    if signal not in {-1, 0, 1}:
+        signal = 0
+
+    position = session.get("current_position") or {}
+    side = position.get("side")
+
+    if signal == 1:
+        if side == "sell":
+            return ["exit", "buy"], "flip_to_buy"
+        if side == "buy":
+            return ["mark"], "hold_long"
+        return ["buy"], "open_long"
+
+    if signal == -1:
+        if side == "buy":
+            return ["exit", "sell"], "flip_to_sell"
+        if side == "sell":
+            return ["mark"], "hold_short"
+        return ["sell"], "open_short"
+
+    if side in {"buy", "sell"}:
+        return ["mark"], "mark_open_position"
+    return [], "flat_no_signal"
+
+
+def _signal_reason(signal: int) -> str:
+    if signal == 1:
+        return "Latest strategy signal crossed bullish (+1)."
+    if signal == -1:
+        return "Latest strategy signal crossed bearish (-1)."
+    return "Latest strategy signal is flat (0)."
+
+
+def _runner_note_for_action(action: str, signal: int) -> str:
+    if action == "buy":
+        return f"Runner opened long from strategy signal {signal:+d}."
+    if action == "sell":
+        return f"Runner opened short from strategy signal {signal:+d}."
+    if action == "exit":
+        return f"Runner exited on strategy signal flip {signal:+d}."
+    return "Runner marked the open position at bar close."
+
+
+def _build_runner_parity_check(session: dict, *, now: str) -> dict:
+    candidate = _require_candidate(session["candidate_id"])
+    backtest_id = candidate.get("backtest_id")
+    if not backtest_id:
+        return {"status": "missing_backtest", "checked_at": now}
+
+    try:
+        reference = _load_backtest_any(str(backtest_id))
+    except Exception as exc:
+        return {
+            "status": "parity_unavailable",
+            "backtest_id": backtest_id,
+            "checked_at": now,
+            "error": str(exc),
+        }
+    if reference is None:
+        return {
+            "status": "backtest_not_found",
+            "backtest_id": backtest_id,
+            "checked_at": now,
+        }
+
+    session_metrics = dict((session.get("metrics_snapshot") or {}))
+    reference_metrics = dict((reference.get("metrics") or {}))
+    session_trade_count = len(session.get("trade_log") or [])
+    reference_trade_count = len(reference.get("trades") or [])
+    total_pnl_delta = round(
+        float(session_metrics.get("total_pnl") or 0.0) - float(reference_metrics.get("total_pnl") or 0.0),
+        4,
+    )
+    max_drawdown_delta = round(
+        float(session_metrics.get("max_drawdown") or 0.0) - float(reference_metrics.get("max_drawdown") or 0.0),
+        6,
+    )
+    win_rate_delta = round(
+        float(session_metrics.get("win_rate") or 0.0) - float(reference_metrics.get("win_rate") or 0.0),
+        6,
+    )
+    parity_passed = (
+        session_trade_count == reference_trade_count
+        and abs(total_pnl_delta) <= 0.01
+        and abs(max_drawdown_delta) <= 0.0001
+    )
+    return {
+        "status": "ok",
+        "checked_at": now,
+        "backtest_id": backtest_id,
+        "passed": parity_passed,
+        "trade_count_delta": session_trade_count - reference_trade_count,
+        "total_pnl_delta": total_pnl_delta,
+        "max_drawdown_delta": max_drawdown_delta,
+        "win_rate_delta": win_rate_delta,
+    }
+
+
+def _load_backtest_any(backtest_id: str) -> dict | None:
+    if db_configured():
+        return get_backtest_db(backtest_id)
+    return get_backtest_mem(backtest_id)
+
+
 def _ensure_runner_state(state: dict | None) -> dict:
     current = dict(state or {})
     current.setdefault("mode", "idle")
@@ -510,6 +737,11 @@ def _ensure_runner_state(state: dict | None) -> dict:
     current.setdefault("end_date", None)
     current.setdefault("last_candle_time", None)
     current.setdefault("last_price", None)
+    current.setdefault("last_signal", 0)
+    current.setdefault("last_signal_action", None)
+    current.setdefault("last_signal_reason", None)
+    current.setdefault("auto_trade_enabled", True)
+    current.setdefault("parity_check", {})
     current.setdefault("last_error", None)
     current.setdefault("updated_at", None)
     return current

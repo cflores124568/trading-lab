@@ -38,9 +38,17 @@ def _topstep_rules() -> dict:
 
 def _fake_next_factory() -> Callable:
     bars = [
-        {"time": "2026-04-17T09:30:00+00:00", "open": 100.0, "high": 101.0, "low": 99.0, "close": 100.0, "volume": 10.0},
-        {"time": "2026-04-17T09:31:00+00:00", "open": 100.0, "high": 102.0, "low": 99.0, "close": 101.5, "volume": 12.0},
-        {"time": "2026-04-17T09:32:00+00:00", "open": 101.5, "high": 103.0, "low": 101.0, "close": 102.0, "volume": 11.0},
+        {"time": "2026-04-17T09:30:00+00:00", "open": 100.0, "high": 100.5, "low": 99.5, "close": 100.0, "volume": 10.0},
+        {"time": "2026-04-17T09:31:00+00:00", "open": 100.0, "high": 100.5, "low": 99.5, "close": 100.0, "volume": 10.0},
+        {"time": "2026-04-17T09:32:00+00:00", "open": 100.0, "high": 100.5, "low": 99.5, "close": 100.0, "volume": 10.0},
+        {"time": "2026-04-17T09:33:00+00:00", "open": 100.0, "high": 101.5, "low": 99.5, "close": 101.0, "volume": 11.0},
+        {"time": "2026-04-17T09:34:00+00:00", "open": 101.0, "high": 103.5, "low": 100.5, "close": 103.0, "volume": 13.0},
+        {"time": "2026-04-17T09:35:00+00:00", "open": 103.0, "high": 104.5, "low": 102.5, "close": 104.0, "volume": 14.0},
+        {"time": "2026-04-17T09:36:00+00:00", "open": 104.0, "high": 103.5, "low": 102.5, "close": 103.0, "volume": 12.0},
+        {"time": "2026-04-17T09:37:00+00:00", "open": 103.0, "high": 101.5, "low": 100.5, "close": 101.0, "volume": 15.0},
+        {"time": "2026-04-17T09:38:00+00:00", "open": 101.0, "high": 99.5, "low": 98.5, "close": 99.0, "volume": 12.0},
+        {"time": "2026-04-17T09:39:00+00:00", "open": 99.0, "high": 98.5, "low": 97.5, "close": 98.0, "volume": 10.0},
+        {"time": "2026-04-17T09:40:00+00:00", "open": 98.0, "high": 97.5, "low": 96.5, "close": 97.0, "volume": 9.0},
     ]
 
     def _to_dt(value: str | None) -> datetime | None:
@@ -102,7 +110,7 @@ def main() -> None:
                     "symbols": ["ES"],
                     "intervals": ["1min"],
                     "strategy_type": "ema_crossover",
-                    "parameter_space": {"fast_period": [9], "slow_period": [21]},
+                    "parameter_space": {"fast_period": [2], "slow_period": [3]},
                     "prop_firm_rules": _topstep_rules(),
                     "initial_balance": 100_000,
                     "position_size": 1.0,
@@ -137,43 +145,51 @@ def main() -> None:
             paper_session_id = created.json()["paper_session_id"]
             _require(created.json()["status"] == "ready", "Fresh runner test session should start in ready.")
 
-            opened = client.post(
-                f"/api/paper-sessions/{paper_session_id}/execute",
-                json={
-                    "action": "buy",
-                    "price": 100.0,
-                    "filled_at": "2026-04-17T09:30:00+00:00",
-                    "actor": "runner-test",
-                },
-            )
-            _require(opened.status_code == 200, f"Open position failed: {opened.text}")
-            paused_for_step = client.patch(
-                f"/api/paper-sessions/{paper_session_id}/status",
-                json={"status": "paused", "actor": "runner-test"},
-            )
-            _require(paused_for_step.status_code == 200, f"Pause before stepping failed: {paused_for_step.text}")
-
             stepped = client.post(
                 f"/api/paper-sessions/{paper_session_id}/runner/step",
-                json={"actor": "runner-test", "steps": 2},
+                json={"actor": "runner-test", "steps": 9},
             )
             _require(stepped.status_code == 200, f"Runner step failed: {stepped.text}")
             stepped_payload = stepped.json()
             _require(
-                stepped_payload["runner_state"]["bars_processed"] == 2,
-                "Runner step should process the requested two bars.",
+                stepped_payload["runner_state"]["bars_processed"] == 9,
+                "Runner step should process the requested nine bars.",
             )
             _require(
                 stepped_payload["runner_state"]["mode"] == "paused",
                 "Manual step should leave runner mode paused.",
             )
             _require(
-                stepped_payload["current_position"]["unrealized_pnl"] > 0,
-                "Runner step should auto-mark the open position.",
+                stepped_payload["runner_state"]["last_signal"] == 0,
+                "Runner step should keep the latest flat signal after the ninth bar.",
             )
             _require(
-                stepped_payload["last_bar_time"] == "2026-04-17T09:32:00+00:00",
-                "Runner cursor should advance to the second stepped bar.",
+                stepped_payload["runner_state"]["last_signal_action"] == "mark_open_position",
+                "Runner step should mark the open short when signal is flat.",
+            )
+            _require(
+                stepped_payload["status"] == "paused",
+                "Manual stepping should leave the paper session status paused.",
+            )
+            _require(
+                stepped_payload["last_bar_time"] == "2026-04-17T09:38:00+00:00",
+                "Runner cursor should advance to the ninth stepped bar.",
+            )
+            _require(
+                len(stepped_payload["trade_log"]) == 1,
+                "Runner should close one long trade when the bearish flip arrives.",
+            )
+            _require(
+                stepped_payload["trade_log"][0]["side"] == "buy",
+                "The closed trade should be the long opened on bullish crossover.",
+            )
+            _require(
+                stepped_payload["current_position"]["side"] == "sell",
+                "Runner should hold a short after bearish flip and follow-up mark.",
+            )
+            _require(
+                stepped_payload["current_position"]["unrealized_pnl"] > 0,
+                "Short position should be marked positive after price drops.",
             )
 
             started = client.post(
@@ -181,7 +197,7 @@ def main() -> None:
                 json={
                     "actor": "runner-test",
                     "start_date": "2026-04-17T09:30:00+00:00",
-                    "end_date": "2026-04-17T09:32:00+00:00",
+                    "end_date": "2026-04-17T09:40:00+00:00",
                     "poll_interval_ms": 500,
                     "reset_cursor": True,
                 },

@@ -690,6 +690,11 @@ def _ensure_runner_state_defaults(state: dict | None) -> dict:
     payload.setdefault("end_date", None)
     payload.setdefault("last_candle_time", None)
     payload.setdefault("last_price", None)
+    payload.setdefault("last_signal", 0)
+    payload.setdefault("last_signal_action", None)
+    payload.setdefault("last_signal_reason", None)
+    payload.setdefault("auto_trade_enabled", True)
+    payload.setdefault("parity_check", {})
     payload.setdefault("last_error", None)
     payload.setdefault("updated_at", None)
     return payload
