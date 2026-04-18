@@ -1,5 +1,5 @@
 import { A, useParams } from "@solidjs/router";
-import { batch, createMemo, createResource, createSignal, For, Show } from "solid-js";
+import { batch, createEffect, createMemo, createResource, createSignal, For, Show } from "solid-js";
 import AppShell from "../../components/AppShell";
 import {
   createPaperSessionEvent,
@@ -7,6 +7,9 @@ import {
   fetchCandidate,
   fetchPaperSession,
   fetchPaperSessionEvents,
+  pausePaperSessionRunner,
+  startPaperSessionRunner,
+  stepPaperSessionRunner,
   updatePaperSessionStatus,
 } from "../../services/api";
 import type { PaperSessionStatus, PaperSessionTradeAction, Trade } from "../../services/api";
@@ -105,6 +108,20 @@ function localInputToIso(value: string): string {
   return parsed.toISOString();
 }
 
+function isoToLocalInputValue(value?: string | null): string {
+  if (!value) {
+    return "";
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+
+  const adjusted = new Date(parsed.getTime() - parsed.getTimezoneOffset() * 60_000);
+  return adjusted.toISOString().slice(0, 16);
+}
+
 function positionLabel(side?: string | null): string {
   if (side === "buy") {
     return "Long";
@@ -130,6 +147,21 @@ function formatJson(value: Record<string, unknown>): string {
   }
 
   return JSON.stringify(value, null, 2);
+}
+
+function runnerModeTone(mode?: string | null): string {
+  switch (mode) {
+    case "running":
+      return "border-amber-700 bg-amber-950/40 text-amber-200";
+    case "paused":
+      return "border-zinc-700 bg-zinc-900 text-zinc-200";
+    case "completed":
+      return "border-emerald-700 bg-emerald-950/40 text-emerald-200";
+    case "failed":
+      return "border-red-700 bg-red-950/40 text-red-200";
+    default:
+      return "border-violet-700 bg-violet-950/40 text-violet-200";
+  }
 }
 
 function statusActions(status: PaperSessionStatus): Array<{
@@ -289,6 +321,11 @@ export default function PaperSessionDetailPage() {
   const [executionPrice, setExecutionPrice] = createSignal("");
   const [executionTime, setExecutionTime] = createSignal(nowLocalInputValue());
   const [executionNote, setExecutionNote] = createSignal("");
+  const [runnerStartDate, setRunnerStartDate] = createSignal("");
+  const [runnerEndDate, setRunnerEndDate] = createSignal("");
+  const [runnerPollInterval, setRunnerPollInterval] = createSignal("750");
+  const [runnerStepCount, setRunnerStepCount] = createSignal("1");
+  const [runnerResetCursor, setRunnerResetCursor] = createSignal(false);
 
   const availableActions = createMemo(() =>
     session() ? statusActions(session()!.status) : [],
@@ -301,7 +338,20 @@ export default function PaperSessionDetailPage() {
   const guardrailState = createMemo(
     () => (session()?.guardrail_state ?? {}) as Record<string, unknown>,
   );
+  const runnerState = createMemo(
+    () => (session()?.runner_state ?? {}) as Record<string, unknown>,
+  );
   const tradeLog = createMemo(() => session()?.trade_log ?? []);
+
+  createEffect(() => {
+    const state = runnerState();
+    setRunnerStartDate(isoToLocalInputValue(stringFromUnknown(state.start_date)));
+    setRunnerEndDate(isoToLocalInputValue(stringFromUnknown(state.end_date)));
+    const poll = numberFromUnknown(state.poll_interval_ms);
+    if (poll && poll > 0) {
+      setRunnerPollInterval(String(Math.round(poll)));
+    }
+  });
 
   const runSessionAction = async (key: string, work: () => Promise<void>) => {
     batch(() => {
@@ -365,6 +415,50 @@ export default function PaperSessionDetailPage() {
       } else if (executionAction() === "buy" || executionAction() === "sell") {
         setExecutionAction("mark");
       }
+      await Promise.all([refetchSession(), refetchEvents()]);
+    });
+  };
+
+  const handleRunnerStart = async () => {
+    const pollMs = Number(runnerPollInterval().trim());
+    if (!Number.isFinite(pollMs) || pollMs < 100 || pollMs > 60_000) {
+      setError("Runner poll interval must be between 100 and 60000 ms.");
+      return;
+    }
+
+    await runSessionAction("runner-start", async () => {
+      const nextSession = await startPaperSessionRunner(paperSessionId(), {
+        startDate: runnerStartDate().trim() ? localInputToIso(runnerStartDate()) : undefined,
+        endDate: runnerEndDate().trim() ? localInputToIso(runnerEndDate()) : undefined,
+        pollIntervalMs: Math.round(pollMs),
+        resetCursor: runnerResetCursor(),
+      });
+      mutateSession(() => nextSession);
+      setRunnerResetCursor(false);
+      await Promise.all([refetchSession(), refetchEvents()]);
+    });
+  };
+
+  const handleRunnerPause = async () => {
+    await runSessionAction("runner-pause", async () => {
+      const nextSession = await pausePaperSessionRunner(paperSessionId(), {
+        summary: "Paused the historical paper runner from the session UI.",
+      });
+      mutateSession(() => nextSession);
+      await Promise.all([refetchSession(), refetchEvents()]);
+    });
+  };
+
+  const handleRunnerStep = async () => {
+    const steps = Number(runnerStepCount().trim());
+    if (!Number.isInteger(steps) || steps < 1 || steps > 500) {
+      setError("Runner step count must be a whole number between 1 and 500.");
+      return;
+    }
+
+    await runSessionAction("runner-step", async () => {
+      const nextSession = await stepPaperSessionRunner(paperSessionId(), { steps });
+      mutateSession(() => nextSession);
       await Promise.all([refetchSession(), refetchEvents()]);
     });
   };
@@ -514,6 +608,122 @@ export default function PaperSessionDetailPage() {
                     <p class="text-sm text-zinc-400">
                       This is the first real paper loop: open a position, mark it as price moves, and flatten it into the session trade log.
                     </p>
+                  </div>
+
+                  <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4 space-y-4">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <p class="text-sm font-medium text-zinc-100">Historical Runner (Phase 3A)</p>
+                      <span
+                        class={`rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.18em] ${runnerModeTone(
+                          stringFromUnknown(runnerState().mode),
+                        )}`}
+                      >
+                        {stringFromUnknown(runnerState().mode) ?? "idle"}
+                      </span>
+                    </div>
+                    <p class="text-xs text-zinc-500">
+                      Reads candles from historical DB data as a fake-live feed. Start runs the auto loop, pause freezes it, and step advances deterministic bars on demand.
+                    </p>
+
+                    <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      <div class="app-subpanel px-4 py-3">
+                        <p class="app-kicker">Bars Processed</p>
+                        <p class="mt-2 text-sm font-semibold text-zinc-100">
+                          {formatNumber(numberFromUnknown(runnerState().bars_processed), 0)}
+                        </p>
+                      </div>
+                      <div class="app-subpanel px-4 py-3">
+                        <p class="app-kicker">Last Candle</p>
+                        <p class="mt-2 text-sm font-semibold text-zinc-100">
+                          {formatTimestamp(stringFromUnknown(runnerState().last_candle_time))}
+                        </p>
+                      </div>
+                      <div class="app-subpanel px-4 py-3">
+                        <p class="app-kicker">Last Price</p>
+                        <p class="mt-2 text-sm font-semibold text-zinc-100">
+                          {formatNumber(numberFromUnknown(runnerState().last_price), 4)}
+                        </p>
+                      </div>
+                      <div class="app-subpanel px-4 py-3">
+                        <p class="app-kicker">Runner Error</p>
+                        <p class="mt-2 text-sm font-semibold text-zinc-100">
+                          {stringFromUnknown(runnerState().last_error) ?? "none"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_180px]">
+                      <input
+                        type="datetime-local"
+                        value={runnerStartDate()}
+                        onInput={(event) => setRunnerStartDate(event.currentTarget.value)}
+                        placeholder="Runner window start"
+                        class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                      />
+                      <input
+                        type="datetime-local"
+                        value={runnerEndDate()}
+                        onInput={(event) => setRunnerEndDate(event.currentTarget.value)}
+                        placeholder="Runner window end"
+                        class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                      />
+                      <input
+                        type="number"
+                        min="100"
+                        max="60000"
+                        value={runnerPollInterval()}
+                        onInput={(event) => setRunnerPollInterval(event.currentTarget.value)}
+                        placeholder="Poll ms"
+                        class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                      />
+                    </div>
+
+                    <label class="inline-flex items-center gap-2 text-xs text-zinc-400">
+                      <input
+                        type="checkbox"
+                        checked={runnerResetCursor()}
+                        onChange={(event) => setRunnerResetCursor(event.currentTarget.checked)}
+                        class="rounded border-zinc-700 bg-zinc-950 text-zinc-100"
+                      />
+                      Reset the bar cursor when starting.
+                    </label>
+
+                    <div class="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={busyAction() === "runner-start"}
+                        onClick={handleRunnerStart}
+                        class="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+                      >
+                        {busyAction() === "runner-start" ? "Starting..." : "Start Runner"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busyAction() === "runner-pause"}
+                        onClick={handleRunnerPause}
+                        class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                      >
+                        {busyAction() === "runner-pause" ? "Pausing..." : "Pause Runner"}
+                      </button>
+                      <div class="flex items-center gap-2 rounded-xl border border-zinc-700 px-2 py-1.5">
+                        <input
+                          type="number"
+                          min="1"
+                          max="500"
+                          value={runnerStepCount()}
+                          onInput={(event) => setRunnerStepCount(event.currentTarget.value)}
+                          class="w-20 bg-transparent px-2 py-1 text-sm text-zinc-100 outline-none"
+                        />
+                        <button
+                          type="button"
+                          disabled={busyAction() === "runner-step"}
+                          onClick={handleRunnerStep}
+                          class="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:text-zinc-500"
+                        >
+                          {busyAction() === "runner-step" ? "Stepping..." : "Step Bars"}
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   <div class="grid gap-3 md:grid-cols-2">

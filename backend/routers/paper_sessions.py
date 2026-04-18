@@ -3,10 +3,18 @@ from fastapi import APIRouter, HTTPException
 from schemas import (
     PaperEventCreate,
     PaperEventResult,
+    PaperRunnerPauseRequest,
+    PaperRunnerStartRequest,
+    PaperRunnerStepRequest,
     PaperSessionExecutionRequest,
     PaperSessionResult,
     PaperSessionStatusUpdate,
     PaperSessionSummary,
+)
+from services.paper_runner_service import (
+    pause_historical_runner,
+    start_historical_runner,
+    step_historical_runner,
 )
 from services.paper_session_service import (
     add_paper_session_event,
@@ -130,3 +138,67 @@ async def execute_session_action(
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Paper session execution failed: {exc}")
+
+
+@router.post("/{paper_session_id}/runner/start", response_model=PaperSessionResult)
+async def start_session_runner(
+    paper_session_id: str,
+    request: PaperRunnerStartRequest,
+):
+    try:
+        return start_historical_runner(
+            paper_session_id,
+            actor=request.actor,
+            start_date=request.start_date,
+            end_date=request.end_date,
+            poll_interval_ms=request.poll_interval_ms,
+            reset_cursor=request.reset_cursor,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Paper session runner start failed: {exc}")
+
+
+@router.post("/{paper_session_id}/runner/pause", response_model=PaperSessionResult)
+async def pause_session_runner(
+    paper_session_id: str,
+    request: PaperRunnerPauseRequest,
+):
+    try:
+        return pause_historical_runner(
+            paper_session_id,
+            actor=request.actor,
+            summary=request.summary,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Paper session runner pause failed: {exc}")
+
+
+@router.post("/{paper_session_id}/runner/step", response_model=PaperSessionResult)
+async def step_session_runner(
+    paper_session_id: str,
+    request: PaperRunnerStepRequest,
+):
+    try:
+        return step_historical_runner(
+            paper_session_id,
+            actor=request.actor,
+            steps=request.steps,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Paper session runner step failed: {exc}")

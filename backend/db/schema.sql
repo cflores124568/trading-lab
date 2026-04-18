@@ -286,6 +286,7 @@ CREATE TABLE IF NOT EXISTS paper_sessions (
     equity_curve     JSONB NOT NULL DEFAULT '[]'::jsonb,
     metrics_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
     guardrail_state  JSONB NOT NULL DEFAULT '{}'::jsonb,
+    runner_state     JSONB NOT NULL DEFAULT '{}'::jsonb,
     last_bar_time    TIMESTAMPTZ,
     last_event_at    TIMESTAMPTZ,
     created_by       TEXT NOT NULL DEFAULT 'local-user',
@@ -321,6 +322,8 @@ ALTER TABLE paper_sessions
 
 ALTER TABLE paper_sessions
     ADD COLUMN IF NOT EXISTS tick_value DOUBLE PRECISION NOT NULL DEFAULT 1;
+ALTER TABLE paper_sessions
+    ADD COLUMN IF NOT EXISTS runner_state JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 ALTER TABLE paper_sessions
     ADD COLUMN IF NOT EXISTS trade_log JSONB NOT NULL DEFAULT '[]'::jsonb;

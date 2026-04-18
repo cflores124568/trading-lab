@@ -24,6 +24,9 @@ const API_ROUTES = {
   candidates: "/candidates",
   replaySessions: "/replay-sessions",
   paperSessions: "/paper-sessions",
+  paperSessionRunnerStart: (paperSessionId: string) => `/paper-sessions/${paperSessionId}/runner/start`,
+  paperSessionRunnerPause: (paperSessionId: string) => `/paper-sessions/${paperSessionId}/runner/pause`,
+  paperSessionRunnerStep: (paperSessionId: string) => `/paper-sessions/${paperSessionId}/runner/step`,
   propFirms: "/prop-firms",
 } as const;
 
@@ -390,6 +393,7 @@ export interface PaperSessionResult {
   equity_curve: number[];
   metrics_snapshot: Record<string, unknown>;
   guardrail_state: Record<string, unknown>;
+  runner_state: Record<string, unknown>;
   last_bar_time?: string | null;
   last_event_at?: string | null;
   created_by: string;
@@ -787,6 +791,63 @@ export const executePaperSessionAction = async (
       filled_at: payload.filledAt,
       actor: payload.actor ?? "local-user",
       note: payload.note,
+    }),
+  });
+};
+
+export const startPaperSessionRunner = async (
+  paperSessionId: string,
+  payload: {
+    actor?: string;
+    startDate?: string;
+    endDate?: string;
+    pollIntervalMs?: number;
+    resetCursor?: boolean;
+  } = {},
+): Promise<PaperSessionResult> => {
+  return api<PaperSessionResult>(API_ROUTES.paperSessionRunnerStart(paperSessionId), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      actor: payload.actor ?? "local-user",
+      start_date: payload.startDate,
+      end_date: payload.endDate,
+      poll_interval_ms: payload.pollIntervalMs,
+      reset_cursor: payload.resetCursor ?? false,
+    }),
+  });
+};
+
+export const pausePaperSessionRunner = async (
+  paperSessionId: string,
+  payload: {
+    actor?: string;
+    summary?: string;
+  } = {},
+): Promise<PaperSessionResult> => {
+  return api<PaperSessionResult>(API_ROUTES.paperSessionRunnerPause(paperSessionId), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      actor: payload.actor ?? "local-user",
+      summary: payload.summary,
+    }),
+  });
+};
+
+export const stepPaperSessionRunner = async (
+  paperSessionId: string,
+  payload: {
+    actor?: string;
+    steps?: number;
+  } = {},
+): Promise<PaperSessionResult> => {
+  return api<PaperSessionResult>(API_ROUTES.paperSessionRunnerStep(paperSessionId), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      actor: payload.actor ?? "local-user",
+      steps: payload.steps ?? 1,
     }),
   });
 };

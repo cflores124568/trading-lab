@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import warnings
 from contextlib import contextmanager
-from typing import Generator
+from typing import Any, Generator
 
 import numpy as np
 import pandas as pd
@@ -189,6 +189,108 @@ def get_ohlcv(
             df[col] = df[col].astype(np.float64)
 
     return df
+
+
+def get_next_ohlcv_bar(
+    symbol: str,
+    interval: str = "1min",
+    *,
+    after_time: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> dict[str, Any] | None:
+    """Fetch the next candle after a cursor for historical paper running.
+
+    This is the "give me one next bar" helper so the runner can advance a
+    session bar-by-bar without loading a whole window every time. It respects
+    optional start/end bounds and returns one normalized dict, or `None` when
+    the window is exhausted.
+    """
+    bucket = _bucket(interval)
+
+    if interval == "1min":
+        params: list[Any] = [symbol]
+        filters = []
+        if start_date:
+            filters.append("ts >= %s")
+            params.append(start_date)
+        if end_date:
+            filters.append("ts <= %s")
+            params.append(end_date)
+        if after_time:
+            filters.append("ts > %s")
+            params.append(after_time)
+
+        where_tail = ""
+        if filters:
+            where_tail = " AND " + " AND ".join(filters)
+
+        sql = f"""
+            SELECT ts, open, high, low, close, volume
+            FROM ohlcv_1m
+            WHERE symbol = %s
+            {where_tail}
+            ORDER BY ts
+            LIMIT 1
+        """
+        df = _read_sql(sql, params=params, parse_dates=["ts"])
+    else:
+        params = [symbol]
+        raw_end_filter = ""
+        if end_date:
+            raw_end_filter = " AND ts <= %s"
+            params.append(end_date)
+
+        output_filters = []
+        if start_date:
+            output_filters.append("ts >= %s")
+            params.append(start_date)
+        if end_date:
+            output_filters.append("ts <= %s")
+            params.append(end_date)
+        if after_time:
+            output_filters.append("ts > %s")
+            params.append(after_time)
+
+        output_where = ""
+        if output_filters:
+            output_where = "WHERE " + " AND ".join(output_filters)
+
+        sql = f"""
+            WITH aggregated AS (
+                SELECT
+                    time_bucket('{bucket}', ts) AS ts,
+                    first(open, ts) AS open,
+                    max(high) AS high,
+                    min(low) AS low,
+                    last(close, ts) AS close,
+                    sum(volume) AS volume
+                FROM ohlcv_1m
+                WHERE symbol = %s
+                {raw_end_filter}
+                GROUP BY 1
+            )
+            SELECT ts, open, high, low, close, volume
+            FROM aggregated
+            {output_where}
+            ORDER BY ts
+            LIMIT 1
+        """
+        df = _read_sql(sql, params=params, parse_dates=["ts"])
+
+    if df.empty:
+        return None
+
+    row = df.iloc[0]
+    ts = row["ts"]
+    return {
+        "time": ts.isoformat() if hasattr(ts, "isoformat") else str(ts),
+        "open": float(row["open"]),
+        "high": float(row["high"]),
+        "low": float(row["low"]),
+        "close": float(row["close"]),
+        "volume": float(row["volume"]),
+    }
 
 
 def list_db_symbols() -> list[dict]:

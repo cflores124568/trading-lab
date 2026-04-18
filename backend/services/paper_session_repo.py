@@ -48,6 +48,7 @@ def _ensure_paper_sessions_schema(conn) -> None:
                     equity_curve     JSONB NOT NULL DEFAULT '[]'::jsonb,
                     metrics_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
                     guardrail_state  JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    runner_state     JSONB NOT NULL DEFAULT '{}'::jsonb,
                     last_bar_time    TIMESTAMPTZ,
                     last_event_at    TIMESTAMPTZ,
                     created_by       TEXT NOT NULL DEFAULT 'local-user',
@@ -67,6 +68,9 @@ def _ensure_paper_sessions_schema(conn) -> None:
             )
             cur.execute(
                 "ALTER TABLE paper_sessions ADD COLUMN IF NOT EXISTS equity_curve JSONB NOT NULL DEFAULT '[]'::jsonb"
+            )
+            cur.execute(
+                "ALTER TABLE paper_sessions ADD COLUMN IF NOT EXISTS runner_state JSONB NOT NULL DEFAULT '{}'::jsonb"
             )
             cur.execute(
                 """
@@ -106,12 +110,12 @@ def save_paper_session(session: dict) -> None:
             paper_session_id, candidate_id, paper_bot_id, name, symbol, interval,
             strategy_type, strategy_params, prop_firm_rules, guardrails, status,
             commission, tick_value, current_position, trade_log, equity_curve,
-            metrics_snapshot, guardrail_state, last_bar_time,
+            metrics_snapshot, guardrail_state, runner_state, last_bar_time,
             last_event_at, created_by, created_at, updated_at
         )
         VALUES (
             %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s,
-            %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s
+            %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s
         )
         ON CONFLICT (paper_session_id) DO UPDATE SET
             candidate_id     = EXCLUDED.candidate_id,
@@ -131,6 +135,7 @@ def save_paper_session(session: dict) -> None:
             equity_curve     = EXCLUDED.equity_curve,
             metrics_snapshot = EXCLUDED.metrics_snapshot,
             guardrail_state  = EXCLUDED.guardrail_state,
+            runner_state     = EXCLUDED.runner_state,
             last_bar_time    = EXCLUDED.last_bar_time,
             last_event_at    = EXCLUDED.last_event_at,
             created_by       = EXCLUDED.created_by,
@@ -161,6 +166,7 @@ def save_paper_session(session: dict) -> None:
                     json.dumps(session.get("equity_curve") or []),
                     json.dumps(session.get("metrics_snapshot") or {}),
                     json.dumps(session.get("guardrail_state") or {}),
+                    json.dumps(session.get("runner_state") or {}),
                     session.get("last_bar_time"),
                     session.get("last_event_at"),
                     session.get("created_by", "local-user"),
@@ -279,6 +285,7 @@ def _row_to_session(row) -> dict:
         "equity_curve": _maybe_json(row.get("equity_curve")) or [],
         "metrics_snapshot": _maybe_json(row["metrics_snapshot"]) or {},
         "guardrail_state": _maybe_json(row["guardrail_state"]) or {},
+        "runner_state": _maybe_json(row.get("runner_state")) or {},
         "last_bar_time": _maybe_iso(row["last_bar_time"]),
         "last_event_at": _maybe_iso(row["last_event_at"]),
         "created_by": row["created_by"],

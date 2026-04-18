@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from routers import backtests, candidates, data, experiments, paper_sessions, prop_firms, replay_sessions
 from services.backtest_store import list_backtests
 from services.candidate_store import list_candidates
+from services.paper_runner_service import stop_all_historical_runners
 from services.paper_session_store import list_paper_sessions
 from services.replay_session_store import list_replay_sessions
 
@@ -17,6 +18,7 @@ ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://localhost:3000").split("
 async def lifespan(app: FastAPI):
     print("Initializing Trading Lab backend... ")
     yield
+    stop_all_historical_runners()
     print("Trading Lab backend powering off...")
 
 app = FastAPI(

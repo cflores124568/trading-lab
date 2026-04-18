@@ -161,6 +161,7 @@ def create_paper_session_for_candidate(
         "equity_curve": [float((candidate.get("prop_firm_rules") or {}).get("account_size") or 100_000)],
         "metrics_snapshot": {},
         "guardrail_state": {},
+        "runner_state": {},
         "last_bar_time": None,
         "last_event_at": now,
         "created_by": actor,
@@ -284,6 +285,7 @@ def execute_paper_session_action(
     filled_at: str,
     actor: str = "local-user",
     note: str | None = None,
+    sync_candidate: bool = True,
 ) -> dict:
     session = _ensure_session_defaults(_require_paper_session(paper_session_id))
     action_key = action.strip().lower()
@@ -367,19 +369,20 @@ def execute_paper_session_action(
         )
     )
 
-    candidate = _require_candidate(session["candidate_id"])
-    _sync_candidate_paper_session(
-        candidate,
-        session["paper_session_id"],
-        now,
-        session_status=session["status"],
-    )
-    _append_candidate_session_audit(
-        candidate,
-        actor=actor,
-        summary=audit_summary,
-        created_at=now,
-    )
+    if sync_candidate:
+        candidate = _require_candidate(session["candidate_id"])
+        _sync_candidate_paper_session(
+            candidate,
+            session["paper_session_id"],
+            now,
+            session_status=session["status"],
+        )
+        _append_candidate_session_audit(
+            candidate,
+            actor=actor,
+            summary=audit_summary,
+            created_at=now,
+        )
     return session
 
 
@@ -491,6 +494,7 @@ def _ensure_session_defaults(session: dict) -> dict:
     session["equity_curve"] = [
         round(float(value), 2) for value in (session.get("equity_curve") or [account_size])
     ]
+    session["runner_state"] = _ensure_runner_state_defaults(session.get("runner_state"))
     if not session["equity_curve"]:
         session["equity_curve"] = [account_size]
 
@@ -675,3 +679,17 @@ def _session_status_to_paper_bot_status(session_status: str, current_status: str
     }:
         return "stopped"
     return current_status
+
+
+def _ensure_runner_state_defaults(state: dict | None) -> dict:
+    payload = dict(state or {})
+    payload.setdefault("mode", "idle")
+    payload.setdefault("bars_processed", 0)
+    payload.setdefault("poll_interval_ms", 750)
+    payload.setdefault("start_date", None)
+    payload.setdefault("end_date", None)
+    payload.setdefault("last_candle_time", None)
+    payload.setdefault("last_price", None)
+    payload.setdefault("last_error", None)
+    payload.setdefault("updated_at", None)
+    return payload

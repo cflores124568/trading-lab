@@ -319,6 +319,7 @@ class PaperSessionBase(BaseModel):
     equity_curve: List[float] = Field(default_factory=list)
     metrics_snapshot: dict[str, Any] = Field(default_factory=dict)
     guardrail_state: dict[str, Any] = Field(default_factory=dict)
+    runner_state: dict[str, Any] = Field(default_factory=dict)
     last_bar_time: Optional[str] = None
     last_event_at: Optional[str] = None
     created_by: str = "local-user"
@@ -341,6 +342,24 @@ class PaperSessionExecutionRequest(BaseModel):
     filled_at: str
     actor: str = Field(default="local-user")
     note: Optional[str] = None
+
+
+class PaperRunnerStartRequest(BaseModel):
+    actor: str = Field(default="local-user")
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    poll_interval_ms: int = Field(default=750, ge=100, le=60_000)
+    reset_cursor: bool = False
+
+
+class PaperRunnerPauseRequest(BaseModel):
+    actor: str = Field(default="local-user")
+    summary: Optional[str] = None
+
+
+class PaperRunnerStepRequest(BaseModel):
+    actor: str = Field(default="local-user")
+    steps: int = Field(default=1, ge=1, le=500)
 
 
 class PaperSessionResult(PaperSessionBase):

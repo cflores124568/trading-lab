@@ -15,7 +15,12 @@ def calculate_metrics(trades: List[dict], equity_curve: List[float], initial_bal
     average_pnl = round(total_pnl / total_trades, 2)
     gross_wins   = float(np.sum(pnls[pnls > 0]))
     gross_losses = float(np.abs(np.sum(pnls[pnls < 0])))
-    profit_factor = round(gross_wins / gross_losses, 4) if gross_losses != 0 else float("inf")
+    if gross_losses == 0:
+        # JSON responses can't safely carry Infinity, so for all-win samples we
+        # return gross wins as a finite proxy instead of blowing up serialization.
+        profit_factor = round(gross_wins, 4) if gross_wins > 0 else 0.0
+    else:
+        profit_factor = round(gross_wins / gross_losses, 4)
     max_dd = _max_drawdown(equity_curve)
     sharpe  = _sharpe_ratio(pnls)
     sortino = _sortino_ratio(pnls)
