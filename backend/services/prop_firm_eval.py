@@ -3,6 +3,7 @@ from collections import defaultdict
 from datetime import datetime
 
 import numpy as np
+from services.serialization import to_plain_data
 
 def evaluate_prop_firm(
     rules: dict,
@@ -63,7 +64,7 @@ def evaluate_prop_firm(
     and min_trading_days_passed
     )
 
-    return {
+    return to_plain_data({
         "passed":              passed,
         "daily_loss_breached": daily_loss_breached,
         "drawdown_breached":   drawdown_breached,
@@ -84,7 +85,7 @@ def evaluate_prop_firm(
             "trading_days_completed": trading_days_completed,
             "daily_pnls":             {k: round(v, 2) for k, v in daily_pnls.items()},
         },
-    }
+    })
 
 def _check_daily_loss(trades: List[dict], account_size: float, limit_pct: float):
     daily_pnls: dict = defaultdict(float)

@@ -10,6 +10,7 @@ from services.backtest_store import add_backtest, delete_backtest
 from services.indicators import add_all_indicators
 from services.metrics import calculate_metrics
 from services.prop_firm_eval import evaluate_prop_firm
+from services.serialization import to_plain_data
 from services.strategy import generate_signals
 
 
@@ -56,7 +57,7 @@ def build_backtest_result(
         initial_balance=request.initial_balance,
     )
 
-    return {
+    return to_plain_data({
         "backtest_id": backtest_id or str(uuid.uuid4()),
         "dataset_id": request.dataset_id,
         "symbol": dataset["info"].get("symbol", ""),
@@ -69,7 +70,7 @@ def build_backtest_result(
         "metrics": metrics,
         "prop_firm_eval": prop_eval,
         "equity_curve": equity_curve,
-    }
+    })
 
 
 def persist_backtest_result(result: dict) -> None:

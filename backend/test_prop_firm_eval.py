@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import json
 import unittest
 
 from services.prop_firm_eval import evaluate_prop_firm
@@ -71,6 +72,30 @@ class PropFirmEvalTests(unittest.TestCase):
         self.assertTrue(result["profit_target_hit"])
         self.assertTrue(result["min_trading_days_passed"])
         self.assertEqual(result["details"]["trading_days_completed"], 3)
+
+    def test_result_stays_json_safe_when_numpy_scalars_show_up(self):
+        rules = {
+            "name": "Replay Test",
+            "account_size": 100_000,
+            "daily_loss_limit": 0.05,
+            "max_drawdown": 0.10,
+            "profit_target": 0.01,
+            "consistency_rule": True,
+            "consistency_threshold": 0.30,
+            "drawdown_type": "intraday",
+            "min_trading_days": 1,
+        }
+        trades = [
+            _trade("2024-01-02", 400),
+            _trade("2024-01-03", 800),
+        ]
+
+        result = evaluate_prop_firm(rules, trades, [100_000, 100_400, 101_200], 100_000)
+
+        self.assertIsInstance(result["passed"], bool)
+        self.assertIsInstance(result["profit_target_hit"], bool)
+        self.assertIsInstance(result["drawdown_breached"], bool)
+        json.dumps(result)
 
 
 if __name__ == "__main__":
