@@ -31,7 +31,7 @@ export default function BacktestList() {
           <Show when={selected().length === 2}>
             <A
               href={`/backtests/compare?a=${selected()[0]}&b=${selected()[1]}`}
-              class="rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold transition-colors hover:bg-purple-500"
+              class="app-button-primary"
             >
               Compare Selected
             </A>
@@ -39,28 +39,28 @@ export default function BacktestList() {
 
           <A
             href="/replay"
-            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+            class="app-button-secondary"
           >
             Replay Lab
           </A>
 
           <A
             href="/replay-sessions"
-            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+            class="app-button-secondary"
           >
             Replay Sessions
           </A>
 
           <A
             href="/experiments"
-            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+            class="app-button-secondary"
           >
             Experiments
           </A>
 
           <A
             href="/backtests/new"
-            class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold transition-colors hover:bg-blue-500"
+            class="app-button-primary"
           >
             + New backtest
           </A>
@@ -77,7 +77,7 @@ export default function BacktestList() {
             fallback={
               <div class="app-panel app-panel-section py-20 text-center text-sm text-zinc-500">
                 No backtests yet.{" "}
-                <A href="/backtests/new" class="text-blue-400 hover:underline">
+                <A href="/backtests/new" class="app-link-accent">
                   Run your first one
                 </A>
               </div>
@@ -105,7 +105,7 @@ export default function BacktestList() {
                       onClick={() => navigate(detailHref)}
                       class={`app-panel block cursor-pointer px-5 py-4 transition-colors ${
                         isSelected()
-                          ? "border-purple-500 ring-1 ring-purple-500"
+                          ? "app-card-selected"
                           : "border-transparent hover:border-zinc-700 hover:bg-zinc-800"
                       }`}
                     >
@@ -116,7 +116,7 @@ export default function BacktestList() {
                             checked={isSelected()}
                             onClick={(event) => event.stopPropagation()}
                             onChange={() => toggleSelected(bt.backtest_id)}
-                            class="mt-1 h-4 w-4 rounded border-zinc-700 bg-zinc-950 text-purple-500 focus:ring-purple-500"
+                            class="mt-1 h-4 w-4 rounded border-zinc-700 bg-zinc-950 text-sky-400 focus:ring-sky-400"
                           />
                           <div>
                             <p class="text-sm font-medium">
@@ -163,21 +163,21 @@ export default function BacktestList() {
                           </Show>
                           <A
                             href={detailHref}
-                            class="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+                            class="app-button-compact-secondary"
                             onClick={(event) => event.stopPropagation()}
                           >
                             View
                           </A>
                           <A
                             href={`/experiments?fromBacktestId=${bt.backtest_id}`}
-                            class="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+                            class="app-button-compact-secondary"
                             onClick={(event) => event.stopPropagation()}
                           >
                             Sweep This
                           </A>
                           <A
                             href={launchSimHref}
-                            class="rounded-lg bg-zinc-100 px-3 py-2 text-xs font-semibold text-zinc-950 transition-colors hover:bg-white"
+                            class="app-button-compact-primary"
                             onClick={(event) => event.stopPropagation()}
                           >
                             Launch Sim
