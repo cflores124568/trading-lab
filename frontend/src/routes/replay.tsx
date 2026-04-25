@@ -54,8 +54,7 @@ import WorkspaceLaunchControl from "../components/workspace/WorkspaceLaunchContr
 import type { WorkspaceLaunchIntent } from "../components/workspace/workspacePersistence";
 
 const field =
-  "w-full rounded px-3 py-2 text-sm bg-zinc-800 border border-zinc-700 " +
-  "text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:opacity-40";
+  "app-input w-full text-sm disabled:opacity-40";
 const label = "block mb-1 text-xs text-zinc-400";
 const section = "app-panel app-panel-section space-y-4";
 const SESSION_LIMIT = 10_000;
@@ -211,6 +210,33 @@ function PropEvalPanel(props: {
             </li>
           </Show>
         </ul>
+      </Show>
+    </div>
+  );
+}
+
+function ReplayStatCard(props: {
+  label: string;
+  value: string;
+  tone?: "default" | "good" | "bad";
+  detail?: string;
+}) {
+  return (
+    <div class="rounded-2xl border border-zinc-800 bg-zinc-950/70 px-4 py-4">
+      <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">{props.label}</p>
+      <p
+        class={`mt-2 font-mono text-2xl font-semibold ${
+          props.tone === "good"
+            ? "text-emerald-300"
+            : props.tone === "bad"
+              ? "text-red-300"
+              : "text-zinc-100"
+        }`}
+      >
+        {props.value}
+      </p>
+      <Show when={props.detail}>
+        <p class="mt-2 text-xs text-zinc-500">{props.detail}</p>
       </Show>
     </div>
   );
@@ -834,19 +860,19 @@ export default function ReplayLabPage() {
         <>
           <A
             href="/replay-sessions"
-            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+            class="app-button-secondary"
           >
             Replay Sessions
           </A>
           <A
             href="/replay"
-            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+            class="app-button-secondary"
           >
             New Replay
           </A>
           <A
             href="/backtests"
-            class="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white"
+            class="app-button-primary"
           >
             Saved Backtests
           </A>
@@ -855,13 +881,13 @@ export default function ReplayLabPage() {
     >
       <div class="space-y-6">
         <Show when={bannerError()}>
-          <div class="rounded-lg border border-red-700 bg-red-950 px-4 py-3 text-sm text-red-300">
+          <div class="rounded-xl border border-red-700 bg-red-950/80 px-4 py-3 text-sm text-red-300">
             {bannerError()}
           </div>
         </Show>
 
         <Show when={bannerNotice()}>
-          <div class="rounded-lg border border-emerald-700 bg-emerald-950 px-4 py-3 text-sm text-emerald-300">
+          <div class="rounded-xl border border-emerald-700 bg-emerald-950/80 px-4 py-3 text-sm text-emerald-300">
             {bannerNotice()}
           </div>
         </Show>
@@ -907,207 +933,205 @@ export default function ReplayLabPage() {
           </div>
         </section>
 
-        <section class={section}>
-          <div class="space-y-1">
-            <p class="text-sm font-semibold text-zinc-100">1. Session Setup</p>
-            <p class="text-xs text-zinc-400">
-              {activeSourceBacktest() || sourceBacktestId()
-                ? "The source backtest locks the symbol, range, and rules once it lands so you're trading the exact run instead of a close cousin."
-                : "Name the sim, choose the symbol, and pick the date window you want to trade bar by bar."}
-            </p>
-          </div>
-
-          <div>
-            <label class={label}>Session name</label>
-            <input
-              type="text"
-              class={field}
-              value={sessionName()}
-              placeholder="NQ 15 min replay"
-              disabled={!canEditSetup()}
-              onInput={(event) => setSessionName(event.currentTarget.value)}
-            />
-          </div>
-
-          <Show
-            when={!symbols.loading && symbols() && symbols()!.length > 0}
-            fallback={
-              <Show
-                when={!symbols.loading}
-                fallback={<div class="h-9 animate-pulse rounded bg-zinc-800" />}
-              >
-                <div class="rounded-lg border border-yellow-700 bg-yellow-950 px-4 py-3 text-sm text-yellow-300">
-                  No DB-backed symbols found. Import market data first to launch a replay session.
-                </div>
-              </Show>
-            }
-          >
-            <div>
-              <label class={label}>Symbol</label>
-              <select
-                class={field}
-                value={symbol()?.symbol ?? ""}
-                disabled={!canEditSetup()}
-                onChange={(event) => {
-                  const selected = symbols()?.find(
-                    (item) => item.symbol === event.currentTarget.value,
-                  );
-                  setSymbol(selected ?? null);
-                }}
-              >
-                <option value="" disabled>
-                  Select a symbol…
-                </option>
-                <For each={symbols()}>
-                  {(item) => (
-                    <option value={item.symbol}>
-                      {item.symbol} - {item.full_name} ({item.rows.toLocaleString()} bars)
-                    </option>
-                  )}
-                </For>
-              </select>
-            </div>
-          </Show>
-
-          <div class="grid gap-3 md:grid-cols-3">
-            <div>
-              <label class={label}>Interval</label>
-              <select
-                class={field}
-                value={interval().value}
-                disabled={!canEditSetup()}
-                onChange={(event) => {
-                  const selected = BACKTEST_INTERVALS.find(
-                    (item) => item.value === event.currentTarget.value,
-                  );
-                  if (selected) {
-                    setInterval(selected);
-                  }
-                }}
-              >
-                <For each={BACKTEST_INTERVALS}>
-                  {(item) => <option value={item.value}>{item.label}</option>}
-                </For>
-              </select>
-            </div>
-
-            <div>
-              <label class={label}>Start date (optional)</label>
-              <input
-                type="date"
-                class={field}
-                value={startDate()}
-                disabled={!canEditSetup()}
-                onInput={(event) => setStartDate(event.currentTarget.value)}
-              />
-            </div>
-
-            <div>
-              <label class={label}>End date (optional)</label>
-              <input
-                type="date"
-                class={field}
-                value={endDate()}
-                disabled={!canEditSetup()}
-                onInput={(event) => setEndDate(event.currentTarget.value)}
-              />
-            </div>
-          </div>
-        </section>
-
-        <section class={section}>
-          <div class="space-y-1">
-            <p class="text-sm font-semibold text-zinc-100">2. Ruleset</p>
-            <p class="text-xs text-zinc-400">
-              Evaluate your paper trades against the same prop-firm rules used in backtests.
-            </p>
-          </div>
-
-          <Show
-            when={presets() && presets()!.length > 0}
-            fallback={<div class="h-9 animate-pulse rounded bg-zinc-800" />}
-          >
-            <div>
-              <label class={label}>Preset</label>
-              <select
-                class={field}
-                value={preset()?.name ?? ""}
-                disabled={!canEditSetup()}
-                onChange={(event) => {
-                  const selected = presets()?.find(
-                    (item) => item.name === event.currentTarget.value,
-                  );
-                  setPreset(selected ?? null);
-                }}
-              >
-                <option value="" disabled>
-                  Select a preset…
-                </option>
-                <For each={Object.entries(groupPresets(presets() ?? []))}>
-                  {([firm, firmPresets]) => (
-                    <optgroup label={firm}>
-                      <For each={firmPresets}>
-                        {(item) => <option value={item.name}>{item.name}</option>}
-                      </For>
-                    </optgroup>
-                  )}
-                </For>
-              </select>
-            </div>
-
-            <Show when={preset()}>
-              {(selectedPreset) => (
-                <div class="space-y-3">
-                  <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                    <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Selected Challenge</p>
-                    <p class="mt-2 text-sm font-semibold text-zinc-100">{selectedPreset().name}</p>
-                    <p class="mt-1 text-sm text-zinc-400">
-                      The sim scores your manual trades against these rules while the hidden future
-                      plays out bar by bar.
-                    </p>
-                  </div>
-
-                  <div class="grid grid-cols-2 gap-2 md:grid-cols-3">
-                    {([
-                      ["Account", `$${selectedPreset().account_size.toLocaleString()}`],
-                      ["Daily loss", `${(selectedPreset().daily_loss_limit * 100).toFixed(0)}%`],
-                      ["Max DD", `${(selectedPreset().max_drawdown * 100).toFixed(0)}%`],
-                      ["Target", `${(selectedPreset().profit_target * 100).toFixed(0)}%`],
-                      ["Min days", selectedPreset().min_trading_days ?? "—"],
-                      ["Drawdown type", selectedPreset().drawdown_type ?? "eod"],
-                    ] as [string, string | number][]).map(([key, value]) => (
-                      <div class="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2">
-                        <p class="text-xs text-zinc-400">{key}</p>
-                        <p class="text-sm font-mono text-zinc-100">{value}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </Show>
-          </Show>
-        </section>
-
-        <section class={section}>
-          <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div class="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
+          <section class={`${section} h-full`}>
             <div class="space-y-1">
-              <p class="text-sm font-semibold text-zinc-100">3. Launch And Save</p>
+              <p class="text-sm font-semibold text-zinc-100">1. Session Setup</p>
               <p class="text-xs text-zinc-400">
                 {activeSourceBacktest() || sourceBacktestId()
-                  ? "This run is tied to a saved backtest, so once review mode opens you can compare your manual tape against the system tape."
-                  : "Launch the sim, trade it honestly, and save progress whenever you want to stop."}
+                  ? "The source backtest locks the symbol, range, and rules once it lands so you're trading the exact run instead of a close cousin."
+                  : "Name the sim, choose the symbol, and pick the date window you want to trade bar by bar."}
               </p>
             </div>
 
-            <Show when={!canEditSetup()}>
-              <div class="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 text-xs text-zinc-400">
-                {activeSourceBacktest()
-                  ? "This session is pinned to its source backtest. Use `Restart` to trade the same run again or `New Replay` for a standalone session."
-                  : "Market window and rules are locked for this run. Use `Restart` to trade the same session again or `New Replay` to build a different one."}
+            <div>
+              <label class={label}>Session name</label>
+              <input
+                type="text"
+                class={field}
+                value={sessionName()}
+                placeholder="NQ 15 min replay"
+                disabled={!canEditSetup()}
+                onInput={(event) => setSessionName(event.currentTarget.value)}
+              />
+            </div>
+
+            <Show
+              when={!symbols.loading && symbols() && symbols()!.length > 0}
+              fallback={
+                <Show
+                  when={!symbols.loading}
+                  fallback={<div class="h-9 animate-pulse rounded bg-zinc-800" />}
+                >
+                  <div class="rounded-lg border border-yellow-700 bg-yellow-950 px-4 py-3 text-sm text-yellow-300">
+                    No DB-backed symbols found. Import market data first to launch a replay session.
+                  </div>
+                </Show>
+              }
+            >
+              <div>
+                <label class={label}>Symbol</label>
+                <select
+                  class={field}
+                  value={symbol()?.symbol ?? ""}
+                  disabled={!canEditSetup()}
+                  onChange={(event) => {
+                    const selected = symbols()?.find(
+                      (item) => item.symbol === event.currentTarget.value,
+                    );
+                    setSymbol(selected ?? null);
+                  }}
+                >
+                  <option value="" disabled>
+                    Select a symbol…
+                  </option>
+                  <For each={symbols()}>
+                    {(item) => (
+                      <option value={item.symbol}>
+                        {item.symbol} - {item.full_name} ({item.rows.toLocaleString()} bars)
+                      </option>
+                    )}
+                  </For>
+                </select>
               </div>
             </Show>
 
-            <div class="flex flex-col gap-3 md:flex-row">
+            <div class="grid gap-3 md:grid-cols-3">
+              <div>
+                <label class={label}>Interval</label>
+                <select
+                  class={field}
+                  value={interval().value}
+                  disabled={!canEditSetup()}
+                  onChange={(event) => {
+                    const selected = BACKTEST_INTERVALS.find(
+                      (item) => item.value === event.currentTarget.value,
+                    );
+                    if (selected) {
+                      setInterval(selected);
+                    }
+                  }}
+                >
+                  <For each={BACKTEST_INTERVALS}>
+                    {(item) => <option value={item.value}>{item.label}</option>}
+                  </For>
+                </select>
+              </div>
+
+              <div>
+                <label class={label}>Start date (optional)</label>
+                <input
+                  type="date"
+                  class={field}
+                  value={startDate()}
+                  disabled={!canEditSetup()}
+                  onInput={(event) => setStartDate(event.currentTarget.value)}
+                />
+              </div>
+
+              <div>
+                <label class={label}>End date (optional)</label>
+                <input
+                  type="date"
+                  class={field}
+                  value={endDate()}
+                  disabled={!canEditSetup()}
+                  onInput={(event) => setEndDate(event.currentTarget.value)}
+                />
+              </div>
+            </div>
+
+            <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4">
+              <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Launch Notes</p>
+              <p class="mt-2 text-sm text-zinc-400">
+                {activeSourceBacktest() || sourceBacktestId()
+                  ? "This run stays attached to one saved backtest so the later manual-vs-system compare still means something."
+                  : `Standalone sessions can pull up to ${SESSION_LIMIT.toLocaleString()} bars from the selected window and keep future candles hidden while you trade.`}
+              </p>
+            </div>
+          </section>
+
+          <section class={`${section} h-full`}>
+            <div class="space-y-1">
+              <p class="text-sm font-semibold text-zinc-100">2. Ruleset And Launch</p>
+              <p class="text-xs text-zinc-400">
+                Pick the challenge guardrails, then launch or save the run from one place.
+              </p>
+            </div>
+
+            <Show
+              when={presets() && presets()!.length > 0}
+              fallback={<div class="h-9 animate-pulse rounded bg-zinc-800" />}
+            >
+              <div>
+                <label class={label}>Preset</label>
+                <select
+                  class={field}
+                  value={preset()?.name ?? ""}
+                  disabled={!canEditSetup()}
+                  onChange={(event) => {
+                    const selected = presets()?.find(
+                      (item) => item.name === event.currentTarget.value,
+                    );
+                    setPreset(selected ?? null);
+                  }}
+                >
+                  <option value="" disabled>
+                    Select a preset…
+                  </option>
+                  <For each={Object.entries(groupPresets(presets() ?? []))}>
+                    {([firm, firmPresets]) => (
+                      <optgroup label={firm}>
+                        <For each={firmPresets}>
+                          {(item) => <option value={item.name}>{item.name}</option>}
+                        </For>
+                      </optgroup>
+                    )}
+                  </For>
+                </select>
+              </div>
+
+              <Show when={preset()}>
+                {(selectedPreset) => (
+                  <div class="space-y-3">
+                    <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4">
+                      <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Selected Challenge</p>
+                      <p class="mt-2 text-sm font-semibold text-zinc-100">{selectedPreset().name}</p>
+                      <p class="mt-1 text-sm text-zinc-400">
+                        The sim scores your manual trades against these rules while the hidden future
+                        plays out bar by bar.
+                      </p>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                      {([
+                        ["Account", `$${selectedPreset().account_size.toLocaleString()}`],
+                        ["Daily loss", `${(selectedPreset().daily_loss_limit * 100).toFixed(0)}%`],
+                        ["Max DD", `${(selectedPreset().max_drawdown * 100).toFixed(0)}%`],
+                        ["Target", `${(selectedPreset().profit_target * 100).toFixed(0)}%`],
+                        ["Min days", selectedPreset().min_trading_days ?? "—"],
+                        ["Drawdown", selectedPreset().drawdown_type ?? "eod"],
+                      ] as [string, string | number][]).map(([key, value]) => (
+                        <div class="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-3">
+                          <p class="text-xs text-zinc-400">{key}</p>
+                          <p class="mt-1 text-sm font-mono text-zinc-100">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </Show>
+            </Show>
+
+            <Show when={!canEditSetup()}>
+              <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4 text-sm text-zinc-400">
+                {activeSourceBacktest()
+                  ? "This session is pinned to its source backtest. Use `Restart` to trade the same tape again or `New Replay` for a different run."
+                  : "This market window is locked for the active run. Use `Restart` to trade it again or `New Replay` to build a different session."}
+              </div>
+            </Show>
+
+            <div class="space-y-3">
               <Show when={workspaceIntent()}>
                 {(intent) => (
                   <WorkspaceLaunchControl
@@ -1116,178 +1140,251 @@ export default function ReplayLabPage() {
                   />
                 )}
               </Show>
-              <button
-                class={
-                  "w-full rounded-xl px-5 py-3 text-sm font-semibold transition-colors md:w-auto " +
-                  (canLaunch() && canEditSetup()
-                    ? "bg-zinc-100 text-zinc-900 hover:bg-white"
-                    : "cursor-not-allowed bg-zinc-700 text-zinc-400")
-                }
-                disabled={!canLaunch() || !canEditSetup()}
-                onClick={launchReplay}
-              >
-                {candles.loading
-                  ? "Loading Sim…"
-                  : activeSourceBacktest() || sourceBacktestId()
-                    ? "Launch Source Sim"
-                    : "Launch Sim"}
-              </button>
 
-              <button
-                class={
-                  "w-full rounded-xl px-5 py-3 text-sm font-semibold transition-colors md:w-auto " +
-                  (canSave()
-                    ? "bg-emerald-600 text-white hover:bg-emerald-500"
-                    : "cursor-not-allowed bg-zinc-700 text-zinc-400")
-                }
-                disabled={!canSave()}
-                onClick={saveSession}
-              >
-                {isSaving()
-                  ? "Saving…"
-                  : sessionId()
-                    ? "Update Session"
-                    : "Save Session"}
-              </button>
+              <div class="grid gap-3 md:grid-cols-2">
+                <button
+                  class={
+                    "app-button-primary w-full justify-center " +
+                    (!(canLaunch() && canEditSetup()) ? "cursor-not-allowed bg-zinc-700 text-zinc-400 hover:bg-zinc-700" : "")
+                  }
+                  disabled={!canLaunch() || !canEditSetup()}
+                  onClick={launchReplay}
+                >
+                  {candles.loading
+                    ? "Loading Sim…"
+                    : activeSourceBacktest() || sourceBacktestId()
+                      ? "Launch Source Sim"
+                      : "Launch Sim"}
+                </button>
+
+                <button
+                  class={
+                    "inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition-colors " +
+                    (canSave()
+                      ? "bg-emerald-500 text-zinc-950 hover:bg-emerald-400"
+                      : "cursor-not-allowed bg-zinc-700 text-zinc-400")
+                  }
+                  disabled={!canSave()}
+                  onClick={saveSession}
+                >
+                  {isSaving()
+                    ? "Saving…"
+                    : sessionId()
+                      ? "Update Session"
+                      : "Save Session"}
+                </button>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        </div>
 
         <Show when={launchConfig()}>
           {(config) => (
             <>
-              <section id="replay" class="app-panel space-y-4 p-4 scroll-mt-24">
-                <div class="flex items-center justify-between gap-4">
-                  <div>
-                    <p class="text-sm text-zinc-400">Simulated Live Replay</p>
-                    <p class="mt-1 text-xs text-zinc-500">
-                      {config().sourceBacktest
-                        ? "Future candles stay hidden while you trade the exact saved backtest window like it's unfolding right now."
-                        : "Future candles stay hidden while you trade this historical market window like it is unfolding right now."}
-                    </p>
-                  </div>
-                  <div class="flex flex-col items-end gap-3 text-right text-xs text-zinc-500">
-                    <div>
-                      <p>Commission: ${config().commission.toFixed(2)}</p>
-                      <p>Tick value: ${config().tickValue.toFixed(2)}</p>
+              <section id="replay" class="app-panel app-panel-section scroll-mt-24">
+                <div class="space-y-6">
+                  <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+                    <div class="space-y-2">
+                      <p class="text-xs uppercase tracking-[0.18em] text-sky-300">Replay In Progress</p>
+                      <h2 class="text-2xl font-semibold text-zinc-100">
+                        {sessionName() || defaultSessionName(config())}
+                      </h2>
+                      <p class="max-w-3xl text-sm text-zinc-400">
+                        {config().sourceBacktest
+                          ? "Future candles stay hidden while you trade the exact saved backtest window like it is unfolding right now."
+                          : "Future candles stay hidden while you trade this historical market window like it is unfolding right now."}
+                      </p>
                     </div>
-                    <Show when={config().sourceBacktest}>
-                      {(source) => (
-                        <div class="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2">
-                          <p>Source backtest: {source().backtest_id.slice(0, 8)}</p>
-                          <p>{source().strategy_type?.replace(/_/g, " ") ?? "Saved run"}</p>
+
+                    <div class="flex flex-wrap items-center gap-2">
+                      <Show when={config().sourceBacktest}>
+                        {(source) => (
+                          <div class="rounded-full border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs font-medium uppercase tracking-[0.16em] text-zinc-400">
+                            Backtest {source().backtest_id.slice(0, 8)}
+                          </div>
+                        )}
+                      </Show>
+                      <div class="rounded-full border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs font-medium uppercase tracking-[0.16em] text-zinc-400">
+                        {formatReplaySessionStatus(replayStatus())}
+                      </div>
+                      <Show when={canUnlockReview()}>
+                        <button
+                          type="button"
+                          class="app-button-secondary"
+                          onClick={() => {
+                            setIsReviewMode(true);
+                            setBannerNotice("Review mode unlocked. The trade log is frozen, but you can inspect the full session now.");
+                          }}
+                        >
+                          Unlock Review Mode
+                        </button>
+                      </Show>
+                    </div>
+                  </div>
+
+                  <div class="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
+                    <div class="space-y-5">
+                      <div class="overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-950/70 p-3">
+                        <Show
+                          when={candles.error}
+                          fallback={
+                            <Show
+                              when={!candles.loading && candles() && candles()!.length > 0}
+                              fallback={
+                                <div class="flex h-[520px] items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-950 px-6 text-center">
+                                  <p class="text-sm text-zinc-500">
+                                    {candles.loading
+                                      ? "Loading replay candles…"
+                                      : "No candles were returned for that historical request."}
+                                  </p>
+                                </div>
+                              }
+                            >
+                              <PriceChart
+                                candles={candles() as Candle[]}
+                                markers={chartMarkers()}
+                                visibleIndex={replayIndex()}
+                                height={520}
+                                class="rounded-2xl"
+                              />
+                            </Show>
+                          }
+                        >
+                          {(error) => (
+                            <div class="flex h-[520px] items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-950 px-6 text-center">
+                              <p class="text-sm text-red-400">Replay data failed to load: {error().message}</p>
+                            </div>
+                          )}
+                        </Show>
+                      </div>
+
+                      <Show when={candles() && candles()!.length > 0}>
+                        <ReplayControls
+                          isPlaying={isReplayActive()}
+                          speed={speed()}
+                          statusLabel={formatReplaySessionStatus(replayStatus())}
+                          statusDetail={replayStatusDetail()}
+                          progress={replayProgress()}
+                          currentBar={totalBars() === 0 ? 0 : replayIndex() + 1}
+                          totalBars={totalBars()}
+                          currentTimeLabel={currentTimeLabel()}
+                          currentPriceLabel={currentPriceLabel()}
+                          positionLabel={positionLabel()}
+                          canSeek={canSeek()}
+                          canStartPlayback={canStartPlayback()}
+                          canStepBack={canStepBack()}
+                          canStepForward={canStepForward()}
+                          canJumpPrevTrade={canJumpPrevTrade()}
+                          canJumpNextTrade={canJumpNextTrade()}
+                          canLong={canPlaceEntries()}
+                          canShort={canPlaceEntries()}
+                          canExitPosition={canExitPosition()}
+                          onPlayPause={() => {
+                            if (isReplayActive()) {
+                              setIsReplayActive(false);
+                              return;
+                            }
+
+                            if (!canStartPlayback()) {
+                              return;
+                            }
+
+                            setIsReplayActive(true);
+                          }}
+                          onSpeedChange={setSpeed}
+                          onSeek={(progress) =>
+                            canSeek() ? seekToIndex(getReplayIndexFromProgress(progress, totalBars())) : undefined
+                          }
+                          onRestart={() => {
+                            batch(() => {
+                              setBannerNotice(null);
+                              setIsReplayActive(false);
+                              setIsReviewMode(false);
+                              setCurrentIndex(0);
+                              setReplayActions([]);
+                            });
+                          }}
+                          onStepBack={() => {
+                            if (canStepBack()) {
+                              seekToIndex(replayIndex() - 1);
+                            }
+                          }}
+                          onStepForward={() => {
+                            if (canStepForward()) {
+                              seekToIndex(replayIndex() + 1);
+                            }
+                          }}
+                          onJumpPrevTrade={() => jumpToTrade("prev")}
+                          onJumpNextTrade={() => jumpToTrade("next")}
+                          onLong={() => recordReplayAction("buy")}
+                          onShort={() => recordReplayAction("sell")}
+                          onExit={() => recordReplayAction("exit")}
+                        />
+                      </Show>
+                    </div>
+
+                    <div class="space-y-4">
+                      <div class="rounded-3xl border border-zinc-800 bg-zinc-950/60 p-5">
+                        <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Session Pulse</p>
+                        <div class="mt-4 grid gap-3">
+                          <ReplayStatCard
+                            label="Current Price"
+                            value={currentPriceLabel()}
+                            detail="Most recent visible close in the replay tape."
+                          />
+                          <ReplayStatCard
+                            label="Position"
+                            value={positionLabel()}
+                            tone={replaySession()?.position ? "good" : "default"}
+                            detail="Open position state and unrealized mark-to-market."
+                          />
+                          <ReplayStatCard
+                            label="Replay Status"
+                            value={formatReplaySessionStatus(replayStatus())}
+                            detail={replayStatusDetail()}
+                          />
                         </div>
-                      )}
-                    </Show>
-                    <Show when={canUnlockReview()}>
-                      <button
-                        type="button"
-                        class="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-semibold text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
-                        onClick={() => {
-                          setIsReviewMode(true);
-                          setBannerNotice("Review mode unlocked. The trade log is frozen, but you can inspect the full session now.");
-                        }}
-                      >
-                        Unlock Review Mode
-                      </button>
-                    </Show>
+                      </div>
+
+                      <div class="rounded-3xl border border-zinc-800 bg-zinc-950/60 p-5">
+                        <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Run Context</p>
+                        <div class="mt-4 grid gap-3">
+                          <div class="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-3">
+                            <p class="text-xs text-zinc-500">Commission</p>
+                            <p class="mt-1 font-mono text-sm font-semibold text-zinc-100">
+                              ${config().commission.toFixed(2)}
+                            </p>
+                          </div>
+                          <div class="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-3">
+                            <p class="text-xs text-zinc-500">Tick Value</p>
+                            <p class="mt-1 font-mono text-sm font-semibold text-zinc-100">
+                              ${config().tickValue.toFixed(2)}
+                            </p>
+                          </div>
+                          <div class="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-3">
+                            <p class="text-xs text-zinc-500">Ruleset</p>
+                            <p class="mt-1 text-sm font-semibold text-zinc-100">
+                              {config().propFirmRules.name}
+                            </p>
+                          </div>
+                          <Show when={config().sourceBacktest}>
+                            {(source) => (
+                              <div class="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-3">
+                                <p class="text-xs text-zinc-500">Source Backtest</p>
+                                <p class="mt-1 font-mono text-sm font-semibold text-zinc-100">
+                                  {source().backtest_id}
+                                </p>
+                                <p class="mt-1 text-xs text-zinc-500">
+                                  {source().strategy_type?.replace(/_/g, " ") ?? "Saved run"}
+                                </p>
+                              </div>
+                            )}
+                          </Show>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-
-                <Show
-                  when={candles.error}
-                  fallback={
-                    <Show
-                      when={!candles.loading && candles() && candles()!.length > 0}
-                      fallback={
-                        <div class="flex h-[450px] items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 px-6 text-center">
-                          <p class="text-sm text-zinc-500">
-                            {candles.loading
-                              ? "Loading replay candles…"
-                              : "No candles were returned for that historical request."}
-                          </p>
-                        </div>
-                      }
-                    >
-                      <PriceChart
-                        candles={candles() as Candle[]}
-                        markers={chartMarkers()}
-                        visibleIndex={replayIndex()}
-                        height={450}
-                      />
-                    </Show>
-                  }
-                >
-                  {(error) => (
-                    <div class="flex h-[450px] items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 px-6 text-center">
-                      <p class="text-sm text-red-400">Replay data failed to load: {error().message}</p>
-                    </div>
-                  )}
-                </Show>
-
-                <Show when={candles() && candles()!.length > 0}>
-                  <ReplayControls
-                    isPlaying={isReplayActive()}
-                    speed={speed()}
-                    statusLabel={formatReplaySessionStatus(replayStatus())}
-                    statusDetail={replayStatusDetail()}
-                    progress={replayProgress()}
-                    currentBar={totalBars() === 0 ? 0 : replayIndex() + 1}
-                    totalBars={totalBars()}
-                    currentTimeLabel={currentTimeLabel()}
-                    currentPriceLabel={currentPriceLabel()}
-                    positionLabel={positionLabel()}
-                    canSeek={canSeek()}
-                    canStartPlayback={canStartPlayback()}
-                    canStepBack={canStepBack()}
-                    canStepForward={canStepForward()}
-                    canJumpPrevTrade={canJumpPrevTrade()}
-                    canJumpNextTrade={canJumpNextTrade()}
-                    canLong={canPlaceEntries()}
-                    canShort={canPlaceEntries()}
-                    canExitPosition={canExitPosition()}
-                    onPlayPause={() => {
-                      if (isReplayActive()) {
-                        setIsReplayActive(false);
-                        return;
-                      }
-
-                      if (!canStartPlayback()) {
-                        return;
-                      }
-
-                      setIsReplayActive(true);
-                    }}
-                    onSpeedChange={setSpeed}
-                    onSeek={(progress) =>
-                      canSeek() ? seekToIndex(getReplayIndexFromProgress(progress, totalBars())) : undefined
-                    }
-                    onRestart={() => {
-                      batch(() => {
-                        setBannerNotice(null);
-                        setIsReplayActive(false);
-                        setIsReviewMode(false);
-                        setCurrentIndex(0);
-                        setReplayActions([]);
-                      });
-                    }}
-                    onStepBack={() => {
-                      if (canStepBack()) {
-                        seekToIndex(replayIndex() - 1);
-                      }
-                    }}
-                    onStepForward={() => {
-                      if (canStepForward()) {
-                        seekToIndex(replayIndex() + 1);
-                      }
-                    }}
-                    onJumpPrevTrade={() => jumpToTrade("prev")}
-                    onJumpNextTrade={() => jumpToTrade("next")}
-                    onLong={() => recordReplayAction("buy")}
-                    onShort={() => recordReplayAction("sell")}
-                    onExit={() => recordReplayAction("exit")}
-                  />
-                </Show>
               </section>
 
               <Show when={replaySession()}>
@@ -1296,59 +1393,76 @@ export default function ReplayLabPage() {
                     <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                       <For each={replayMetrics()}>
                         {([key, value]) => (
-                          <div class="app-panel p-4">
-                            <p class="mb-1 text-xs text-zinc-400">{key}</p>
-                            <p class="font-mono text-xl font-semibold">{value}</p>
-                          </div>
+                          <ReplayStatCard
+                            label={key}
+                            value={value}
+                            tone={key === "Realized PnL" || key === "Total PnL"
+                              ? value.startsWith("+")
+                                ? "good"
+                                : value.startsWith("-")
+                                  ? "bad"
+                                  : "default"
+                              : "default"}
+                          />
                         )}
                       </For>
                     </div>
 
-                    <div class="app-panel p-4">
-                      <p class="mb-3 text-sm text-zinc-400">Replay Equity Curve</p>
-                      <EquityCurve data={session().equityCurve} />
-                    </div>
-
-                    <div class="grid gap-4 lg:grid-cols-2">
-                      <PropEvalPanel title="Replay Prop Eval" evaluation={session().propEvaluation} />
-                      <div class="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
-                        <p class="text-sm font-semibold text-zinc-100">Persistence</p>
+                    <div class="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+                      <div class="app-panel app-panel-section">
+                        <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Replay Equity Curve</p>
                         <p class="mt-2 text-sm text-zinc-400">
-                          This sim can be saved and reopened later. While the run is active it stays
-                          locked to forward-only trading, then review mode opens up once the session is done.
+                          Realized equity path for the manual session so far.
                         </p>
-                        <Show when={activeSourceBacktest()}>
-                          {(source) => (
-                            <p class="mt-3 text-sm text-zinc-400">
-                              It stays linked to backtest `{source().backtest_id.slice(0, 8)}` so the
-                              review can show missed entries, early exits, and the prop result delta.
-                            </p>
-                          )}
-                        </Show>
-                        <div class="mt-4 flex flex-wrap gap-2">
-                          <Show when={compareHref()}>
-                            {(href) => (
-                              <A
-                                href={href()}
-                                class="rounded-lg bg-zinc-100 px-3 py-2 text-xs font-semibold text-zinc-950 transition-colors hover:bg-white"
-                              >
-                                Compare Vs System
-                              </A>
+                        <div class="mt-4">
+                          <EquityCurve data={session().equityCurve} />
+                        </div>
+                      </div>
+
+                      <div class="grid gap-4">
+                        <PropEvalPanel title="Replay Prop Eval" evaluation={session().propEvaluation} />
+                        <div class="rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
+                          <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Persistence And Review</p>
+                          <p class="mt-2 text-sm text-zinc-400">
+                            This sim can be saved and reopened later. While the run is active it stays
+                            locked to forward-only trading, then review mode opens up once the session is done.
+                          </p>
+                          <Show when={activeSourceBacktest()}>
+                            {(source) => (
+                              <p class="mt-3 text-sm text-zinc-400">
+                                It stays linked to backtest `{source().backtest_id.slice(0, 8)}` so the
+                                review can show missed entries, early exits, and the prop result delta.
+                              </p>
                             )}
                           </Show>
-                          <Show when={activeSourceBacktest() && !compareHref()}>
-                            <p class="text-xs text-zinc-500">
-                              Save the session and unlock review mode to open the compare screen.
-                            </p>
-                          </Show>
+                          <div class="mt-4 flex flex-wrap gap-2">
+                            <Show when={compareHref()}>
+                              {(href) => (
+                                <A
+                                  href={href()}
+                                  class="app-button-compact-primary"
+                                >
+                                  Compare Vs System
+                                </A>
+                              )}
+                            </Show>
+                            <Show when={activeSourceBacktest() && !compareHref()}>
+                              <p class="text-xs text-zinc-500">
+                                Save the session and unlock review mode to open the compare screen.
+                              </p>
+                            </Show>
+                          </div>
                         </div>
                       </div>
                     </div>
 
                     <div class="app-panel overflow-hidden">
-                      <p class="border-b border-zinc-800 p-4 text-sm text-zinc-400">
-                        Replay Trades ({session().trades.length})
-                      </p>
+                      <div class="border-b border-zinc-800 p-4">
+                        <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Trade Log</p>
+                        <p class="mt-1 text-sm text-zinc-400">
+                          Replay Trades ({session().trades.length})
+                        </p>
+                      </div>
                       <table class="w-full text-sm">
                         <thead class="text-xs text-zinc-400">
                           <tr>
