@@ -21,6 +21,10 @@ function formatPercent(value: number | undefined): string {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+function winnerTone(isWinner: boolean): string {
+  return isWinner ? "border-sky-500 bg-sky-500/10" : "border-zinc-800 bg-zinc-950/60";
+}
+
 export default function BacktestComparePage() {
   const [params] = useSearchParams<{ a?: string; b?: string }>();
 
@@ -56,7 +60,7 @@ export default function BacktestComparePage() {
       actions={
         <A
           href="/backtests"
-          class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+          class="app-button-secondary"
         >
           Back to Backtests
         </A>
@@ -79,14 +83,53 @@ export default function BacktestComparePage() {
               const data: BacktestCompare = result();
               const a = data.backtest_a;
               const b = data.backtest_b;
+              const totalPnlWinner =
+                (a.metrics.total_pnl ?? Number.NEGATIVE_INFINITY) >=
+                (b.metrics.total_pnl ?? Number.NEGATIVE_INFINITY)
+                  ? "a"
+                  : "b";
+              const winRateWinner =
+                (a.metrics.win_rate ?? Number.NEGATIVE_INFINITY) >=
+                (b.metrics.win_rate ?? Number.NEGATIVE_INFINITY)
+                  ? "a"
+                  : "b";
+              const drawdownWinner =
+                (a.metrics.max_drawdown ?? Number.POSITIVE_INFINITY) <=
+                (b.metrics.max_drawdown ?? Number.POSITIVE_INFINITY)
+                  ? "a"
+                  : "b";
 
               return (
                 <div class="space-y-6">
+                  <section class="grid gap-4 md:grid-cols-3">
+                    <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4">
+                      <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">PnL Delta</p>
+                      <p class="mt-2 font-mono text-2xl font-semibold text-zinc-100">
+                        {formatMoney((a.metrics.total_pnl ?? 0) - (b.metrics.total_pnl ?? 0))}
+                      </p>
+                      <p class="mt-2 text-sm text-zinc-400">Run A minus Run B total realized PnL.</p>
+                    </div>
+                    <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4">
+                      <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Win Rate Delta</p>
+                      <p class="mt-2 font-mono text-2xl font-semibold text-zinc-100">
+                        {formatPercent((a.metrics.win_rate ?? 0) - (b.metrics.win_rate ?? 0))}
+                      </p>
+                      <p class="mt-2 text-sm text-zinc-400">Hit-rate difference between both saved runs.</p>
+                    </div>
+                    <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4">
+                      <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Drawdown Delta</p>
+                      <p class="mt-2 font-mono text-2xl font-semibold text-zinc-100">
+                        {formatPercent((a.metrics.max_drawdown ?? 0) - (b.metrics.max_drawdown ?? 0))}
+                      </p>
+                      <p class="mt-2 text-sm text-zinc-400">Max drawdown difference, where lower is better.</p>
+                    </div>
+                  </section>
+
                   <section class="grid gap-4 lg:grid-cols-2">
                     {[
-                      { title: "Run A", backtest: a, accent: "text-sky-300" },
-                      { title: "Run B", backtest: b, accent: "text-emerald-300" },
-                    ].map(({ title, backtest, accent }) => {
+                      { title: "Run A", backtest: a, accent: "text-sky-300", key: "a" },
+                      { title: "Run B", backtest: b, accent: "text-zinc-300", key: "b" },
+                    ].map(({ title, backtest, accent, key }) => {
                       const workspaceIntent =
                         backtest.symbol && backtest.replay_context?.interval
                           ? {
@@ -99,7 +142,9 @@ export default function BacktestComparePage() {
                           : null;
 
                       return (
-                        <div class="app-panel app-panel-section space-y-4">
+                        <div class={`app-panel app-panel-section space-y-4 ${winnerTone(
+                          totalPnlWinner === key || winRateWinner === key || drawdownWinner === key,
+                        )}`}>
                           <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                             <div class="space-y-2">
                               <p class={`text-xs uppercase tracking-[0.18em] ${accent}`}>{title}</p>
@@ -121,19 +166,19 @@ export default function BacktestComparePage() {
                           </div>
 
                           <div class="grid grid-cols-2 gap-3">
-                            <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                            <div class={`rounded-2xl border px-4 py-3 ${winnerTone(totalPnlWinner === key)}`}>
                               <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Total PnL</p>
                               <p class={`mt-2 font-mono text-lg font-semibold ${backtest.metrics.total_pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
                                 {formatMoney(backtest.metrics.total_pnl)}
                               </p>
                             </div>
-                            <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                            <div class={`rounded-2xl border px-4 py-3 ${winnerTone(winRateWinner === key)}`}>
                               <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Win Rate</p>
                               <p class="mt-2 font-mono text-lg font-semibold text-zinc-100">
                                 {formatPercent(backtest.metrics.win_rate)}
                               </p>
                             </div>
-                            <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                            <div class={`rounded-2xl border px-4 py-3 ${winnerTone(drawdownWinner === key)}`}>
                               <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Max Drawdown</p>
                               <p class="mt-2 font-mono text-sm font-semibold text-zinc-100">
                                 {formatPercent(backtest.metrics.max_drawdown)}

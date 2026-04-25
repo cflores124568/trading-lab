@@ -278,7 +278,7 @@ function TabButton(props: {
       onClick={props.onClick}
       class={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
         props.active
-          ? "bg-zinc-100 text-zinc-950"
+          ? "bg-sky-400 text-zinc-950"
           : "border border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-zinc-500 hover:bg-zinc-900"
       }`}
     >
@@ -298,6 +298,33 @@ function MetricCard(props: {
       <p class="mb-1 text-xs text-zinc-400">{props.label}</p>
       <p
         class={`font-mono text-xl font-semibold ${
+          props.tone === "good"
+            ? "text-emerald-300"
+            : props.tone === "bad"
+              ? "text-red-300"
+              : "text-zinc-100"
+        }`}
+      >
+        {props.value}
+      </p>
+      <Show when={props.hint}>
+        <p class="mt-2 text-xs text-zinc-500">{props.hint}</p>
+      </Show>
+    </div>
+  );
+}
+
+function HeroMetricCard(props: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: "default" | "good" | "bad";
+}) {
+  return (
+    <div class="rounded-2xl border border-zinc-800 bg-zinc-950/70 px-4 py-4">
+      <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">{props.label}</p>
+      <p
+        class={`mt-2 font-mono text-2xl font-semibold ${
           props.tone === "good"
             ? "text-emerald-300"
             : props.tone === "bad"
@@ -1208,26 +1235,26 @@ export default function BacktestDetail() {
         <>
           <A
             href={`/experiments?fromBacktestId=${params.id}`}
-            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+            class="app-button-secondary"
           >
             Create Experiment
           </A>
           <A
             href={`/replay?backtestId=${params.id}`}
-            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+            class="app-button-secondary"
           >
             Launch Sim Session
           </A>
           <button
             type="button"
             onClick={jumpToReplaySection}
-            class="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white"
+            class="app-button-primary"
           >
             Jump to Replay
           </button>
           <A
             href="/backtests"
-            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+            class="app-button-secondary"
           >
             Back to Backtests
           </A>
@@ -1245,12 +1272,15 @@ export default function BacktestDetail() {
         {(bt) => (
           <div class="space-y-6">
             <section class="app-panel app-panel-section">
-              <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div class="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
                 <div class="space-y-2">
                   <p class="app-kicker">Saved Run</p>
+                  <h2 class="text-2xl font-semibold text-zinc-100">
+                    {bt().symbol} {bt().strategy.type.replace(/_/g, " ")}
+                  </h2>
                   <p class="max-w-3xl text-sm text-zinc-300">
-                    The system trade stream is fixed, and the tabs below split raw trading
-                    performance from prop-firm rule scoring so you can inspect both cleanly.
+                    The system trade stream is fixed. Use the tabs below to split raw performance,
+                    prop-firm scoring, and trade review without losing the replay path.
                   </p>
                 </div>
 
@@ -1267,15 +1297,40 @@ export default function BacktestDetail() {
                 </div>
               </div>
 
-              <div class="mt-5 grid gap-3 md:grid-cols-4">
-                <For each={strategySummary()}>
-                  {([label, value]) => (
-                    <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                      <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">{label}</p>
-                      <p class="mt-2 text-sm font-medium text-zinc-100">{value}</p>
-                    </div>
-                  )}
-                </For>
+              <div class="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
+                <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  <HeroMetricCard
+                    label="Net PnL"
+                    value={formatCurrency(bt().metrics.total_pnl, { signed: true })}
+                    tone={bt().metrics.total_pnl >= 0 ? "good" : "bad"}
+                    hint={`Win rate ${formatPercent(bt().metrics.win_rate)}`}
+                  />
+                  <HeroMetricCard
+                    label="Saved Prop Eval"
+                    value={bt().prop_firm_eval.passed ? "Passed" : "Failed"}
+                    tone={bt().prop_firm_eval.passed ? "good" : "bad"}
+                    hint={bt().prop_firm_rules.name}
+                  />
+                  <HeroMetricCard
+                    label="Total Trades"
+                    value={formatCount(bt().metrics.total_trades)}
+                    hint={`Max DD ${formatPercent(bt().metrics.max_drawdown, 2)}`}
+                  />
+                </div>
+
+                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4">
+                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Run Context</p>
+                  <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                    <For each={strategySummary()}>
+                      {([label, value]) => (
+                        <div class="rounded-xl border border-zinc-800 bg-zinc-900/60 px-3 py-3">
+                          <p class="text-xs text-zinc-500">{label}</p>
+                          <p class="mt-1 text-sm font-medium text-zinc-100">{value}</p>
+                        </div>
+                      )}
+                    </For>
+                  </div>
+                </div>
               </div>
             </section>
 
@@ -1317,20 +1372,20 @@ export default function BacktestDetail() {
                         </Show>
                         <A
                           href={`/replay?backtestId=${bt().backtest_id}`}
-                          class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+                          class="app-button-secondary"
                         >
                           Launch Sim Session
                         </A>
                         <button
                           type="button"
                           onClick={jumpToReplaySection}
-                          class="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white"
+                          class="app-button-primary"
                         >
                           Start Replay
                         </button>
                         <A
                           href="/backtests"
-                          class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+                          class="app-button-secondary"
                         >
                           All Backtests
                         </A>
@@ -1344,110 +1399,159 @@ export default function BacktestDetail() {
                     </Show>
                   </section>
 
-                  <section id="replay" class="app-panel p-4 space-y-4 scroll-mt-24">
-                    <div class="flex items-center justify-between gap-4">
-                      <div>
-                        <p class="text-sm text-zinc-400">Interactive Replay Simulator</p>
-                        <p class="mt-1 text-xs text-zinc-500">
+                  <section id="replay" class="app-panel app-panel-section space-y-6 scroll-mt-24">
+                    <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+                      <div class="space-y-2">
+                        <p class="text-xs uppercase tracking-[0.18em] text-sky-300">Interactive Replay Simulator</p>
+                        <p class="max-w-3xl text-sm text-zinc-400">
                           Scrub, step, jump between system trades, and place your own manual
-                          long/short/exit decisions.
+                          long, short, and exit decisions against the saved tape.
                         </p>
                       </div>
-                      <div class="text-right text-xs text-zinc-500">
-                        <p>Commission: ${commission().toFixed(2)}</p>
-                        <p>Tick value: ${tickValue().toFixed(2)}</p>
+                      <div class="grid gap-3 sm:grid-cols-2">
+                        <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                          <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Commission</p>
+                          <p class="mt-2 font-mono text-lg font-semibold text-zinc-100">
+                            ${commission().toFixed(2)}
+                          </p>
+                        </div>
+                        <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                          <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Tick Value</p>
+                          <p class="mt-2 font-mono text-lg font-semibold text-zinc-100">
+                            ${tickValue().toFixed(2)}
+                          </p>
+                        </div>
                       </div>
                     </div>
 
-                    <Show
-                      when={candles.error}
-                      fallback={
-                        <Show
-                          when={!candles.loading && candles() && candles()!.length > 0}
-                          fallback={
-                            <div class="flex h-[450px] items-center justify-center rounded-lg bg-zinc-800 animate-pulse">
-                              <p class="text-sm text-zinc-500">
-                                {candles.loading
-                                  ? "Loading chart data…"
-                                  : "No candles available for this backtest."}
-                              </p>
-                            </div>
-                          }
-                        >
-                          <PriceChart
-                            candles={candles() as Candle[]}
-                            markers={chartMarkers()}
-                            visibleIndex={replayIndex()}
-                            height={450}
+                    <div class="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
+                      <div class="space-y-5">
+                        <div class="overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-950/70 p-3">
+                          <Show
+                            when={candles.error}
+                            fallback={
+                              <Show
+                                when={!candles.loading && candles() && candles()!.length > 0}
+                                fallback={
+                                  <div class="flex h-[520px] items-center justify-center rounded-2xl bg-zinc-800/70">
+                                    <p class="text-sm text-zinc-500">
+                                      {candles.loading
+                                        ? "Loading chart data…"
+                                        : "No candles available for this backtest."}
+                                    </p>
+                                  </div>
+                                }
+                              >
+                                <PriceChart
+                                  candles={candles() as Candle[]}
+                                  markers={chartMarkers()}
+                                  visibleIndex={replayIndex()}
+                                  height={520}
+                                  class="rounded-2xl"
+                                />
+                              </Show>
+                            }
+                          >
+                            {(error) => (
+                              <div class="flex h-[520px] items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-950 px-6 text-center">
+                                <p class="text-sm text-red-400">
+                                  Replay data failed to load: {error().message}
+                                </p>
+                              </div>
+                            )}
+                          </Show>
+                        </div>
+
+                        <Show when={candles() && candles()!.length > 0}>
+                          <ReplayControls
+                            isPlaying={isReplayActive()}
+                            speed={speed()}
+                            statusLabel="Backtest Replay"
+                            statusDetail="This compare view stays flexible so you can scrub around the saved run and test your own manual decisions against it."
+                            progress={replayProgress()}
+                            currentBar={totalBars() === 0 ? 0 : replayIndex() + 1}
+                            totalBars={totalBars()}
+                            currentTimeLabel={currentTimeLabel()}
+                            currentPriceLabel={currentPriceLabel()}
+                            positionLabel={positionLabel()}
+                            canSeek
+                            canStartPlayback={replayIndex() < totalBars() - 1}
+                            canStepBack={replayIndex() > 0}
+                            canStepForward={replayIndex() < totalBars() - 1}
+                            canJumpPrevTrade={
+                              findJumpTarget(replayIndex(), tradeEntryIndices(), "prev") !== null
+                            }
+                            canJumpNextTrade={
+                              findJumpTarget(replayIndex(), tradeEntryIndices(), "next") !== null
+                            }
+                            canLong
+                            canShort
+                            canExitPosition={!!replaySession()?.position}
+                            onPlayPause={() => {
+                              if (isReplayActive()) {
+                                setIsReplayActive(false);
+                                return;
+                              }
+
+                              if (replayIndex() >= totalBars() - 1) {
+                                setCurrentIndex(0);
+                              }
+                              setIsReplayActive(true);
+                            }}
+                            onSpeedChange={setSpeed}
+                            onSeek={(progress) =>
+                              seekToIndex(getReplayIndexFromProgress(progress, totalBars()))
+                            }
+                            onRestart={() => {
+                              batch(() => {
+                                setIsReplayActive(false);
+                                setCurrentIndex(0);
+                                setReplayActions([]);
+                              });
+                            }}
+                            onStepBack={() => seekToIndex(replayIndex() - 1)}
+                            onStepForward={() => seekToIndex(replayIndex() + 1)}
+                            onJumpPrevTrade={() => jumpToTrade("prev")}
+                            onJumpNextTrade={() => jumpToTrade("next")}
+                            onLong={() => recordReplayAction("buy")}
+                            onShort={() => recordReplayAction("sell")}
+                            onExit={() => recordReplayAction("exit")}
                           />
                         </Show>
-                      }
-                    >
-                      {(error) => (
-                        <div class="flex h-[450px] items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 px-6 text-center">
-                          <p class="text-sm text-red-400">
-                            Replay data failed to load: {error().message}
+                      </div>
+
+                      <div class="space-y-4">
+                        <div class="rounded-3xl border border-zinc-800 bg-zinc-950/60 p-5">
+                          <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Replay Pulse</p>
+                          <div class="mt-4 grid gap-3">
+                            <HeroMetricCard
+                              label="Current Price"
+                              value={currentPriceLabel()}
+                              hint="Most recent visible close in the saved run."
+                            />
+                            <HeroMetricCard
+                              label="Position"
+                              value={positionLabel()}
+                              tone={replaySession()?.position ? "good" : "default"}
+                              hint="Manual replay position and unrealized mark."
+                            />
+                            <HeroMetricCard
+                              label="Progress"
+                              value={totalBars() === 0 ? "0 / 0" : `${replayIndex() + 1} / ${totalBars()}`}
+                              hint="Current replay cursor across the saved tape."
+                            />
+                          </div>
+                        </div>
+
+                        <div class="rounded-3xl border border-zinc-800 bg-zinc-950/60 p-5">
+                          <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Compare Lens</p>
+                          <p class="mt-2 text-sm text-zinc-400">
+                            Blue and amber markers are the saved system trades. Green and rose markers
+                            are your manual replay decisions layered on top.
                           </p>
                         </div>
-                      )}
-                    </Show>
-
-                    <Show when={candles() && candles()!.length > 0}>
-                      <ReplayControls
-                        isPlaying={isReplayActive()}
-                        speed={speed()}
-                        statusLabel="Backtest Replay"
-                        statusDetail="This compare view stays flexible so you can scrub around the saved run and test your own manual decisions against it."
-                        progress={replayProgress()}
-                        currentBar={totalBars() === 0 ? 0 : replayIndex() + 1}
-                        totalBars={totalBars()}
-                        currentTimeLabel={currentTimeLabel()}
-                        currentPriceLabel={currentPriceLabel()}
-                        positionLabel={positionLabel()}
-                        canSeek
-                        canStartPlayback={replayIndex() < totalBars() - 1}
-                        canStepBack={replayIndex() > 0}
-                        canStepForward={replayIndex() < totalBars() - 1}
-                        canJumpPrevTrade={
-                          findJumpTarget(replayIndex(), tradeEntryIndices(), "prev") !== null
-                        }
-                        canJumpNextTrade={
-                          findJumpTarget(replayIndex(), tradeEntryIndices(), "next") !== null
-                        }
-                        canLong
-                        canShort
-                        canExitPosition={!!replaySession()?.position}
-                        onPlayPause={() => {
-                          if (isReplayActive()) {
-                            setIsReplayActive(false);
-                            return;
-                          }
-
-                          if (replayIndex() >= totalBars() - 1) {
-                            setCurrentIndex(0);
-                          }
-                          setIsReplayActive(true);
-                        }}
-                        onSpeedChange={setSpeed}
-                        onSeek={(progress) =>
-                          seekToIndex(getReplayIndexFromProgress(progress, totalBars()))
-                        }
-                        onRestart={() => {
-                          batch(() => {
-                            setIsReplayActive(false);
-                            setCurrentIndex(0);
-                            setReplayActions([]);
-                          });
-                        }}
-                        onStepBack={() => seekToIndex(replayIndex() - 1)}
-                        onStepForward={() => seekToIndex(replayIndex() + 1)}
-                        onJumpPrevTrade={() => jumpToTrade("prev")}
-                        onJumpNextTrade={() => jumpToTrade("next")}
-                        onLong={() => recordReplayAction("buy")}
-                        onShort={() => recordReplayAction("sell")}
-                        onExit={() => recordReplayAction("exit")}
-                      />
-                    </Show>
+                      </div>
+                    </div>
                   </section>
 
                   <Show when={replaySession()}>
@@ -1461,9 +1565,14 @@ export default function BacktestDetail() {
                           </For>
                         </div>
 
-                        <div class="app-panel p-4">
-                          <p class="mb-3 text-sm text-zinc-400">Replay Equity Curve</p>
-                          <EquityCurve data={session().equityCurve} />
+                        <div class="app-panel app-panel-section">
+                          <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Replay Equity Curve</p>
+                          <p class="mt-2 text-sm text-zinc-400">
+                            Equity path for the manual replay layered on top of the same market window.
+                          </p>
+                          <div class="mt-4">
+                            <EquityCurve data={session().equityCurve} />
+                          </div>
                         </div>
 
                         <div class="grid gap-4 lg:grid-cols-2">

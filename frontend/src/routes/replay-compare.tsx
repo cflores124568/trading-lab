@@ -32,11 +32,22 @@ function InsightCard(props: {
   label: string;
   value: string | number;
   detail: string;
+  tone?: "default" | "good" | "bad";
 }) {
   return (
     <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
       <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">{props.label}</p>
-      <p class="mt-2 font-mono text-2xl font-semibold text-zinc-100">{props.value}</p>
+      <p
+        class={`mt-2 font-mono text-2xl font-semibold ${
+          props.tone === "good"
+            ? "text-emerald-300"
+            : props.tone === "bad"
+              ? "text-red-300"
+              : "text-zinc-100"
+        }`}
+      >
+        {props.value}
+      </p>
       <p class="mt-2 text-sm text-zinc-400">{props.detail}</p>
     </div>
   );
@@ -131,13 +142,13 @@ export default function ReplayComparePage() {
         <>
           <A
             href={params.id ? `/replay/${params.id}` : "/replay"}
-            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+            class="app-button-secondary"
           >
             Back To Replay
           </A>
           <A
             href="/backtests"
-            class="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white"
+            class="app-button-primary"
           >
             Saved Backtests
           </A>
@@ -219,26 +230,31 @@ export default function ReplayComparePage() {
                               label="PnL Delta"
                               value={formatMoney(comparison.pnlDiff)}
                               detail="Manual realized PnL minus the system's realized PnL."
+                              tone={comparison.pnlDiff >= 0 ? "good" : "bad"}
                             />
                             <InsightCard
                               label="Missed Entries"
                               value={comparison.missedEntryCount}
                               detail="System trades that never got a nearby manual entry match."
+                              tone={comparison.missedEntryCount === 0 ? "good" : "default"}
                             />
                             <InsightCard
                               label="Manual-Only"
                               value={comparison.manualOnlyCount}
                               detail="Entries you took that don't line up with the source run."
+                              tone={comparison.manualOnlyCount === 0 ? "good" : "default"}
                             />
                             <InsightCard
                               label="Early Exits"
                               value={comparison.earlyExitCount}
                               detail="Matched trades where you got out before the system did."
+                              tone={comparison.earlyExitCount === 0 ? "good" : "default"}
                             />
                             <InsightCard
                               label="Better Exits"
                               value={comparison.betterExitCount}
                               detail="Matched trades where your exit beat the system on PnL."
+                              tone={comparison.betterExitCount > 0 ? "good" : "default"}
                             />
                           </section>
 
