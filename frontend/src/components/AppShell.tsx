@@ -40,7 +40,7 @@ export default function AppShell(props: AppShellProps) {
                   href={item.href}
                   class={`rounded-full px-3 py-2 text-sm font-medium transition-colors ${
                     isActive(item.href)
-                      ? "bg-zinc-100 text-zinc-950"
+                      ? "bg-sky-400 text-zinc-950"
                       : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"
                   }`}
                 >

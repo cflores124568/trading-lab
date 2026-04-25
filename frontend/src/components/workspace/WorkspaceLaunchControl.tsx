@@ -46,7 +46,7 @@ export default function WorkspaceLaunchControl(props: Props) {
     return (
       <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
         <select
-          class="min-w-[180px] rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+          class="app-input min-w-[180px] text-xs"
           value={workspaceId()}
           onChange={(event) => setWorkspaceId(event.currentTarget.value)}
         >
@@ -56,7 +56,7 @@ export default function WorkspaceLaunchControl(props: Props) {
         </select>
         <A
           href={href()}
-          class="rounded-lg border border-zinc-700 px-3 py-2 text-center text-xs font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+          class="app-button-compact-secondary text-center"
         >
           {props.buttonLabel ?? "Open in Workspace"}
         </A>
@@ -69,7 +69,7 @@ export default function WorkspaceLaunchControl(props: Props) {
       <label class="space-y-1">
         <span class="block text-xs text-zinc-400">Workspace target</span>
         <select
-          class="min-w-[220px] rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+          class="app-input min-w-[220px] text-sm"
           value={workspaceId()}
           onChange={(event) => setWorkspaceId(event.currentTarget.value)}
         >
@@ -80,7 +80,7 @@ export default function WorkspaceLaunchControl(props: Props) {
       </label>
       <A
         href={href()}
-        class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+        class="app-button-secondary"
       >
         {props.buttonLabel ?? "Open in Workspace"}
       </A>
