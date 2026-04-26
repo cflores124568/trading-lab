@@ -2,6 +2,8 @@ import json
 from threading import Lock
 from typing import Any, Optional
 
+import pandas as pd
+
 _schema_lock = Lock()
 _schema_ready = False
 
@@ -262,7 +264,7 @@ def _maybe_json(value: Any) -> Any:
 
 
 def _maybe_iso(value: Any) -> str | None:
-    if value is None:
+    if value is None or pd.isna(value):
         return None
     if hasattr(value, "isoformat"):
         return value.isoformat()
