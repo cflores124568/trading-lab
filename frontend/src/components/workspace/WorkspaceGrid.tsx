@@ -53,7 +53,7 @@ function getBoundaryOffsets(weights: number[]): number[] {
 }
 
 function getDesktopMinHeight(rowCount: number): string {
-  return `${Math.max(720, rowCount * 420)}px`;
+  return `${Math.max(640, rowCount * 360)}px`;
 }
 
 function ResizeHandle(props: ResizeHandleProps) {
@@ -174,7 +174,7 @@ function PanelSlot(props: {
   }
 
   return (
-    <div class="min-h-0 min-w-0">
+    <div class="h-full min-h-0 min-w-0">
       <ChartPanel
         panel={panel}
         canRemove={props.canRemove}
@@ -200,7 +200,7 @@ function DesktopRow(props: {
 
   return (
     <div class="relative h-full">
-      <div ref={container} class="flex h-full gap-4">
+      <div ref={container} class="flex h-full gap-3">
         <div
           class="min-h-0 min-w-0"
           style={{ flex: `${props.columnRatio ?? 1} 1 0%` }}
@@ -258,7 +258,7 @@ function FocusDesktopLayout(props: {
     <div class="relative hidden xl:block">
       <div
         ref={container}
-        class="flex flex-col gap-4"
+        class="flex flex-col gap-3"
         style={{ "min-height": getDesktopMinHeight(props.panels.length) }}
       >
         {props.panels.map((panel, index) => (
@@ -306,7 +306,7 @@ function TiledDesktopLayout(props: {
     <div class="relative hidden xl:block">
       <div
         ref={container}
-        class="flex flex-col gap-4"
+        class="flex flex-col gap-3"
         style={{ "min-height": getDesktopMinHeight(rows.length) }}
       >
         {rows.map((row, index) => (
@@ -350,7 +350,7 @@ function TiledDesktopLayout(props: {
 export default function WorkspaceGrid(props: Props) {
   return (
     <>
-      <div class="grid gap-4 xl:hidden">
+      <div class="grid gap-3 xl:hidden">
         {props.panels.map((panel) => (
           <PanelSlot
             panel={panel}

@@ -265,7 +265,7 @@ export default function Dashboard() {
         </div>
       ) : null}
 
-      <section class="app-panel app-panel-section">
+      <section class="app-panel overflow-hidden">
         <WorkspaceToolbar
           workspaceId={activeWorkspace().id}
           defaultWorkspaceId={workspace.defaultWorkspaceId}
@@ -288,17 +288,18 @@ export default function Dashboard() {
           onPresetChange={handlePresetChange}
           onAddChart={handleAddChart}
         />
+        <div class="p-3 lg:p-4">
+          <WorkspaceGrid
+            preset={activeWorkspace().selectedPreset}
+            panels={activePresetState().panels}
+            layout={activePresetState().layout}
+            onLayoutChange={handleLayoutChange}
+            onPanelTitleChange={handlePanelTitleChange}
+            onPanelQueryChange={handlePanelQueryChange}
+            onPanelRemove={handleRemovePanel}
+          />
+        </div>
       </section>
-
-      <WorkspaceGrid
-        preset={activeWorkspace().selectedPreset}
-        panels={activePresetState().panels}
-        layout={activePresetState().layout}
-        onLayoutChange={handleLayoutChange}
-        onPanelTitleChange={handlePanelTitleChange}
-        onPanelQueryChange={handlePanelQueryChange}
-        onPanelRemove={handleRemovePanel}
-      />
 
       <section class="grid gap-4 lg:grid-cols-3">
         <div class="app-panel app-panel-section">

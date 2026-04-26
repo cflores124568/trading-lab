@@ -76,6 +76,7 @@ function toHistoricalQuery(query: ChartPanelQuery): ChartPanelQuery {
 export default function ChartPanel(props: Props) {
   const query = createMemo(() => props.panel.query);
   const [titleDraft, setTitleDraft] = createSignal(props.panel.title);
+  const [showControls, setShowControls] = createSignal(false);
 
   createEffect(() => {
     setTitleDraft(props.panel.title);
@@ -126,6 +127,7 @@ export default function ChartPanel(props: Props) {
   const indicatorSettings = createMemo(() =>
     normalizePriceChartIndicatorSettings(query().indicators),
   );
+  const modeLabel = createMemo(() => (query().mode === "live" ? "Live" : "History"));
 
   const setMode = (mode: "live" | "historical") => {
     const current = query();
@@ -155,208 +157,229 @@ export default function ChartPanel(props: Props) {
   };
 
   return (
-    <section class="app-panel app-panel-section flex h-full min-h-[560px] flex-col space-y-4">
-      <div class="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-        <div class="min-w-0 flex-1 space-y-3">
-          <div class="space-y-1">
-            <p class="app-kicker">{query().mode === "live" ? "Live Preview" : "Historical Query"}</p>
-            <p class="text-sm text-zinc-400">{panelSummary()}</p>
+    <section class="flex h-full min-h-[440px] flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+      <div class="border-b border-zinc-800 bg-zinc-950/90 px-3 py-2">
+        <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div class="min-w-0 flex-1">
+            <div class="flex min-w-0 flex-wrap items-center gap-2">
+              <h3 class="truncate text-sm font-semibold text-zinc-100">{props.panel.title}</h3>
+              <span class="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-300">
+                {query().symbol}
+              </span>
+              <span class="text-xs text-zinc-500">{query().interval}</span>
+              <span class="rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                {modeLabel()}
+              </span>
+            </div>
+            <p class="mt-1 truncate text-xs text-zinc-500">{panelSummary()}</p>
           </div>
 
-          <label class="block max-w-md space-y-1">
-            <span class="block text-xs text-zinc-500">Panel title</span>
-            <input
-              type="text"
-              class={field}
-              value={titleDraft()}
-              maxLength={MAX_PANEL_TITLE_LENGTH}
-              placeholder="Higher Timeframe Bias"
-              onInput={(event) => setTitleDraft(event.currentTarget.value)}
-              onBlur={commitTitle}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  commitTitle();
-                  event.currentTarget.blur();
-                }
-
-                if (event.key === "Escape") {
-                  setTitleDraft(props.panel.title);
-                  event.currentTarget.blur();
-                }
-              }}
-            />
-          </label>
-
-          <h3 class="text-base font-semibold text-zinc-100">{props.panel.title}</h3>
-        </div>
-
-        <div class="flex flex-wrap justify-end gap-2">
-          <Show when={props.canRemove}>
+          <div class="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              class="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
-              onClick={props.onRemove}
+              class={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                query().mode === "live"
+                  ? "bg-zinc-100 text-zinc-950"
+                  : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+              }`}
+              onClick={() => setMode("live")}
             >
-              Remove
+              Live
             </button>
-          </Show>
-          <button
-            type="button"
-            class={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-              query().mode === "live"
-                ? "bg-zinc-100 text-zinc-950"
-                : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-            }`}
-            onClick={() => setMode("live")}
-          >
-            Live
-          </button>
-          <button
-            type="button"
-            class={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+            <button
+              type="button"
+              class={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
               query().mode === "historical"
                 ? "bg-zinc-100 text-zinc-950"
                 : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-            }`}
-            onClick={() => setMode("historical")}
-          >
-            Historical
-          </button>
+              }`}
+              onClick={() => setMode("historical")}
+            >
+              Historical
+            </button>
+            <button
+              type="button"
+              class="rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100"
+              onClick={() => setShowControls((current) => !current)}
+            >
+              {showControls() ? "Hide controls" : "Controls"}
+            </button>
+            <Show when={props.canRemove}>
+              <button
+                type="button"
+                class="rounded-lg border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:border-zinc-700 hover:text-zinc-300"
+                onClick={props.onRemove}
+              >
+                Remove
+              </button>
+            </Show>
+          </div>
         </div>
       </div>
 
-      <ChartIndicatorToggleBar
-        settings={indicatorSettings()}
-        onToggle={toggleIndicator}
-      />
-
-      <div class="app-subpanel p-4">
-        <Show
-          when={query().mode === "live"}
-          fallback={
-            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <label class="space-y-1">
-                <span class="block text-xs text-zinc-400">Symbol</span>
-                <select
-                  class={field}
-                  value={query().symbol}
-                  onChange={(event) =>
-                    updateQuery((current) => ({ ...current, symbol: event.currentTarget.value }))
-                  }
-                >
-                  {DATABENTO_SYMBOLS.map((symbol) => (
-                    <option value={symbol.key}>{symbol.label}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label class="space-y-1">
-                <span class="block text-xs text-zinc-400">Interval</span>
-                <select
-                  class={field}
-                  value={query().interval}
-                  onChange={(event) =>
-                    updateQuery((current) => ({ ...current, interval: event.currentTarget.value }))
-                  }
-                >
-                  {BACKTEST_INTERVALS.map((interval) => (
-                    <option value={interval.value}>{interval.label}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label class="space-y-1">
-                <span class="block text-xs text-zinc-400">Start Date</span>
-                <input
-                  type="date"
-                  class={field}
-                  value={historicalQuery()?.startDate ?? ""}
-                  onInput={(event) =>
-                    updateQuery((current) =>
-                      current.mode === "historical"
-                        ? { ...current, startDate: event.currentTarget.value }
-                        : current,
-                    )
-                  }
-                />
-              </label>
-
-              <label class="space-y-1">
-                <span class="block text-xs text-zinc-400">End Date</span>
-                <input
-                  type="date"
-                  class={field}
-                  value={historicalQuery()?.endDate ?? ""}
-                  onInput={(event) =>
-                    updateQuery((current) =>
-                      current.mode === "historical"
-                        ? { ...current, endDate: event.currentTarget.value }
-                        : current,
-                    )
-                  }
-                />
-              </label>
-            </div>
-          }
-        >
-          <div class="grid gap-3 md:grid-cols-3">
-            <label class="space-y-1">
-              <span class="block text-xs text-zinc-400">Symbol</span>
-              <select
+      <Show when={showControls()}>
+        <div class="border-b border-zinc-800 bg-zinc-950/75 px-3 py-3">
+          <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <label class="space-y-1 xl:col-span-2">
+              <span class="block text-xs text-zinc-500">Panel title</span>
+              <input
+                type="text"
                 class={field}
-                value={query().symbol}
-                onChange={(event) =>
-                  updateQuery((current) => ({ ...current, symbol: event.currentTarget.value }))
-                }
-              >
-                {YFINANCE_SYMBOLS.map((symbol) => (
-                  <option value={symbol.key}>{symbol.label}</option>
-                ))}
-              </select>
+                value={titleDraft()}
+                maxLength={MAX_PANEL_TITLE_LENGTH}
+                placeholder="Higher Timeframe Bias"
+                onInput={(event) => setTitleDraft(event.currentTarget.value)}
+                onBlur={commitTitle}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    commitTitle();
+                    event.currentTarget.blur();
+                  }
+
+                  if (event.key === "Escape") {
+                    setTitleDraft(props.panel.title);
+                    event.currentTarget.blur();
+                  }
+                }}
+              />
             </label>
 
-            <label class="space-y-1">
-              <span class="block text-xs text-zinc-400">Interval</span>
-              <select
-                class={field}
-                value={query().interval}
-                onChange={(event) =>
-                  updateQuery((current) => ({ ...current, interval: event.currentTarget.value }))
-                }
-              >
-                {LIVE_CHART_INTERVALS.map((interval) => (
-                  <option value={interval.value}>{interval.label}</option>
-                ))}
-              </select>
-            </label>
+            <Show
+              when={query().mode === "live"}
+              fallback={
+                <>
+                  <label class="space-y-1">
+                    <span class="block text-xs text-zinc-500">Symbol</span>
+                    <select
+                      class={field}
+                      value={query().symbol}
+                      onChange={(event) =>
+                        updateQuery((current) => ({ ...current, symbol: event.currentTarget.value }))
+                      }
+                    >
+                      {DATABENTO_SYMBOLS.map((symbol) => (
+                        <option value={symbol.key}>{symbol.label}</option>
+                      ))}
+                    </select>
+                  </label>
 
-            <label class="space-y-1">
-              <span class="block text-xs text-zinc-400">Lookback</span>
-              <select
-                class={field}
-                value={liveQuery()?.period ?? DEFAULT_PERIOD.value}
-                onChange={(event) =>
-                  updateQuery((current) =>
-                    current.mode === "live"
-                      ? { ...current, period: event.currentTarget.value }
-                      : current,
-                  )
-                }
-              >
-                {PERIODS.map((period) => (
-                  <option value={period.value}>{period.label}</option>
-                ))}
-              </select>
-            </label>
+                  <label class="space-y-1">
+                    <span class="block text-xs text-zinc-500">Interval</span>
+                    <select
+                      class={field}
+                      value={query().interval}
+                      onChange={(event) =>
+                        updateQuery((current) => ({ ...current, interval: event.currentTarget.value }))
+                      }
+                    >
+                      {BACKTEST_INTERVALS.map((interval) => (
+                        <option value={interval.value}>{interval.label}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label class="space-y-1">
+                    <span class="block text-xs text-zinc-500">Start Date</span>
+                    <input
+                      type="date"
+                      class={field}
+                      value={historicalQuery()?.startDate ?? ""}
+                      onInput={(event) =>
+                        updateQuery((current) =>
+                          current.mode === "historical"
+                            ? { ...current, startDate: event.currentTarget.value }
+                            : current,
+                        )
+                      }
+                    />
+                  </label>
+
+                  <label class="space-y-1">
+                    <span class="block text-xs text-zinc-500">End Date</span>
+                    <input
+                      type="date"
+                      class={field}
+                      value={historicalQuery()?.endDate ?? ""}
+                      onInput={(event) =>
+                        updateQuery((current) =>
+                          current.mode === "historical"
+                            ? { ...current, endDate: event.currentTarget.value }
+                            : current,
+                        )
+                      }
+                    />
+                  </label>
+                </>
+              }
+            >
+              <>
+                <label class="space-y-1">
+                  <span class="block text-xs text-zinc-500">Symbol</span>
+                  <select
+                    class={field}
+                    value={query().symbol}
+                    onChange={(event) =>
+                      updateQuery((current) => ({ ...current, symbol: event.currentTarget.value }))
+                    }
+                  >
+                    {YFINANCE_SYMBOLS.map((symbol) => (
+                      <option value={symbol.key}>{symbol.label}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label class="space-y-1">
+                  <span class="block text-xs text-zinc-500">Interval</span>
+                  <select
+                    class={field}
+                    value={query().interval}
+                    onChange={(event) =>
+                      updateQuery((current) => ({ ...current, interval: event.currentTarget.value }))
+                    }
+                  >
+                    {LIVE_CHART_INTERVALS.map((interval) => (
+                      <option value={interval.value}>{interval.label}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label class="space-y-1">
+                  <span class="block text-xs text-zinc-500">Lookback</span>
+                  <select
+                    class={field}
+                    value={liveQuery()?.period ?? DEFAULT_PERIOD.value}
+                    onChange={(event) =>
+                      updateQuery((current) =>
+                        current.mode === "live"
+                          ? { ...current, period: event.currentTarget.value }
+                          : current,
+                      )
+                    }
+                  >
+                    {PERIODS.map((period) => (
+                      <option value={period.value}>{period.label}</option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            </Show>
           </div>
-        </Show>
-      </div>
+
+          <div class="mt-3 border-t border-zinc-800 pt-3">
+            <ChartIndicatorToggleBar
+              settings={indicatorSettings()}
+              onToggle={toggleIndicator}
+              compact
+            />
+          </div>
+        </div>
+      </Show>
 
       <Show
         when={candles.error}
         fallback={
-          <Show when={!candles.loading} fallback={<div class="app-skeleton min-h-[320px] flex-1" />}>
-            <div class="min-h-[320px] flex-1">
+          <Show when={!candles.loading} fallback={<div class="app-skeleton min-h-0 flex-1 rounded-none" />}>
+            <div class="min-h-0 flex-1">
               <PriceChart
                 candles={candles() ?? []}
                 indicators={indicatorSettings()}
@@ -367,7 +390,7 @@ export default function ChartPanel(props: Props) {
         }
       >
         {(error) => (
-          <div class="app-subpanel flex min-h-[320px] flex-1 items-center justify-center px-6 text-center">
+          <div class="flex min-h-0 flex-1 items-center justify-center px-6 text-center">
             <div class="space-y-2">
               <p class="text-sm font-semibold text-red-300">Chart request failed</p>
               <p class="text-sm text-red-400">{error().message}</p>
@@ -377,7 +400,7 @@ export default function ChartPanel(props: Props) {
       </Show>
 
       <Show when={!candles.loading && (candles()?.length ?? 0) === 0 && !candles.error}>
-        <div class="app-subpanel min-h-[320px] flex-1 px-4 py-5">
+        <div class="min-h-0 flex-1 px-4 py-5">
           <p class="text-sm font-semibold text-zinc-100">No candles returned</p>
           <p class="mt-1 text-sm text-zinc-400">
             Try a wider date range or switch to another interval so the panel has something to
