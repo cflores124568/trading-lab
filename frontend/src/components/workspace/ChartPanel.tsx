@@ -1,5 +1,10 @@
 import { createEffect, createMemo, createResource, createSignal, Show } from "solid-js";
+import ChartIndicatorToggleBar from "../ChartIndicatorToggleBar";
 import PriceChart from "../PriceChart";
+import {
+  normalizePriceChartIndicatorSettings,
+  type PriceChartIndicatorSettings,
+} from "../../services/chartIndicators";
 import {
   BACKTEST_INTERVALS,
   DATABENTO_SYMBOLS,
@@ -30,8 +35,7 @@ type LiveChartPanelQuery = Extract<ChartPanelQuery, { mode: "live" }>;
 type HistoricalChartPanelQuery = Extract<ChartPanelQuery, { mode: "historical" }>;
 
 const field =
-  "w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 " +
-  "focus:outline-none focus:ring-1 focus:ring-zinc-500";
+  "app-input w-full text-sm";
 
 function summarizeQuery(query: ChartPanelQuery): string {
   if (query.mode === "live") {
@@ -51,6 +55,7 @@ function toLiveQuery(query: ChartPanelQuery): ChartPanelQuery {
     symbol: query.symbol,
     interval: getLiveInterval(query.interval),
     period: DEFAULT_PERIOD.value,
+    indicators: normalizePriceChartIndicatorSettings(query.indicators),
   };
 }
 
@@ -64,6 +69,7 @@ function toHistoricalQuery(query: ChartPanelQuery): ChartPanelQuery {
     interval: query.interval,
     startDate: monthStart,
     endDate: today,
+    indicators: normalizePriceChartIndicatorSettings(query.indicators),
   };
 }
 
@@ -117,6 +123,9 @@ export default function ChartPanel(props: Props) {
     const nextQuery = query();
     return nextQuery.mode === "historical" ? nextQuery : null;
   });
+  const indicatorSettings = createMemo(() =>
+    normalizePriceChartIndicatorSettings(query().indicators),
+  );
 
   const setMode = (mode: "live" | "historical") => {
     const current = query();
@@ -126,6 +135,18 @@ export default function ChartPanel(props: Props) {
   const updateQuery = (nextQuery: ChartPanelQuery | ((current: ChartPanelQuery) => ChartPanelQuery)) => {
     const current = query();
     props.onQueryChange(typeof nextQuery === "function" ? nextQuery(current) : nextQuery);
+  };
+  const toggleIndicator = (key: keyof PriceChartIndicatorSettings) => {
+    updateQuery((current) => {
+      const settings = normalizePriceChartIndicatorSettings(current.indicators);
+      return {
+        ...current,
+        indicators: {
+          ...settings,
+          [key]: !settings[key],
+        },
+      };
+    });
   };
   const commitTitle = () => {
     const nextTitle = normalizePanelTitle(titleDraft(), props.panel.title);
@@ -203,6 +224,11 @@ export default function ChartPanel(props: Props) {
           </button>
         </div>
       </div>
+
+      <ChartIndicatorToggleBar
+        settings={indicatorSettings()}
+        onToggle={toggleIndicator}
+      />
 
       <div class="app-subpanel p-4">
         <Show
@@ -331,7 +357,11 @@ export default function ChartPanel(props: Props) {
         fallback={
           <Show when={!candles.loading} fallback={<div class="app-skeleton min-h-[320px] flex-1" />}>
             <div class="min-h-[320px] flex-1">
-              <PriceChart candles={candles() ?? []} class="h-full" />
+              <PriceChart
+                candles={candles() ?? []}
+                indicators={indicatorSettings()}
+                class="h-full"
+              />
             </div>
           </Show>
         }

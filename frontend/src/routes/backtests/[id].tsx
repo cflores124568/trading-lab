@@ -22,9 +22,14 @@ import {
   type Trade,
 } from "../../services/api";
 import { DATABENTO_SYMBOLS } from "../../constants";
+import ChartIndicatorToggleBar from "../../components/ChartIndicatorToggleBar";
 import EquityCurve from "../../components/EquityCurve";
 import PriceChart, { type PriceChartMarker } from "../../components/PriceChart";
 import ReplayControls from "../../components/ReplayControls";
+import {
+  defaultPriceChartIndicatorSettings,
+  type PriceChartIndicatorSettings,
+} from "../../services/chartIndicators";
 import {
   clampReplayIndex,
   findJumpTarget,
@@ -768,6 +773,9 @@ export default function BacktestDetail() {
   const [speed, setSpeed] = createSignal(8);
   const [currentIndex, setCurrentIndex] = createSignal(0);
   const [replayActions, setReplayActions] = createSignal<ReplayAction[]>([]);
+  const [indicatorSettings, setIndicatorSettings] = createSignal(
+    defaultPriceChartIndicatorSettings(),
+  );
 
   let lastResetKey: string | null = null;
 
@@ -1224,6 +1232,13 @@ export default function BacktestDetail() {
     });
   };
 
+  const toggleIndicator = (key: keyof PriceChartIndicatorSettings) => {
+    setIndicatorSettings((current) => ({
+      ...current,
+      [key]: !current[key],
+    }));
+  };
+
   return (
     <AppShell
       title={result() ? `${result()!.symbol} • ${result()!.strategy.type}` : "Backtest"}
@@ -1426,6 +1441,11 @@ export default function BacktestDetail() {
 
                     <div class="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
                       <div class="space-y-5">
+                        <ChartIndicatorToggleBar
+                          settings={indicatorSettings()}
+                          onToggle={toggleIndicator}
+                        />
+
                         <div class="overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-950/70 p-3">
                           <Show
                             when={candles.error}
@@ -1447,6 +1467,7 @@ export default function BacktestDetail() {
                                   markers={chartMarkers()}
                                   visibleIndex={replayIndex()}
                                   height={520}
+                                  indicators={indicatorSettings()}
                                   class="rounded-2xl"
                                 />
                               </Show>

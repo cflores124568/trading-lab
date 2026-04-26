@@ -11,6 +11,7 @@ import {
 } from "solid-js";
 import { CircleCheck, CircleX, TriangleAlert } from "lucide-solid";
 import AppShell from "../components/AppShell";
+import ChartIndicatorToggleBar from "../components/ChartIndicatorToggleBar";
 import EquityCurve from "../components/EquityCurve";
 import PriceChart, { type PriceChartMarker } from "../components/PriceChart";
 import ReplayControls from "../components/ReplayControls";
@@ -50,6 +51,10 @@ import {
   formatReplaySessionStatus,
   getReplaySessionStatus,
 } from "../services/replaySessionState";
+import {
+  defaultPriceChartIndicatorSettings,
+  type PriceChartIndicatorSettings,
+} from "../services/chartIndicators";
 import WorkspaceLaunchControl from "../components/workspace/WorkspaceLaunchControl";
 import type { WorkspaceLaunchIntent } from "../components/workspace/workspacePersistence";
 
@@ -272,6 +277,9 @@ export default function ReplayLabPage() {
   const [speed, setSpeed] = createSignal(8);
   const [currentIndex, setCurrentIndex] = createSignal(0);
   const [replayActions, setReplayActions] = createSignal<ReplayAction[]>([]);
+  const [indicatorSettings, setIndicatorSettings] = createSignal(
+    defaultPriceChartIndicatorSettings(),
+  );
 
   let hydratedSessionId: string | null = null;
   let hydratedSourceBacktestId: string | null = null;
@@ -732,6 +740,13 @@ export default function ReplayLabPage() {
     if (target !== null) {
       seekToIndex(target);
     }
+  };
+
+  const toggleIndicator = (key: keyof PriceChartIndicatorSettings) => {
+    setIndicatorSettings((current) => ({
+      ...current,
+      [key]: !current[key],
+    }));
   };
 
   const launchReplay = () => {
@@ -1224,6 +1239,11 @@ export default function ReplayLabPage() {
 
                   <div class="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
                     <div class="space-y-5">
+                      <ChartIndicatorToggleBar
+                        settings={indicatorSettings()}
+                        onToggle={toggleIndicator}
+                      />
+
                       <div class="overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-950/70 p-3">
                         <Show
                           when={candles.error}
@@ -1245,6 +1265,7 @@ export default function ReplayLabPage() {
                                 markers={chartMarkers()}
                                 visibleIndex={replayIndex()}
                                 height={520}
+                                indicators={indicatorSettings()}
                                 class="rounded-2xl"
                               />
                             </Show>

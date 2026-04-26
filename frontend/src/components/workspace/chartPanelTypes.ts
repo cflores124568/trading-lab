@@ -1,3 +1,8 @@
+import {
+  normalizePriceChartIndicatorSettings,
+  type PriceChartIndicatorSettings,
+} from "../../services/chartIndicators";
+
 export type WorkspacePreset = "focus" | "split" | "grid";
 
 export type ChartSourceMode = "live" | "historical";
@@ -8,6 +13,7 @@ export type ChartPanelQuery =
       symbol: string;
       interval: string;
       period: string;
+      indicators?: PriceChartIndicatorSettings;
     }
   | {
       mode: "historical";
@@ -15,6 +21,7 @@ export type ChartPanelQuery =
       interval: string;
       startDate?: string;
       endDate?: string;
+      indicators?: PriceChartIndicatorSettings;
     };
 
 export interface ChartPanelConfig {
@@ -85,7 +92,10 @@ function formatDate(daysAgo: number): string {
 }
 
 function cloneQuery(query: ChartPanelQuery): ChartPanelQuery {
-  return { ...query };
+  return {
+    ...query,
+    indicators: normalizePriceChartIndicatorSettings(query.indicators),
+  };
 }
 
 function createPanelId(preset: WorkspacePreset): string {
@@ -480,6 +490,9 @@ function normalizeQuery(query: unknown, fallback: ChartPanelQuery): ChartPanelQu
       symbol,
       interval,
       period: record.period,
+      indicators: normalizePriceChartIndicatorSettings(
+        asRecord(record.indicators) as Partial<PriceChartIndicatorSettings> | null | undefined,
+      ),
     };
   }
 
@@ -494,6 +507,9 @@ function normalizeQuery(query: unknown, fallback: ChartPanelQuery): ChartPanelQu
       interval,
       startDate: typeof record.startDate === "string" ? record.startDate : undefined,
       endDate: typeof record.endDate === "string" ? record.endDate : undefined,
+      indicators: normalizePriceChartIndicatorSettings(
+        asRecord(record.indicators) as Partial<PriceChartIndicatorSettings> | null | undefined,
+      ),
     };
   }
 
