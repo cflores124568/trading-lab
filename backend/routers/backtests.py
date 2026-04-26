@@ -1,6 +1,6 @@
 import uuid
 from fastapi import APIRouter, HTTPException, Query
-from schemas import BacktestRequest, BacktestResult, BacktestSummary, BacktestCompare
+from schemas import BacktestCompare, BacktestRequest, BacktestResult, BacktestRobustnessResult, BacktestSummary
 from services.backtest_repo import (
     get_backtest as get_backtest_db, list_backtests as list_backtests_db, save_backtest,
 )
@@ -9,6 +9,7 @@ from services.backtest_store import (
 )
 from services.data_loader import get_candles, get_dataset
 from services.backtest_service import build_backtest_result, build_replay_context, persist_backtest_result
+from services.robustness_service import analyze_backtest_robustness
 
 router = APIRouter()
 
@@ -216,6 +217,32 @@ async def get_backtest_candles(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/{backtest_id}/robustness", response_model=BacktestRobustnessResult)
+async def get_backtest_robustness(
+    backtest_id: str,
+    simulations: int = Query(default=200, ge=50, le=2_000),
+    parameter_limit: int = Query(default=15, ge=3, le=40),
+    folds: int = Query(default=3, ge=1, le=5),
+):
+    bt = _load_backtest_any(backtest_id)
+    if bt is None:
+        raise HTTPException(status_code=404, detail=f"Backtest '{backtest_id}' not found.")
+
+    try:
+        return analyze_backtest_robustness(
+            bt,
+            monte_carlo_simulations=simulations,
+            parameter_sweep_limit=parameter_limit,
+            walk_forward_folds=folds,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Robustness analysis needs a live dataset: {exc}")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Robustness analysis failed: {exc}")
 
 @router.get("/{backtest_id}", response_model=BacktestResult)
 async def get_backtest(backtest_id: str):

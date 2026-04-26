@@ -174,6 +174,12 @@ export interface BacktestResult {
   } | null;
   strategy: { type: string; params: Record<string, unknown> };
   prop_firm_rules: PropFirmRules;
+  run_config: {
+    initial_balance: number;
+    position_size: number;
+    commission: number;
+    tick_value: number;
+  };
   status: string;
   created_at: string;
   trades: Trade[];
@@ -242,6 +248,98 @@ export interface BacktestCompare {
     created_at: string;
     metrics: BacktestMetrics;
   };
+}
+
+export interface RobustnessDistribution {
+  p05: number;
+  median: number;
+  p95: number;
+  worst: number;
+  best: number;
+}
+
+export interface RobustnessMonteCarloScenario {
+  key: string;
+  label: string;
+  simulations: number;
+  total_pnl: RobustnessDistribution;
+  max_drawdown: RobustnessDistribution;
+  profitable_rate: number;
+  worse_than_base_drawdown_rate: number;
+  note: string;
+}
+
+export interface RobustnessSweepRun {
+  rank: number;
+  params: Record<string, unknown>;
+  score: number;
+  total_pnl: number;
+  max_drawdown: number;
+  profit_factor: number;
+  passed: boolean;
+}
+
+export interface RobustnessParameterSweep {
+  ranking_rule: string;
+  total_runs: number;
+  profitable_rate: number;
+  passing_rate: number;
+  baseline_rank?: number | null;
+  median_score: number;
+  median_total_pnl: number;
+  top_runs: RobustnessSweepRun[];
+  bottom_run?: RobustnessSweepRun | null;
+  note: string;
+}
+
+export interface RobustnessWalkForwardFold {
+  fold_index: number;
+  train_start: string;
+  train_end: string;
+  test_start: string;
+  test_end: string;
+  selected_params: Record<string, unknown>;
+  train_score: number;
+  test_score: number;
+  test_total_pnl: number;
+  test_max_drawdown: number;
+  test_passed: boolean;
+  test_trades: number;
+}
+
+export interface BacktestRobustnessResult {
+  backtest_id: string;
+  symbol?: string | null;
+  strategy_type: string;
+  run_config: {
+    initial_balance: number;
+    position_size: number;
+    commission: number;
+    tick_value: number;
+  };
+  baseline: {
+    total_pnl: number;
+    max_drawdown: number;
+    profit_factor: number;
+    win_rate: number;
+    total_trades: number;
+    passed: boolean;
+  };
+  monte_carlo: RobustnessMonteCarloScenario[];
+  parameter_sweep: RobustnessParameterSweep;
+  walk_forward: {
+    ranking_rule: string;
+    folds_requested: number;
+    folds_completed: number;
+    profitable_rate: number;
+    passing_rate: number;
+    total_test_pnl: number;
+    average_test_score: number;
+    average_test_pnl: number;
+    folds: RobustnessWalkForwardFold[];
+    note: string;
+  };
+  warnings: string[];
 }
 
 export interface PropFirmPreset {
@@ -884,6 +982,12 @@ export const updateReplaySession = async (
 //Fetch detailed results for a specific backtest.
 export const fetchBacktest = async (id: string): Promise<BacktestResult> => {
   return api<BacktestResult>(`${API_ROUTES.backtests}/${id}`);
+};
+
+export const fetchBacktestRobustness = async (
+  id: string,
+): Promise<BacktestRobustnessResult> => {
+  return api<BacktestRobustnessResult>(`${API_ROUTES.backtests}/${id}/robustness`);
 };
 
 //Run a new backtest with a strategy configuration.

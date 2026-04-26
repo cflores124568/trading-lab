@@ -460,6 +460,14 @@ class BacktestRequest(BaseModel):
     initial_balance: float          = Field(default=100_000, gt=0)
     position_size:   float          = Field(default=1.0, gt=0)
     commission:      float          = Field(default=5.0, ge=0)
+    tick_value:      float          = Field(default=12.5, gt=0)
+
+
+class BacktestRunConfig(BaseModel):
+    initial_balance: float = Field(default=100_000, gt=0)
+    position_size: float = Field(default=1.0, gt=0)
+    commission: float = Field(default=5.0, ge=0)
+    tick_value: float = Field(default=12.5, gt=0)
 
 class BacktestResult(BaseModel):
     backtest_id:    str
@@ -468,6 +476,7 @@ class BacktestResult(BaseModel):
     replay_context: Optional[ReplayContext] = None
     strategy:       Strategy
     prop_firm_rules: PropFirmRules
+    run_config:     BacktestRunConfig
     status:         str
     created_at:     str
     trades:         List[Trade]
@@ -490,6 +499,97 @@ class BacktestCompare(BaseModel):
     backtest_a: BacktestResult
     backtest_b: BacktestResult
     comparison: dict[str, Any]
+
+
+class RobustnessDistribution(BaseModel):
+    p05: float
+    median: float
+    p95: float
+    worst: float
+    best: float
+
+
+class RobustnessMonteCarloScenario(BaseModel):
+    key: str
+    label: str
+    simulations: int
+    total_pnl: RobustnessDistribution
+    max_drawdown: RobustnessDistribution
+    profitable_rate: float
+    worse_than_base_drawdown_rate: float
+    note: str
+
+
+class RobustnessSweepRun(BaseModel):
+    rank: int
+    params: dict[str, Any] = Field(default_factory=dict)
+    score: float
+    total_pnl: float
+    max_drawdown: float
+    profit_factor: float
+    passed: bool
+
+
+class RobustnessParameterSweep(BaseModel):
+    ranking_rule: str
+    total_runs: int
+    profitable_rate: float
+    passing_rate: float
+    baseline_rank: Optional[int] = None
+    median_score: float
+    median_total_pnl: float
+    top_runs: List[RobustnessSweepRun] = Field(default_factory=list)
+    bottom_run: Optional[RobustnessSweepRun] = None
+    note: str
+
+
+class RobustnessWalkForwardFold(BaseModel):
+    fold_index: int
+    train_start: str
+    train_end: str
+    test_start: str
+    test_end: str
+    selected_params: dict[str, Any] = Field(default_factory=dict)
+    train_score: float
+    test_score: float
+    test_total_pnl: float
+    test_max_drawdown: float
+    test_passed: bool
+    test_trades: int
+
+
+class RobustnessWalkForward(BaseModel):
+    ranking_rule: str
+    folds_requested: int
+    folds_completed: int
+    profitable_rate: float
+    passing_rate: float
+    total_test_pnl: float
+    average_test_score: float
+    average_test_pnl: float
+    folds: List[RobustnessWalkForwardFold] = Field(default_factory=list)
+    note: str
+
+
+class RobustnessBaseline(BaseModel):
+    total_pnl: float
+    max_drawdown: float
+    profit_factor: float
+    win_rate: float
+    total_trades: int
+    passed: bool
+
+
+class BacktestRobustnessResult(BaseModel):
+    backtest_id: str
+    symbol: Optional[str] = None
+    strategy_type: StrategyType
+    run_config: BacktestRunConfig
+    baseline: RobustnessBaseline
+    monte_carlo: List[RobustnessMonteCarloScenario] = Field(default_factory=list)
+    parameter_sweep: RobustnessParameterSweep
+    walk_forward: RobustnessWalkForward
+    warnings: List[str] = Field(default_factory=list)
 
 #Parquet load request
 class ParquetLoadRequest(BaseModel):

@@ -25,6 +25,7 @@ def _ensure_backtests_schema(conn) -> None:
         with conn.cursor() as cur:
             cur.execute("ALTER TABLE backtests ADD COLUMN IF NOT EXISTS symbol TEXT")
             cur.execute("ALTER TABLE backtests ADD COLUMN IF NOT EXISTS replay_context JSONB")
+            cur.execute("ALTER TABLE backtests ADD COLUMN IF NOT EXISTS run_config JSONB")
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS backtests_symbol_idx ON backtests (symbol)"
             )
@@ -42,15 +43,16 @@ def save_backtest(result: dict) -> None:
 
     sql = """
         INSERT INTO backtests (
-            backtest_id, dataset_id, symbol, replay_context, strategy_type, strategy,
+            backtest_id, dataset_id, symbol, replay_context, run_config, strategy_type, strategy,
             prop_firm_rules, status, created_at, trades,
             metrics, prop_firm_eval, equity_curve
         )
-        VALUES (%s, %s, %s, %s::jsonb, %s, %s::jsonb, %s::jsonb, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb)
+        VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, %s, %s::jsonb, %s::jsonb, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb)
         ON CONFLICT (backtest_id) DO UPDATE SET
             dataset_id      = EXCLUDED.dataset_id,
             symbol          = EXCLUDED.symbol,
             replay_context  = EXCLUDED.replay_context,
+            run_config      = EXCLUDED.run_config,
             strategy_type   = EXCLUDED.strategy_type,
             strategy        = EXCLUDED.strategy,
             prop_firm_rules = EXCLUDED.prop_firm_rules,
@@ -72,6 +74,7 @@ def save_backtest(result: dict) -> None:
                     result["dataset_id"],
                     result.get("symbol", ""),
                     json.dumps(result.get("replay_context")),
+                    json.dumps(result.get("run_config")),
                     result["strategy"]["type"],
                     json.dumps(result["strategy"]),
                     json.dumps(result["prop_firm_rules"]),
@@ -135,6 +138,7 @@ def _row_to_result(row) -> dict:
         "dataset_id":      row["dataset_id"],
         "symbol":          row.get("symbol", "") if hasattr(row, "get") else row["symbol"],
         "replay_context":  _maybe_json(row.get("replay_context")) if hasattr(row, "get") else None,
+        "run_config":      _hydrate_run_config(row),
         "strategy":        _maybe_json(row["strategy"]),
         "prop_firm_rules": _maybe_json(row["prop_firm_rules"]),
         "status":          row["status"],
@@ -148,6 +152,33 @@ def _row_to_result(row) -> dict:
         "prop_firm_eval":  _maybe_json(row["prop_firm_eval"]),
         "equity_curve":    _maybe_json(row["equity_curve"]),
     }
+
+
+def _hydrate_run_config(row) -> dict:
+    raw = _maybe_json(row.get("run_config")) if hasattr(row, "get") else _maybe_json(row["run_config"])
+    prop_rules = _maybe_json(row["prop_firm_rules"])
+    trades = _maybe_json(row["trades"]) or []
+
+    if isinstance(raw, dict) and raw:
+        return {
+            "initial_balance": float(raw.get("initial_balance") or prop_rules.get("account_size") or 100_000),
+            "position_size": float(raw.get("position_size") or 1.0),
+            "commission": float(raw.get("commission") if raw.get("commission") is not None else _infer_trade_commission(trades)),
+            "tick_value": float(raw.get("tick_value") or 12.5),
+        }
+
+    return {
+        "initial_balance": float(prop_rules.get("account_size") or 100_000),
+        "position_size": 1.0,
+        "commission": float(_infer_trade_commission(trades)),
+        "tick_value": 12.5,
+    }
+
+
+def _infer_trade_commission(trades: list[dict]) -> float:
+    if trades and trades[0].get("commission") is not None:
+        return float(trades[0]["commission"])
+    return 5.0
 
 
 def _maybe_json(value: Any) -> Any:

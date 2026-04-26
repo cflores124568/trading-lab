@@ -45,6 +45,7 @@ def build_backtest_result(
         initial_balance=request.initial_balance,
         position_size=request.position_size,
         commission=request.commission,
+        tick_value=request.tick_value,
     )
 
     trades = engine_result["trades"]
@@ -64,6 +65,12 @@ def build_backtest_result(
         "replay_context": build_replay_context(dataset),
         "strategy": request.strategy.model_dump(),
         "prop_firm_rules": request.prop_firm_rules.model_dump(),
+        "run_config": {
+            "initial_balance": request.initial_balance,
+            "position_size": request.position_size,
+            "commission": request.commission,
+            "tick_value": request.tick_value,
+        },
         "status": "completed",
         "created_at": created_at or datetime.utcnow().isoformat(),
         "trades": trades,

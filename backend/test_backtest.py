@@ -98,23 +98,33 @@ def main() -> None:
         _require(summary is not None, "Created backtest did not show up in the list endpoint.")
         print(f"      List entries: {len(summaries)}")
 
-        print("\n[5/6] Checking GET /api/backtests/{id} detail output ...")
+        print("\n[5/7] Checking GET /api/backtests/{id} detail output ...")
         detail = client.get(f"/api/backtests/{backtest_id}")
         _require(detail.status_code == 200, f"Backtest detail failed: {detail.text}")
         detail_payload = detail.json()
         _require(detail_payload["backtest_id"] == backtest_id, "Detail endpoint returned the wrong backtest.")
         _require(detail_payload["metrics"]["total_trades"] >= 0, "Detail endpoint returned invalid metrics.")
+        _require(detail_payload["run_config"]["position_size"] == 1.0, "Detail endpoint lost the saved run config.")
         print(f"      Detail status: {detail_payload['status']}")
 
-        print("\n[6/6] Checking GET /api/backtests/{id}/candles replay output ...")
+        print("\n[6/7] Checking GET /api/backtests/{id}/candles replay output ...")
         candles = client.get(f"/api/backtests/{backtest_id}/candles")
         _require(candles.status_code == 200, f"Backtest candles failed: {candles.text}")
         candle_payload = candles.json()
         _require(len(candle_payload) > 0, "Replay candles endpoint returned no bars.")
         print(f"      Replay candles: {len(candle_payload)}")
 
+        print("\n[7/7] Checking GET /api/backtests/{id}/robustness output ...")
+        robustness = client.get(f"/api/backtests/{backtest_id}/robustness")
+        _require(robustness.status_code == 200, f"Backtest robustness failed: {robustness.text}")
+        robustness_payload = robustness.json()
+        _require(robustness_payload["backtest_id"] == backtest_id, "Robustness endpoint returned the wrong backtest.")
+        _require(len(robustness_payload["monte_carlo"]) >= 1, "Robustness endpoint returned no Monte Carlo scenarios.")
+        _require(robustness_payload["parameter_sweep"]["total_runs"] >= 1, "Parameter sweep returned no runs.")
+        print(f"      Monte Carlo scenarios: {len(robustness_payload['monte_carlo'])}")
+
         if os.getenv("DATABASE_URL"):
-            print("\n[6/6b] Clearing in-memory copy and checking persisted read path ...")
+            print("\n[7/7b] Clearing in-memory copy and checking persisted read path ...")
             removed = delete_backtest(backtest_id)
             _require(removed, "Could not remove the in-memory backtest before DB fallback check.")
 

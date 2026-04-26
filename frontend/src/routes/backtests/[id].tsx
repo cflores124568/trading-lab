@@ -13,12 +13,15 @@ import {
 } from "solid-js";
 import {
   fetchBacktest,
+  fetchBacktestRobustness,
   fetchBacktestCandles,
   fetchPropPresets,
+  type BacktestRobustnessResult,
   type Candle,
   type PropFirmEvaluation,
   type PropFirmPreset,
   type PropFirmRules,
+  type RobustnessDistribution,
   type Trade,
 } from "../../services/api";
 import { DATABENTO_SYMBOLS } from "../../constants";
@@ -54,7 +57,7 @@ import { CircleCheck, CircleX, TriangleAlert } from "lucide-solid";
 import AppShell from "../../components/AppShell";
 import WorkspaceLaunchControl from "../../components/workspace/WorkspaceLaunchControl";
 
-type DetailTab = "overview" | "stats" | "prop-eval" | "trades";
+type DetailTab = "overview" | "stats" | "prop-eval" | "trades" | "robustness";
 
 interface PropEvalDetails {
   account_size?: number;
@@ -100,6 +103,7 @@ const tabOptions: { key: DetailTab; label: string }[] = [
   { key: "stats", label: "Stats" },
   { key: "prop-eval", label: "Prop Eval" },
   { key: "trades", label: "Trades" },
+  { key: "robustness", label: "Robustness" },
 ];
 
 const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -136,8 +140,43 @@ function formatRatio(value: number): string {
   return value.toFixed(2);
 }
 
+function formatParamSummary(params: Record<string, unknown>): string {
+  const entries = Object.entries(params);
+  if (entries.length === 0) {
+    return "Default params";
+  }
+
+  return entries
+    .map(([key, value]) => `${key}=${typeof value === "number" ? Number(value).toFixed(Number.isInteger(value) ? 0 : 2) : String(value)}`)
+    .join(", ");
+}
+
+function formatDistribution(
+  distribution: RobustnessDistribution,
+  formatter: (value: number) => string,
+): string {
+  return `${formatter(distribution.p05)} / ${formatter(distribution.median)} / ${formatter(distribution.p95)}`;
+}
+
 function formatCount(value: number): string {
   return new Intl.NumberFormat("en-US").format(value);
+}
+
+function formatRank(value?: number | null): string {
+  return value == null ? "n/a" : `#${value}`;
+}
+
+function formatRunConfigSummary(runConfig: BacktestRobustnessResult["run_config"]): string {
+  const positionSize = Number.isInteger(runConfig.position_size)
+    ? runConfig.position_size.toFixed(0)
+    : runConfig.position_size.toFixed(2);
+
+  return [
+    `Balance ${formatCurrency(runConfig.initial_balance)}`,
+    `Size ${positionSize}`,
+    `Comm ${formatCurrency(runConfig.commission)}`,
+    `Tick ${formatCurrency(runConfig.tick_value)}`,
+  ].join(" · ");
 }
 
 function markerTimeFromIso(value: string): number {
@@ -768,6 +807,10 @@ export default function BacktestDetail() {
     () => result()?.backtest_id,
     (backtestId) => fetchBacktestCandles(backtestId),
   );
+  const [robustness] = createResource(
+    () => (activeTab() === "robustness" ? params.id : undefined),
+    async (backtestId) => (backtestId ? fetchBacktestRobustness(backtestId) : null),
+  );
 
   const [isReplayActive, setIsReplayActive] = createSignal(false);
   const [speed, setSpeed] = createSignal(8);
@@ -843,8 +886,8 @@ export default function BacktestDetail() {
   const replayIndex = createMemo(() => clampReplayIndex(currentIndex(), totalBars()));
   const replayProgress = createMemo(() => getReplayProgress(replayIndex(), totalBars()));
   const currentCandle = createMemo<Candle | undefined>(() => candles()?.[replayIndex()]);
-  const commission = createMemo(() => result()?.trades[0]?.commission ?? 5);
-  const tickValue = createMemo(() => tickValueBySymbol[result()?.symbol ?? ""] ?? 1);
+  const commission = createMemo(() => result()?.run_config.commission ?? result()?.trades[0]?.commission ?? 5);
+  const tickValue = createMemo(() => result()?.run_config.tick_value ?? tickValueBySymbol[result()?.symbol ?? ""] ?? 1);
   const tradeEntryIndices = createMemo(() =>
     candles() && result() ? getTradeEntryIndices(candles() ?? [], result()?.trades ?? []) : [],
   );
@@ -1149,6 +1192,39 @@ export default function BacktestDetail() {
         value: backtest.prop_firm_eval.passed ? "Passed" : "Failed",
         tone: backtest.prop_firm_eval.passed ? "good" : "bad",
         hint: backtest.prop_firm_rules.name,
+      },
+    ] as DashboardCard[];
+  });
+  const robustnessHighlights = createMemo(() => {
+    const analysis = robustness() as BacktestRobustnessResult | null;
+    if (!analysis) {
+      return [];
+    }
+
+    const bootstrap = analysis.monte_carlo.find((scenario) => scenario.key === "bootstrap") ?? analysis.monte_carlo[0];
+    return [
+      {
+        label: "Bootstrap Median PnL",
+        value: bootstrap ? formatCurrency(bootstrap.total_pnl.median, { signed: true }) : "n/a",
+        hint: bootstrap ? `p05/p95 ${formatCurrency(bootstrap.total_pnl.p05, { signed: true })} / ${formatCurrency(bootstrap.total_pnl.p95, { signed: true })}` : undefined,
+      },
+      {
+        label: "Bootstrap p95 DD",
+        value: bootstrap ? formatPercent(bootstrap.max_drawdown.p95, 2) : "n/a",
+        hint: bootstrap ? `Base ${formatPercent(analysis.baseline.max_drawdown, 2)}` : undefined,
+        tone: bootstrap && bootstrap.max_drawdown.p95 > analysis.baseline.max_drawdown ? "bad" : "default",
+      },
+      {
+        label: "Baseline Sweep Rank",
+        value: formatRank(analysis.parameter_sweep.baseline_rank),
+        hint: `${analysis.parameter_sweep.total_runs} nearby runs`,
+        tone: analysis.parameter_sweep.baseline_rank === 1 ? "good" : "default",
+      },
+      {
+        label: "Walk-Forward Pass Rate",
+        value: formatPercent(analysis.walk_forward.passing_rate),
+        hint: `${analysis.walk_forward.folds_completed}/${analysis.walk_forward.folds_requested} folds`,
+        tone: analysis.walk_forward.passing_rate >= 0.5 ? "good" : analysis.walk_forward.folds_completed > 0 ? "bad" : "default",
       },
     ] as DashboardCard[];
   });
@@ -1755,6 +1831,366 @@ export default function BacktestDetail() {
                         />
                       </Show>
                     </div>
+                  </Show>
+                </div>
+              </Match>
+
+              <Match when={activeTab() === "robustness"}>
+                <div class="space-y-6">
+                  <Show
+                    when={robustness.error}
+                    fallback={
+                      <Show
+                        when={!robustness.loading && robustness()}
+                        fallback={
+                          <section class="app-panel app-panel-section flex min-h-52 items-center justify-center">
+                            <p class="text-zinc-400">
+                              {robustness.loading
+                                ? "Running robustness checks…"
+                                : "Open this tab to run Monte Carlo, parameter sweep, and walk-forward checks."}
+                            </p>
+                          </section>
+                        }
+                      >
+                        {(analysis) => (
+                          <>
+                            <Show when={analysis().warnings.length > 0}>
+                              <section class="rounded-2xl border border-yellow-800 bg-yellow-950/30 px-4 py-4">
+                                <p class="text-xs uppercase tracking-[0.18em] text-yellow-300">Warnings</p>
+                                <div class="mt-3 space-y-2">
+                                  <For each={analysis().warnings}>
+                                    {(warning) => <p class="text-sm text-yellow-100">{warning}</p>}
+                                  </For>
+                                </div>
+                              </section>
+                            </Show>
+
+                            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                              <For each={robustnessHighlights()}>
+                                {(card) => (
+                                  <MetricCard
+                                    label={card.label}
+                                    value={card.value}
+                                    hint={card.hint}
+                                    tone={card.tone}
+                                  />
+                                )}
+                              </For>
+                            </div>
+
+                            <section class="app-panel app-panel-section space-y-5">
+                              <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                                <div class="space-y-2">
+                                  <p class="app-kicker">Saved Baseline</p>
+                                  <p class="max-w-3xl text-sm text-zinc-300">
+                                    This is the exact backtest row the robustness checks are anchored
+                                    to, so you can compare the stress tests against the original saved
+                                    result instead of reading those numbers in a vacuum.
+                                  </p>
+                                </div>
+
+                                <div class="flex flex-wrap gap-2 text-xs text-zinc-400">
+                                  <span class="rounded-full border border-zinc-800 bg-zinc-950/60 px-3 py-1">
+                                    {(analysis().symbol ?? bt().symbol).toUpperCase()}
+                                  </span>
+                                  <span class="rounded-full border border-zinc-800 bg-zinc-950/60 px-3 py-1">
+                                    {analysis().strategy_type}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <p class="text-sm text-zinc-500">
+                                {formatRunConfigSummary(analysis().run_config)}
+                              </p>
+
+                              <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                                <MetricCard
+                                  label="Net PnL"
+                                  value={formatCurrency(analysis().baseline.total_pnl, {
+                                    signed: true,
+                                  })}
+                                  tone={
+                                    analysis().baseline.total_pnl >= 0 ? "good" : "bad"
+                                  }
+                                />
+                                <MetricCard
+                                  label="Max Drawdown"
+                                  value={formatPercent(analysis().baseline.max_drawdown, 2)}
+                                  tone={
+                                    analysis().baseline.max_drawdown <= 0.08
+                                      ? "default"
+                                      : "bad"
+                                  }
+                                />
+                                <MetricCard
+                                  label="Profit Factor"
+                                  value={formatRatio(analysis().baseline.profit_factor)}
+                                />
+                                <MetricCard
+                                  label="Win Rate"
+                                  value={formatPercent(analysis().baseline.win_rate)}
+                                />
+                                <MetricCard
+                                  label="Closed Trades"
+                                  value={formatCount(analysis().baseline.total_trades)}
+                                />
+                                <MetricCard
+                                  label="Prop Status"
+                                  value={analysis().baseline.passed ? "Passed" : "Failed"}
+                                  tone={analysis().baseline.passed ? "good" : "bad"}
+                                />
+                              </div>
+                            </section>
+
+                            <section class="app-panel app-panel-section space-y-5">
+                              <div class="space-y-2">
+                                <p class="app-kicker">Monte Carlo</p>
+                                <p class="max-w-3xl text-sm text-zinc-300">
+                                  These use your saved trade list, not fresh market bars. One scenario
+                                  shuffles the order, the other bootstraps the trade sample, so you can
+                                  see how path-sensitive the saved curve really is.
+                                </p>
+                              </div>
+
+                              <div class="grid gap-4 xl:grid-cols-2">
+                                <For each={analysis().monte_carlo}>
+                                  {(scenario) => (
+                                    <div class="rounded-3xl border border-zinc-800 bg-zinc-950/60 p-5">
+                                      <div class="flex items-start justify-between gap-4">
+                                        <div>
+                                          <p class="text-sm font-semibold text-zinc-100">{scenario.label}</p>
+                                          <p class="mt-1 text-xs text-zinc-500">{scenario.simulations} simulations</p>
+                                        </div>
+                                        <p class="rounded-full border border-zinc-800 px-3 py-1 text-xs text-zinc-300">
+                                          Worse DD vs base: {formatPercent(scenario.worse_than_base_drawdown_rate)}
+                                        </p>
+                                      </div>
+
+                                      <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                                        <MetricCard
+                                          label="PnL p05 / med / p95"
+                                          value={formatDistribution(
+                                            scenario.total_pnl,
+                                            (value) => formatCurrency(value, { signed: true }),
+                                          )}
+                                          hint={`Worst ${formatCurrency(scenario.total_pnl.worst, { signed: true })} · Best ${formatCurrency(scenario.total_pnl.best, { signed: true })}`}
+                                        />
+                                        <MetricCard
+                                          label="Drawdown p05 / med / p95"
+                                          value={formatDistribution(
+                                            scenario.max_drawdown,
+                                            (value) => formatPercent(value, 2),
+                                          )}
+                                          hint={`Worst ${formatPercent(scenario.max_drawdown.worst, 2)}`}
+                                          tone={scenario.max_drawdown.p95 > analysis().baseline.max_drawdown ? "bad" : "default"}
+                                        />
+                                        <MetricCard
+                                          label="Profitable sims"
+                                          value={formatPercent(scenario.profitable_rate)}
+                                          hint="Share of sims that still finish positive."
+                                          tone={scenario.profitable_rate >= 0.5 ? "good" : "bad"}
+                                        />
+                                      </div>
+
+                                      <p class="mt-4 text-sm text-zinc-400">{scenario.note}</p>
+                                    </div>
+                                  )}
+                                </For>
+                              </div>
+                            </section>
+
+                            <section class="app-panel app-panel-section space-y-5">
+                              <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                                <div>
+                                  <p class="app-kicker">Local Parameter Sweep</p>
+                                  <p class="max-w-3xl text-sm text-zinc-300">
+                                    This checks a small neighborhood around the saved params so you can
+                                    tell whether the current setup sits in a healthy cluster or on one
+                                    lonely spike.
+                                  </p>
+                                </div>
+
+                                <div class="grid gap-3 sm:grid-cols-3">
+                                  <MetricCard
+                                    label="Baseline Rank"
+                                    value={formatRank(analysis().parameter_sweep.baseline_rank)}
+                                    hint={analysis().parameter_sweep.ranking_rule}
+                                  />
+                                  <MetricCard
+                                    label="Profitable Runs"
+                                    value={formatPercent(analysis().parameter_sweep.profitable_rate)}
+                                    hint={`${analysis().parameter_sweep.total_runs} tested`}
+                                    tone={analysis().parameter_sweep.profitable_rate >= 0.5 ? "good" : "bad"}
+                                  />
+                                  <MetricCard
+                                    label="Passing Runs"
+                                    value={formatPercent(analysis().parameter_sweep.passing_rate)}
+                                    hint="Share that still pass the prop rules."
+                                    tone={analysis().parameter_sweep.passing_rate >= 0.5 ? "good" : "bad"}
+                                  />
+                                </div>
+                              </div>
+
+                              <p class="text-sm text-zinc-400">{analysis().parameter_sweep.note}</p>
+
+                              <div class="overflow-x-auto rounded-3xl border border-zinc-800 bg-zinc-950/60">
+                                <table class="min-w-full text-sm">
+                                  <thead class="border-b border-zinc-800 text-left text-xs uppercase tracking-[0.18em] text-zinc-500">
+                                    <tr>
+                                      <th class="px-3 py-3">Rank</th>
+                                      <th class="px-3 py-3">Params</th>
+                                      <th class="px-3 py-3">Score</th>
+                                      <th class="px-3 py-3">PnL</th>
+                                      <th class="px-3 py-3">DD</th>
+                                      <th class="px-3 py-3">PF</th>
+                                      <th class="px-3 py-3">Prop</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    <For each={analysis().parameter_sweep.top_runs}>
+                                      {(run) => (
+                                        <tr class="border-t border-zinc-800">
+                                          <td class="px-3 py-3 text-zinc-400">#{run.rank}</td>
+                                          <td class="px-3 py-3 text-zinc-100">{formatParamSummary(run.params)}</td>
+                                          <td class="px-3 py-3 font-mono text-zinc-200">{run.score.toFixed(2)}</td>
+                                          <td class={`px-3 py-3 font-mono ${run.total_pnl >= 0 ? "text-emerald-300" : "text-red-300"}`}>
+                                            {formatCurrency(run.total_pnl, { signed: true })}
+                                          </td>
+                                          <td class="px-3 py-3 font-mono text-zinc-300">{formatPercent(run.max_drawdown, 2)}</td>
+                                          <td class="px-3 py-3 font-mono text-zinc-300">{formatRatio(run.profit_factor)}</td>
+                                          <td class="px-3 py-3">
+                                            <span class={`rounded-full border px-2 py-1 text-xs ${run.passed ? "border-emerald-800 text-emerald-300" : "border-red-800 text-red-300"}`}>
+                                              {run.passed ? "Pass" : "Fail"}
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </For>
+                                  </tbody>
+                                </table>
+                              </div>
+
+                              <Show when={analysis().parameter_sweep.bottom_run}>
+                                {(run) => (
+                                  <div class="rounded-2xl border border-zinc-800 bg-zinc-950/40 px-4 py-4">
+                                    <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                                      Soft Spot
+                                    </p>
+                                    <p class="mt-2 text-sm text-zinc-300">
+                                      Weakest nearby run {formatRank(run().rank)} scored{" "}
+                                      <span class="font-mono text-zinc-100">
+                                        {run().score.toFixed(2)}
+                                      </span>{" "}
+                                      with {formatCurrency(run().total_pnl, { signed: true })} and{" "}
+                                      {formatPercent(run().max_drawdown, 2)} drawdown.
+                                    </p>
+                                    <p class="mt-2 text-sm text-zinc-500">
+                                      {formatParamSummary(run().params)}
+                                    </p>
+                                  </div>
+                                )}
+                              </Show>
+                            </section>
+
+                            <section class="app-panel app-panel-section space-y-5">
+                              <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                                <div>
+                                  <p class="app-kicker">Walk-Forward</p>
+                                  <p class="max-w-3xl text-sm text-zinc-300">
+                                    Each fold picks the best local params on the train chunk only,
+                                    then scores that choice on the next untouched chunk out of sample.
+                                  </p>
+                                </div>
+
+                                <div class="grid gap-3 sm:grid-cols-3">
+                                  <MetricCard
+                                    label="Folds Completed"
+                                    value={`${analysis().walk_forward.folds_completed}/${analysis().walk_forward.folds_requested}`}
+                                  />
+                                  <MetricCard
+                                    label="Avg Test PnL"
+                                    value={formatCurrency(analysis().walk_forward.average_test_pnl, { signed: true })}
+                                    tone={analysis().walk_forward.average_test_pnl >= 0 ? "good" : "bad"}
+                                  />
+                                  <MetricCard
+                                    label="Passing Folds"
+                                    value={formatPercent(analysis().walk_forward.passing_rate)}
+                                    tone={analysis().walk_forward.passing_rate >= 0.5 ? "good" : "bad"}
+                                  />
+                                </div>
+                              </div>
+
+                              <p class="text-sm text-zinc-400">{analysis().walk_forward.note}</p>
+
+                              <Show
+                                when={analysis().walk_forward.folds.length > 0}
+                                fallback={
+                                  <div class="rounded-2xl border border-zinc-800 bg-zinc-950/40 px-4 py-5">
+                                    <p class="text-sm text-zinc-400">
+                                      This saved run doesn't have enough bars for a useful walk-forward split yet.
+                                    </p>
+                                  </div>
+                                }
+                              >
+                                <div class="overflow-x-auto rounded-3xl border border-zinc-800 bg-zinc-950/60">
+                                  <table class="min-w-full text-sm">
+                                    <thead class="border-b border-zinc-800 text-left text-xs uppercase tracking-[0.18em] text-zinc-500">
+                                      <tr>
+                                        <th class="px-3 py-3">Fold</th>
+                                        <th class="px-3 py-3">Train</th>
+                                        <th class="px-3 py-3">Test</th>
+                                        <th class="px-3 py-3">Selected Params</th>
+                                        <th class="px-3 py-3">Train Score</th>
+                                        <th class="px-3 py-3">Test Score</th>
+                                        <th class="px-3 py-3">Test PnL</th>
+                                        <th class="px-3 py-3">Test DD</th>
+                                        <th class="px-3 py-3">Trades</th>
+                                        <th class="px-3 py-3">Prop</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      <For each={analysis().walk_forward.folds}>
+                                        {(fold) => (
+                                          <tr class="border-t border-zinc-800">
+                                            <td class="px-3 py-3 text-zinc-400">#{fold.fold_index}</td>
+                                            <td class="px-3 py-3 text-zinc-300">
+                                              {new Date(fold.train_start).toLocaleDateString()} → {new Date(fold.train_end).toLocaleDateString()}
+                                            </td>
+                                            <td class="px-3 py-3 text-zinc-300">
+                                              {new Date(fold.test_start).toLocaleDateString()} → {new Date(fold.test_end).toLocaleDateString()}
+                                            </td>
+                                            <td class="px-3 py-3 text-zinc-100">{formatParamSummary(fold.selected_params)}</td>
+                                            <td class="px-3 py-3 font-mono text-zinc-300">{fold.train_score.toFixed(2)}</td>
+                                            <td class="px-3 py-3 font-mono text-zinc-300">{fold.test_score.toFixed(2)}</td>
+                                            <td class={`px-3 py-3 font-mono ${fold.test_total_pnl >= 0 ? "text-emerald-300" : "text-red-300"}`}>
+                                              {formatCurrency(fold.test_total_pnl, { signed: true })}
+                                            </td>
+                                            <td class="px-3 py-3 font-mono text-zinc-300">{formatPercent(fold.test_max_drawdown, 2)}</td>
+                                            <td class="px-3 py-3 font-mono text-zinc-300">{formatCount(fold.test_trades)}</td>
+                                            <td class="px-3 py-3">
+                                              <span class={`rounded-full border px-2 py-1 text-xs ${fold.test_passed ? "border-emerald-800 text-emerald-300" : "border-red-800 text-red-300"}`}>
+                                                {fold.test_passed ? "Pass" : "Fail"}
+                                              </span>
+                                            </td>
+                                          </tr>
+                                        )}
+                                      </For>
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </Show>
+                            </section>
+                          </>
+                        )}
+                      </Show>
+                    }>
+                    {(error) => (
+                      <section class="app-panel app-panel-section">
+                        <p class="text-sm text-red-400">
+                          Robustness analysis failed: {error().message}
+                        </p>
+                      </section>
+                    )}
                   </Show>
                 </div>
               </Match>

@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS backtests (
     dataset_id       TEXT NOT NULL,
     symbol           TEXT,
     replay_context   JSONB,
+    run_config       JSONB,
     strategy_type    TEXT NOT NULL,
     strategy         JSONB NOT NULL,
     prop_firm_rules  JSONB NOT NULL,
@@ -100,6 +101,9 @@ ALTER TABLE backtests
 
 ALTER TABLE backtests
     ADD COLUMN IF NOT EXISTS replay_context JSONB;
+
+ALTER TABLE backtests
+    ADD COLUMN IF NOT EXISTS run_config JSONB;
 
 CREATE INDEX IF NOT EXISTS backtests_created_at_idx
     ON backtests (created_at DESC);
