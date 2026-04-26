@@ -1,6 +1,7 @@
 import { A, useLocation, useNavigate } from "@solidjs/router";
 import { batch, createEffect, createMemo, createSignal } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
+import { Gauge, LayoutPanelTop, PanelRight, SquareChartGantt } from "lucide-solid";
 import AppShell from "../components/AppShell";
 import WorkspaceGrid from "../components/workspace/WorkspaceGrid";
 import WorkspaceToolbar from "../components/workspace/WorkspaceToolbar";
@@ -32,6 +33,7 @@ export default function Dashboard() {
   const location = useLocation();
   const [workspace, setWorkspace] = createStore(loadWorkspaceCollectionState());
   const [launchNotice, setLaunchNotice] = createSignal<string | null>(null);
+  const [showUtilityRail, setShowUtilityRail] = createSignal(true);
   let hydratedLaunchSearch: string | null = null;
   const activeWorkspaceIndex = createMemo(() => {
     const index = workspace.workspaces.findIndex(
@@ -47,6 +49,43 @@ export default function Dashboard() {
   });
   const canAddChart = createMemo(() => activePresetState().panels.length < MAX_WORKSPACE_PANELS);
   const canDeleteWorkspace = createMemo(() => workspace.workspaces.length > 1);
+  const activePanels = createMemo(() => activePresetState().panels);
+  const layoutRead = createMemo(() => {
+    const panelCount = activePanels().length;
+    if (panelCount === 3) {
+      return "One anchor chart on the left with two stacked support panels on the right.";
+    }
+
+    if (panelCount === 1) {
+      return "Single-chart focus mode. No wasted chrome, just one strong read.";
+    }
+
+    if (panelCount === 2) {
+      return "Balanced split view for side-by-side timeframe or symbol work.";
+    }
+
+    return "Dense multi-panel grid that still keeps everything inside one shell.";
+  });
+  const railNotes = createMemo(() => {
+    if (activePanels().length === 3) {
+      return [
+        "Use the left chart as your anchor read and keep the right stack for confirmation.",
+        "This is the first layout where icons start paying off in the panel headers or rail.",
+        "A future trading rail can drop into this slot without blowing up the chart shell.",
+      ];
+    }
+
+    return [
+      "The shell is doing the visual grouping now, so individual panels can stay quiet.",
+      "Icons are worth adding when an action repeats enough to be recognized instantly.",
+      "The right rail is the safest place to grow controls before touching chart density again.",
+    ];
+  });
+  const railIconNote = createMemo(() =>
+    activePanels().length >= 3
+      ? "Good time to add a small icon set to panel headers and workspace actions."
+      : "Hold off on more icons until the rail and panel actions stop changing.",
+  );
 
   const handleWorkspaceChange = (workspaceId: string) => {
     setWorkspace("selectedWorkspaceId", workspaceId);
@@ -280,6 +319,7 @@ export default function Dashboard() {
           panelCount={activePresetState().panels.length}
           canAddChart={canAddChart()}
           canDeleteWorkspace={canDeleteWorkspace()}
+          showUtilityRail={showUtilityRail()}
           onWorkspaceChange={handleWorkspaceChange}
           onDefaultWorkspaceChange={handleDefaultWorkspaceChange}
           onWorkspaceNameChange={handleWorkspaceNameChange}
@@ -287,49 +327,72 @@ export default function Dashboard() {
           onDeleteWorkspace={handleDeleteWorkspace}
           onPresetChange={handlePresetChange}
           onAddChart={handleAddChart}
+          onToggleUtilityRail={() => setShowUtilityRail((current) => !current)}
         />
         <div class="p-3 lg:p-4">
-          <WorkspaceGrid
-            preset={activeWorkspace().selectedPreset}
-            panels={activePresetState().panels}
-            layout={activePresetState().layout}
-            onLayoutChange={handleLayoutChange}
-            onPanelTitleChange={handlePanelTitleChange}
-            onPanelQueryChange={handlePanelQueryChange}
-            onPanelRemove={handleRemovePanel}
-          />
-        </div>
-      </section>
+          <div class={`grid gap-3 ${showUtilityRail() ? "xl:grid-cols-[minmax(0,1fr)_280px]" : ""}`}>
+            <WorkspaceGrid
+              preset={activeWorkspace().selectedPreset}
+              panels={activePresetState().panels}
+              layout={activePresetState().layout}
+              onLayoutChange={handleLayoutChange}
+              onPanelTitleChange={handlePanelTitleChange}
+              onPanelQueryChange={handlePanelQueryChange}
+              onPanelRemove={handleRemovePanel}
+            />
 
-      <section class="grid gap-4 lg:grid-cols-3">
-        <div class="app-panel app-panel-section">
-          <p class="app-kicker">Saved Workspaces</p>
-          <p class="mt-2 text-sm font-semibold text-zinc-100">Keep separate setups without losing presets</p>
-          <p class="mt-1 text-sm text-zinc-400">
-            Fork the current workspace, give it a real name, and keep one version for replay, one
-            for backtest review, and another for live scan work without turning the dashboard into
-            generic floating widgets.
-          </p>
-        </div>
+            {showUtilityRail() ? (
+              <aside class="hidden xl:flex min-h-[640px] flex-col gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
+                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/85 p-4">
+                  <div class="flex items-center gap-2 text-zinc-100">
+                    <LayoutPanelTop size={16} class="text-sky-300" />
+                    <p class="text-sm font-semibold">Layout Read</p>
+                  </div>
+                  <p class="mt-3 text-sm text-zinc-300">{layoutRead()}</p>
+                  <p class="mt-2 text-xs text-zinc-500">
+                    {activePanels().length} panels in `{activeWorkspace().selectedPreset}` mode.
+                  </p>
+                </div>
 
-        <div class="app-panel app-panel-section">
-          <p class="app-kicker">Dynamic Panels</p>
-          <p class="mt-2 text-sm font-semibold text-zinc-100">Every saved workspace still grows and heals itself</p>
-          <p class="mt-1 text-sm text-zinc-400">
-            Add or remove charts inside any workspace and the row weights plus column ratios
-            rebalance automatically, so your layout keeps feeling intentional instead of leaving
-            behind dead space.
-          </p>
-        </div>
+                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/85 p-4">
+                  <div class="flex items-center gap-2 text-zinc-100">
+                    <SquareChartGantt size={16} class="text-emerald-300" />
+                    <p class="text-sm font-semibold">Panel Stack</p>
+                  </div>
+                  <div class="mt-3 space-y-2">
+                    {activePanels().map((panel, index) => (
+                      <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2">
+                        <p class="text-xs uppercase tracking-[0.16em] text-zinc-500">Panel {index + 1}</p>
+                        <p class="mt-1 text-sm font-medium text-zinc-100">{panel.title}</p>
+                        <p class="mt-1 text-xs text-zinc-500">
+                          {panel.query.symbol} · {panel.query.interval}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
-        <div class="app-panel app-panel-section">
-          <p class="app-kicker">What Matters</p>
-          <p class="mt-2 text-sm font-semibold text-zinc-100">The preset model stays in charge</p>
-          <p class="mt-1 text-sm text-zinc-400">
-            This still starts from `1`, `2`, and `4` chart trading setups, then lets each saved
-            workspace bend from there. That keeps the product opinionated instead of sliding
-            straight into a widget playground.
-          </p>
+                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/85 p-4">
+                  <div class="flex items-center gap-2 text-zinc-100">
+                    <PanelRight size={16} class="text-amber-300" />
+                    <p class="text-sm font-semibold">Rail Notes</p>
+                  </div>
+                  <div class="mt-3 space-y-3 text-sm text-zinc-300">
+                    {railNotes().map((note) => (
+                      <p>{note}</p>
+                    ))}
+                  </div>
+                  <div class="mt-4 rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-3">
+                    <div class="flex items-center gap-2 text-zinc-100">
+                      <Gauge size={15} class="text-fuchsia-300" />
+                      <p class="text-xs font-semibold uppercase tracking-[0.16em]">Icons</p>
+                    </div>
+                    <p class="mt-2 text-sm text-zinc-300">{railIconNote()}</p>
+                  </div>
+                </div>
+              </aside>
+            ) : null}
+          </div>
         </div>
       </section>
     </AppShell>

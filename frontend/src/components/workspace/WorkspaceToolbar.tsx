@@ -1,4 +1,5 @@
 import { createEffect, createSignal } from "solid-js";
+import { CopyPlus, LayoutGrid, PanelRight, Plus, Trash2 } from "lucide-solid";
 import {
   MAX_WORKSPACE_NAME_LENGTH,
   normalizeWorkspaceName,
@@ -22,6 +23,7 @@ interface Props {
   panelCount: number;
   canAddChart: boolean;
   canDeleteWorkspace: boolean;
+  showUtilityRail: boolean;
   onWorkspaceChange: (workspaceId: string) => void;
   onDefaultWorkspaceChange: (workspaceId: string) => void;
   onWorkspaceNameChange: (name: string) => void;
@@ -29,6 +31,7 @@ interface Props {
   onDeleteWorkspace: () => void;
   onPresetChange: (preset: WorkspacePreset) => void;
   onAddChart: () => void;
+  onToggleUtilityRail: () => void;
 }
 
 const field =
@@ -49,9 +52,9 @@ export default function WorkspaceToolbar(props: Props) {
   };
 
   return (
-    <div class="border-b border-zinc-800 bg-zinc-950/60 px-4 py-4 lg:px-5">
-      <div class="flex flex-col gap-4">
-        <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+    <div class="border-b border-zinc-800 bg-zinc-950/60 px-4 py-3 lg:px-5">
+      <div class="flex flex-col gap-3">
+        <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div class="flex flex-wrap items-center gap-3">
             <div class="min-w-0">
               <p class="app-kicker">Workspace</p>
@@ -69,25 +72,36 @@ export default function WorkspaceToolbar(props: Props) {
           <div class="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              class="rounded-xl border border-zinc-600 px-3 py-2 text-sm font-semibold text-zinc-100 transition-colors hover:border-zinc-400 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:text-zinc-600"
+              class="inline-flex items-center gap-2 rounded-xl border border-zinc-600 px-3 py-2 text-sm font-semibold text-zinc-100 transition-colors hover:border-zinc-400 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:text-zinc-600"
               onClick={props.onAddChart}
               disabled={!props.canAddChart}
             >
-              + Add Chart
+              <Plus size={15} />
+              Add Chart
             </button>
             <button
               type="button"
-              class="rounded-xl border border-zinc-600 px-3 py-2 text-sm font-semibold text-zinc-100 transition-colors hover:border-zinc-400 hover:bg-zinc-900"
+              class="inline-flex items-center gap-2 rounded-xl border border-zinc-600 px-3 py-2 text-sm font-semibold text-zinc-100 transition-colors hover:border-zinc-400 hover:bg-zinc-900"
               onClick={props.onCreateWorkspace}
             >
+              <CopyPlus size={15} />
               Save as New
             </button>
             <button
               type="button"
-              class="rounded-xl border border-zinc-800 px-3 py-2 text-sm font-medium text-zinc-400 transition-colors hover:border-zinc-600 hover:bg-zinc-900 hover:text-zinc-100 disabled:cursor-not-allowed disabled:border-zinc-900 disabled:text-zinc-700"
+              class="inline-flex items-center gap-2 rounded-xl border border-zinc-700 px-3 py-2 text-sm font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-900 hover:text-zinc-100"
+              onClick={props.onToggleUtilityRail}
+            >
+              <PanelRight size={15} />
+              {props.showUtilityRail ? "Hide Rail" : "Show Rail"}
+            </button>
+            <button
+              type="button"
+              class="inline-flex items-center gap-2 rounded-xl border border-zinc-800 px-3 py-2 text-sm font-medium text-zinc-400 transition-colors hover:border-zinc-600 hover:bg-zinc-900 hover:text-zinc-100 disabled:cursor-not-allowed disabled:border-zinc-900 disabled:text-zinc-700"
               onClick={props.onDeleteWorkspace}
               disabled={!props.canDeleteWorkspace}
             >
+              <Trash2 size={15} />
               Delete
             </button>
           </div>
@@ -152,7 +166,7 @@ export default function WorkspaceToolbar(props: Props) {
                 return (
                   <button
                     type="button"
-                    class={`rounded-lg px-3 py-2 text-xs font-medium uppercase tracking-[0.16em] transition-colors ${
+                    class={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium uppercase tracking-[0.16em] transition-colors ${
                       active
                         ? "bg-zinc-100 text-zinc-950"
                         : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
@@ -160,6 +174,7 @@ export default function WorkspaceToolbar(props: Props) {
                     title={option.description}
                     onClick={() => props.onPresetChange(option.value)}
                   >
+                    <LayoutGrid size={14} />
                     {option.label}
                   </button>
                 );

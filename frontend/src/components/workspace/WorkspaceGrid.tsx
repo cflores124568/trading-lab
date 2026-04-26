@@ -243,6 +243,97 @@ function DesktopRow(props: {
   );
 }
 
+function ThreePanelDesktopLayout(props: {
+  panels: ChartPanelConfig[];
+  layout: SplitWorkspaceLayout | GridWorkspaceLayout;
+  onLayoutChange: (layout: SplitWorkspaceLayout | GridWorkspaceLayout) => void;
+  onPanelTitleChange: (panelId: string, title: string) => void;
+  onPanelQueryChange: (panelId: string, query: ChartPanelQuery) => void;
+  onPanelRemove: (panelId: string) => void;
+}) {
+  let container!: HTMLDivElement;
+  let secondaryColumn!: HTMLDivElement;
+  const primaryRatio = () => props.layout.columnRatios[0] ?? 0.58;
+  const secondaryWeights = () => [props.layout.rowWeights[0] ?? 1, props.layout.rowWeights[1] ?? 1];
+  const secondaryOffsets = () => getBoundaryOffsets(secondaryWeights());
+
+  return (
+    <div class="relative hidden xl:block">
+      <div
+        ref={container}
+        class="flex gap-3"
+        style={{ "min-height": getDesktopMinHeight(2) }}
+      >
+        <div class="min-h-0 min-w-0" style={{ flex: `${primaryRatio()} 1 0%` }}>
+          <PanelSlot
+            panel={props.panels[0]}
+            canRemove
+            onPanelTitleChange={props.onPanelTitleChange}
+            onPanelQueryChange={props.onPanelQueryChange}
+            onPanelRemove={props.onPanelRemove}
+          />
+        </div>
+
+        <div
+          ref={secondaryColumn}
+          class="flex min-h-0 min-w-0 flex-col gap-3"
+          style={{ flex: `${1 - primaryRatio()} 1 0%` }}
+        >
+          {props.panels.slice(1).map((panel, index) => (
+            <div class="min-h-0" style={{ flex: `${secondaryWeights()[index] ?? 1} 1 0%` }}>
+              <PanelSlot
+                panel={panel}
+                canRemove
+                onPanelTitleChange={props.onPanelTitleChange}
+                onPanelQueryChange={props.onPanelQueryChange}
+                onPanelRemove={props.onPanelRemove}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <ResizeHandle
+        axis="x"
+        style={{ left: `${primaryRatio() * 100}%` }}
+        onPointerDown={(event) =>
+          beginRatioResize(event, container, "x", (ratio) => {
+            const columnRatios = [...props.layout.columnRatios];
+            columnRatios[0] = ratio;
+            props.onLayoutChange({ ...props.layout, columnRatios });
+          })
+        }
+      />
+
+      {secondaryOffsets().map((offset, index) => (
+        <ResizeHandle
+          axis="y"
+          style={{
+            top: `${offset * 100}%`,
+            left: `${primaryRatio() * 100}%`,
+            right: "0",
+          }}
+          onPointerDown={(event) =>
+            beginWeightResize(
+              event,
+              secondaryColumn,
+              "y",
+              secondaryWeights(),
+              index,
+              (rowWeights) => {
+                const nextWeights = [...props.layout.rowWeights];
+                nextWeights[0] = rowWeights[0] ?? nextWeights[0] ?? 1;
+                nextWeights[1] = rowWeights[1] ?? nextWeights[1] ?? 1;
+                props.onLayoutChange({ ...props.layout, rowWeights: nextWeights });
+              },
+            )
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
 function FocusDesktopLayout(props: {
   panels: ChartPanelConfig[];
   layout: FocusWorkspaceLayout;
@@ -373,9 +464,8 @@ export default function WorkspaceGrid(props: Props) {
         />
       ) : null}
 
-      {props.layout.kind === "split" || props.layout.kind === "grid" ? (
-        <TiledDesktopLayout
-          preset={props.layout.kind}
+      {(props.layout.kind === "split" || props.layout.kind === "grid") && props.panels.length === 3 ? (
+        <ThreePanelDesktopLayout
           panels={props.panels}
           layout={props.layout}
           onLayoutChange={props.onLayoutChange}
@@ -383,6 +473,20 @@ export default function WorkspaceGrid(props: Props) {
           onPanelQueryChange={props.onPanelQueryChange}
           onPanelRemove={props.onPanelRemove}
         />
+      ) : null}
+
+      {props.layout.kind === "split" || props.layout.kind === "grid" ? (
+        props.panels.length === 3 ? null : (
+          <TiledDesktopLayout
+            preset={props.layout.kind}
+            panels={props.panels}
+            layout={props.layout}
+            onLayoutChange={props.onLayoutChange}
+            onPanelTitleChange={props.onPanelTitleChange}
+            onPanelQueryChange={props.onPanelQueryChange}
+            onPanelRemove={props.onPanelRemove}
+          />
+        )
       ) : null}
     </>
   );
