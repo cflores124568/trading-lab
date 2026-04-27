@@ -315,6 +315,23 @@ export default function Dashboard() {
     });
   };
 
+  const handlePanelMove = (panelId: string, targetPanelId: string) => {
+    const workspaceIndex = activeWorkspaceIndex();
+    const preset = workspace.workspaces[workspaceIndex].selectedPreset;
+    const currentPanels = workspace.workspaces[workspaceIndex].presets[preset].panels;
+    const sourceIndex = currentPanels.findIndex((panel) => panel.id === panelId);
+    const targetIndex = currentPanels.findIndex((panel) => panel.id === targetPanelId);
+
+    if (sourceIndex === -1 || targetIndex === -1 || sourceIndex === targetIndex) {
+      return;
+    }
+
+    const nextPanels = [...currentPanels];
+    const [movedPanel] = nextPanels.splice(sourceIndex, 1);
+    nextPanels.splice(targetIndex, 0, movedPanel);
+    setWorkspace("workspaces", workspaceIndex, "presets", preset, "panels", nextPanels);
+  };
+
   createEffect(() => {
     const nextLaunch = parseWorkspaceLaunchSearch(location.search);
     if (!nextLaunch || hydratedLaunchSearch === location.search) {
@@ -404,11 +421,12 @@ export default function Dashboard() {
               panels={activePresetState().panels}
               layout={activePresetState().layout}
               onLayoutChange={handleLayoutChange}
-            onPanelTitleChange={handlePanelTitleChange}
-            onPanelQueryChange={handlePanelQueryChange}
-            onPanelRemove={handleRemovePanel}
-            onPanelDuplicate={handlePanelDuplicate}
-          />
+              onPanelTitleChange={handlePanelTitleChange}
+              onPanelQueryChange={handlePanelQueryChange}
+              onPanelRemove={handleRemovePanel}
+              onPanelDuplicate={handlePanelDuplicate}
+              onPanelMove={handlePanelMove}
+            />
 
             {showUtilityRail() ? (
               <aside class="hidden xl:flex min-h-[640px] flex-col gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">

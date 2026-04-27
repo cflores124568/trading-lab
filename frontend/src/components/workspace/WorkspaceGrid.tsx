@@ -21,12 +21,23 @@ interface Props {
   onPanelQueryChange: (panelId: string, query: ChartPanelQuery) => void;
   onPanelRemove: (panelId: string) => void;
   onPanelDuplicate: (panelId: string) => void;
+  onPanelMove: (panelId: string, targetPanelId: string) => void;
 }
 
 interface ResizeHandleProps {
   axis: "x" | "y";
   style: JSX.CSSProperties;
   onPointerDown: JSX.EventHandlerUnion<HTMLButtonElement, PointerEvent>;
+}
+
+interface ReorderProps {
+  canReorder: boolean;
+  draggingPanelId: string | null;
+  dropTargetPanelId: string | null;
+  onPanelMove: (panelId: string, targetPanelId: string) => void;
+  onReorderDragStart: (panelId: string, event: DragEvent) => void;
+  onReorderDragEnd: () => void;
+  onReorderTarget: (panelId: string | null) => void;
 }
 
 function chunkPanels(panels: ChartPanelConfig[], size: number): ChartPanelConfig[][] {
@@ -165,12 +176,19 @@ function PanelSlot(props: {
   panel: ChartPanelConfig | undefined;
   canRemove: boolean;
   canDuplicate: boolean;
+  canReorder: boolean;
   expanded: boolean;
+  draggingPanelId: string | null;
+  dropTargetPanelId: string | null;
   onPanelTitleChange: (panelId: string, title: string) => void;
   onPanelQueryChange: (panelId: string, query: ChartPanelQuery) => void;
   onPanelRemove: (panelId: string) => void;
   onPanelDuplicate: (panelId: string) => void;
+  onPanelMove: (panelId: string, targetPanelId: string) => void;
   onToggleExpand: (panelId: string) => void;
+  onReorderDragStart: (panelId: string, event: DragEvent) => void;
+  onReorderDragEnd: () => void;
+  onReorderTarget: (panelId: string | null) => void;
 }) {
   const panel = props.panel;
 
@@ -179,17 +197,55 @@ function PanelSlot(props: {
   }
 
   return (
-    <div class="h-full min-h-0 min-w-0">
+    <div
+      class={`h-full min-h-0 min-w-0 rounded-2xl transition ${
+        props.dropTargetPanelId === panel.id && props.draggingPanelId !== panel.id
+          ? "ring-2 ring-sky-400/70 ring-offset-2 ring-offset-zinc-950"
+          : ""
+      } ${props.draggingPanelId === panel.id ? "opacity-45" : ""}`}
+      onDragEnter={(event) => {
+        if (!props.canReorder || !props.draggingPanelId || props.draggingPanelId === panel.id) {
+          return;
+        }
+
+        event.preventDefault();
+        props.onReorderTarget(panel.id);
+      }}
+      onDragOver={(event) => {
+        if (!props.canReorder || !props.draggingPanelId || props.draggingPanelId === panel.id) {
+          return;
+        }
+
+        event.preventDefault();
+        if (event.dataTransfer) {
+          event.dataTransfer.dropEffect = "move";
+        }
+        props.onReorderTarget(panel.id);
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        const sourcePanelId = props.draggingPanelId || event.dataTransfer?.getData("text/plain");
+
+        if (sourcePanelId && sourcePanelId !== panel.id) {
+          props.onPanelMove(sourcePanelId, panel.id);
+        }
+
+        props.onReorderDragEnd();
+      }}
+    >
       <ChartPanel
         panel={panel}
         canRemove={props.canRemove}
         canDuplicate={props.canDuplicate}
+        canReorder={props.canReorder}
         expanded={props.expanded}
         onTitleChange={(title) => props.onPanelTitleChange(panel.id, title)}
         onQueryChange={(query) => props.onPanelQueryChange(panel.id, query)}
         onRemove={() => props.onPanelRemove(panel.id)}
         onDuplicate={() => props.onPanelDuplicate(panel.id)}
         onToggleExpand={() => props.onToggleExpand(panel.id)}
+        onReorderDragStart={(event) => props.onReorderDragStart(panel.id, event)}
+        onReorderDragEnd={props.onReorderDragEnd}
       />
     </div>
   );
@@ -207,7 +263,7 @@ function DesktopRow(props: {
   onPanelRemove: (panelId: string) => void;
   onPanelDuplicate: (panelId: string) => void;
   onToggleExpand: (panelId: string) => void;
-}) {
+} & ReorderProps) {
   let container!: HTMLDivElement;
   const rightPanel = () => props.panels[1];
 
@@ -222,12 +278,19 @@ function DesktopRow(props: {
             panel={props.panels[0]}
             canRemove={props.canRemove}
             canDuplicate={props.canDuplicate}
+            canReorder={props.canReorder}
             expanded={props.expandedPanelId === props.panels[0]?.id}
+            draggingPanelId={props.draggingPanelId}
+            dropTargetPanelId={props.dropTargetPanelId}
             onPanelTitleChange={props.onPanelTitleChange}
             onPanelQueryChange={props.onPanelQueryChange}
             onPanelRemove={props.onPanelRemove}
             onPanelDuplicate={props.onPanelDuplicate}
+            onPanelMove={props.onPanelMove}
             onToggleExpand={props.onToggleExpand}
+            onReorderDragStart={props.onReorderDragStart}
+            onReorderDragEnd={props.onReorderDragEnd}
+            onReorderTarget={props.onReorderTarget}
           />
         </div>
 
@@ -240,12 +303,19 @@ function DesktopRow(props: {
               panel={rightPanel()}
               canRemove={props.canRemove}
               canDuplicate={props.canDuplicate}
+              canReorder={props.canReorder}
               expanded={props.expandedPanelId === rightPanel()?.id}
+              draggingPanelId={props.draggingPanelId}
+              dropTargetPanelId={props.dropTargetPanelId}
               onPanelTitleChange={props.onPanelTitleChange}
               onPanelQueryChange={props.onPanelQueryChange}
               onPanelRemove={props.onPanelRemove}
               onPanelDuplicate={props.onPanelDuplicate}
+              onPanelMove={props.onPanelMove}
               onToggleExpand={props.onToggleExpand}
+              onReorderDragStart={props.onReorderDragStart}
+              onReorderDragEnd={props.onReorderDragEnd}
+              onReorderTarget={props.onReorderTarget}
             />
           </div>
         ) : null}
@@ -274,7 +344,7 @@ function ThreePanelDesktopLayout(props: {
   onPanelDuplicate: (panelId: string) => void;
   onToggleExpand: (panelId: string) => void;
   expandedPanelId: string | null;
-}) {
+} & ReorderProps) {
   let container!: HTMLDivElement;
   let secondaryColumn!: HTMLDivElement;
   const primaryRatio = () => props.layout.columnRatios[0] ?? 0.58;
@@ -293,12 +363,19 @@ function ThreePanelDesktopLayout(props: {
             panel={props.panels[0]}
             canRemove
             canDuplicate={props.panels.length < 6}
+            canReorder={props.canReorder}
             expanded={props.expandedPanelId === props.panels[0]?.id}
+            draggingPanelId={props.draggingPanelId}
+            dropTargetPanelId={props.dropTargetPanelId}
             onPanelTitleChange={props.onPanelTitleChange}
             onPanelQueryChange={props.onPanelQueryChange}
             onPanelRemove={props.onPanelRemove}
             onPanelDuplicate={props.onPanelDuplicate}
+            onPanelMove={props.onPanelMove}
             onToggleExpand={props.onToggleExpand}
+            onReorderDragStart={props.onReorderDragStart}
+            onReorderDragEnd={props.onReorderDragEnd}
+            onReorderTarget={props.onReorderTarget}
           />
         </div>
 
@@ -313,12 +390,19 @@ function ThreePanelDesktopLayout(props: {
                 panel={panel}
                 canRemove
                 canDuplicate={props.panels.length < 6}
+                canReorder={props.canReorder}
                 expanded={props.expandedPanelId === panel.id}
+                draggingPanelId={props.draggingPanelId}
+                dropTargetPanelId={props.dropTargetPanelId}
                 onPanelTitleChange={props.onPanelTitleChange}
                 onPanelQueryChange={props.onPanelQueryChange}
                 onPanelRemove={props.onPanelRemove}
                 onPanelDuplicate={props.onPanelDuplicate}
+                onPanelMove={props.onPanelMove}
                 onToggleExpand={props.onToggleExpand}
+                onReorderDragStart={props.onReorderDragStart}
+                onReorderDragEnd={props.onReorderDragEnd}
+                onReorderTarget={props.onReorderTarget}
               />
             </div>
           ))}
@@ -376,7 +460,7 @@ function FocusDesktopLayout(props: {
   onPanelDuplicate: (panelId: string) => void;
   onToggleExpand: (panelId: string) => void;
   expandedPanelId: string | null;
-}) {
+} & ReorderProps) {
   let container!: HTMLDivElement;
   const rowOffsets = getBoundaryOffsets(props.layout.rowWeights);
 
@@ -393,12 +477,19 @@ function FocusDesktopLayout(props: {
               panel={panel}
               canRemove={props.panels.length > 1}
               canDuplicate={props.panels.length < 6}
+              canReorder={props.canReorder}
               expanded={props.expandedPanelId === panel.id}
+              draggingPanelId={props.draggingPanelId}
+              dropTargetPanelId={props.dropTargetPanelId}
               onPanelTitleChange={props.onPanelTitleChange}
               onPanelQueryChange={props.onPanelQueryChange}
               onPanelRemove={props.onPanelRemove}
               onPanelDuplicate={props.onPanelDuplicate}
+              onPanelMove={props.onPanelMove}
               onToggleExpand={props.onToggleExpand}
+              onReorderDragStart={props.onReorderDragStart}
+              onReorderDragEnd={props.onReorderDragEnd}
+              onReorderTarget={props.onReorderTarget}
             />
           </div>
         ))}
@@ -430,7 +521,7 @@ function TiledDesktopLayout(props: {
   onPanelDuplicate: (panelId: string) => void;
   onToggleExpand: (panelId: string) => void;
   expandedPanelId: string | null;
-}) {
+} & ReorderProps) {
   let container!: HTMLDivElement;
   const rows = chunkPanels(props.panels, getWorkspaceColumnCount(props.preset, props.panels.length));
   const rowOffsets = getBoundaryOffsets(props.layout.rowWeights);
@@ -449,7 +540,14 @@ function TiledDesktopLayout(props: {
               columnRatio={row.length > 1 ? props.layout.columnRatios[index] ?? 0.5 : null}
               canRemove={props.panels.length > 1}
               canDuplicate={props.panels.length < 6}
+              canReorder={props.canReorder}
+              draggingPanelId={props.draggingPanelId}
+              dropTargetPanelId={props.dropTargetPanelId}
               expandedPanelId={props.expandedPanelId}
+              onPanelMove={props.onPanelMove}
+              onReorderDragStart={props.onReorderDragStart}
+              onReorderDragEnd={props.onReorderDragEnd}
+              onReorderTarget={props.onReorderTarget}
               onColumnRatioChange={
                 row.length > 1
                   ? (ratio) => {
@@ -486,8 +584,11 @@ function TiledDesktopLayout(props: {
 
 export default function WorkspaceGrid(props: Props) {
   const [expandedPanelId, setExpandedPanelId] = createSignal<string | null>(null);
+  const [draggingPanelId, setDraggingPanelId] = createSignal<string | null>(null);
+  const [dropTargetPanelId, setDropTargetPanelId] = createSignal<string | null>(null);
   const expandedPanel = () => props.panels.find((panel) => panel.id === expandedPanelId()) ?? null;
   const canDuplicate = () => props.panels.length < 6;
+  const canReorder = () => props.panels.length > 1 && !expandedPanel();
 
   createEffect(() => {
     if (expandedPanelId() && !props.panels.some((panel) => panel.id === expandedPanelId())) {
@@ -499,6 +600,22 @@ export default function WorkspaceGrid(props: Props) {
     setExpandedPanelId((current) => (current === panelId ? null : panelId));
   };
 
+  const startReorder = (panelId: string, event: DragEvent) => {
+    if (!canReorder() || !event.dataTransfer) {
+      event.preventDefault();
+      return;
+    }
+
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", panelId);
+    setDraggingPanelId(panelId);
+  };
+
+  const endReorder = () => {
+    setDraggingPanelId(null);
+    setDropTargetPanelId(null);
+  };
+
   return (
     <>
       {expandedPanel() ? (
@@ -507,12 +624,19 @@ export default function WorkspaceGrid(props: Props) {
             panel={expandedPanel()!}
             canRemove={props.panels.length > 1}
             canDuplicate={canDuplicate()}
+            canReorder={false}
             expanded
+            draggingPanelId={draggingPanelId()}
+            dropTargetPanelId={dropTargetPanelId()}
             onPanelTitleChange={props.onPanelTitleChange}
             onPanelQueryChange={props.onPanelQueryChange}
             onPanelRemove={props.onPanelRemove}
             onPanelDuplicate={props.onPanelDuplicate}
+            onPanelMove={props.onPanelMove}
             onToggleExpand={toggleExpand}
+            onReorderDragStart={startReorder}
+            onReorderDragEnd={endReorder}
+            onReorderTarget={setDropTargetPanelId}
           />
         </div>
       ) : null}
@@ -524,12 +648,19 @@ export default function WorkspaceGrid(props: Props) {
               panel={panel}
               canRemove={props.panels.length > 1}
               canDuplicate={canDuplicate()}
+              canReorder={canReorder()}
               expanded={expandedPanelId() === panel.id}
+              draggingPanelId={draggingPanelId()}
+              dropTargetPanelId={dropTargetPanelId()}
               onPanelTitleChange={props.onPanelTitleChange}
               onPanelQueryChange={props.onPanelQueryChange}
               onPanelRemove={props.onPanelRemove}
               onPanelDuplicate={props.onPanelDuplicate}
+              onPanelMove={props.onPanelMove}
               onToggleExpand={toggleExpand}
+              onReorderDragStart={startReorder}
+              onReorderDragEnd={endReorder}
+              onReorderTarget={setDropTargetPanelId}
             />
           ))}
         </div>
@@ -544,8 +675,15 @@ export default function WorkspaceGrid(props: Props) {
           onPanelQueryChange={props.onPanelQueryChange}
           onPanelRemove={props.onPanelRemove}
           onPanelDuplicate={props.onPanelDuplicate}
+          onPanelMove={props.onPanelMove}
           onToggleExpand={toggleExpand}
           expandedPanelId={expandedPanelId()}
+          canReorder={canReorder()}
+          draggingPanelId={draggingPanelId()}
+          dropTargetPanelId={dropTargetPanelId()}
+          onReorderDragStart={startReorder}
+          onReorderDragEnd={endReorder}
+          onReorderTarget={setDropTargetPanelId}
         />
       ) : null}
 
@@ -558,8 +696,15 @@ export default function WorkspaceGrid(props: Props) {
           onPanelQueryChange={props.onPanelQueryChange}
           onPanelRemove={props.onPanelRemove}
           onPanelDuplicate={props.onPanelDuplicate}
+          onPanelMove={props.onPanelMove}
           onToggleExpand={toggleExpand}
           expandedPanelId={expandedPanelId()}
+          canReorder={canReorder()}
+          draggingPanelId={draggingPanelId()}
+          dropTargetPanelId={dropTargetPanelId()}
+          onReorderDragStart={startReorder}
+          onReorderDragEnd={endReorder}
+          onReorderTarget={setDropTargetPanelId}
         />
       ) : null}
 
@@ -575,8 +720,15 @@ export default function WorkspaceGrid(props: Props) {
               onPanelQueryChange={props.onPanelQueryChange}
               onPanelRemove={props.onPanelRemove}
               onPanelDuplicate={props.onPanelDuplicate}
+              onPanelMove={props.onPanelMove}
               onToggleExpand={toggleExpand}
               expandedPanelId={expandedPanelId()}
+              canReorder={canReorder()}
+              draggingPanelId={draggingPanelId()}
+              dropTargetPanelId={dropTargetPanelId()}
+              onReorderDragStart={startReorder}
+              onReorderDragEnd={endReorder}
+              onReorderTarget={setDropTargetPanelId}
             />
           )
         )

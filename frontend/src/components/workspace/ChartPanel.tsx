@@ -1,5 +1,15 @@
 import { createEffect, createMemo, createResource, createSignal, onCleanup, Show } from "solid-js";
-import { Copy, Ellipsis, Expand, History, Minimize2, Radio, SlidersHorizontal, Trash2 } from "lucide-solid";
+import {
+  Copy,
+  Ellipsis,
+  Expand,
+  GripVertical,
+  History,
+  Minimize2,
+  Radio,
+  SlidersHorizontal,
+  Trash2,
+} from "lucide-solid";
 import ChartIndicatorToggleBar from "../ChartIndicatorToggleBar";
 import PriceChart from "../PriceChart";
 import {
@@ -28,12 +38,15 @@ interface Props {
   panel: ChartPanelConfig;
   canRemove: boolean;
   canDuplicate: boolean;
+  canReorder: boolean;
   expanded?: boolean;
   onTitleChange: (title: string) => void;
   onQueryChange: (query: ChartPanelQuery) => void;
   onRemove: () => void;
   onDuplicate: () => void;
   onToggleExpand: () => void;
+  onReorderDragStart: (event: DragEvent) => void;
+  onReorderDragEnd: () => void;
 }
 
 type LiveChartPanelQuery = Extract<ChartPanelQuery, { mode: "live" }>;
@@ -210,6 +223,19 @@ export default function ChartPanel(props: Props) {
         <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div class="min-w-0 flex-1">
             <div class="flex min-w-0 flex-wrap items-center gap-2">
+              <Show when={props.canReorder}>
+                <button
+                  type="button"
+                  draggable
+                  title="Drag to reorder panel"
+                  aria-label="Drag to reorder panel"
+                  class="inline-flex h-7 w-7 cursor-grab items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-500 transition-colors hover:border-zinc-700 hover:text-zinc-200 active:cursor-grabbing"
+                  onDragStart={props.onReorderDragStart}
+                  onDragEnd={props.onReorderDragEnd}
+                >
+                  <GripVertical size={15} />
+                </button>
+              </Show>
               <h3 class="truncate text-sm font-semibold text-zinc-100">{props.panel.title}</h3>
               <span class="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-300">
                 {query().symbol}
