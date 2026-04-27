@@ -1,5 +1,5 @@
-import { createEffect, createMemo, createResource, createSignal, Show } from "solid-js";
-import { History, Radio, SlidersHorizontal, Trash2 } from "lucide-solid";
+import { createEffect, createMemo, createResource, createSignal, onCleanup, Show } from "solid-js";
+import { Copy, Ellipsis, Expand, History, Minimize2, Radio, SlidersHorizontal, Trash2 } from "lucide-solid";
 import ChartIndicatorToggleBar from "../ChartIndicatorToggleBar";
 import PriceChart from "../PriceChart";
 import {
@@ -27,9 +27,13 @@ import {
 interface Props {
   panel: ChartPanelConfig;
   canRemove: boolean;
+  canDuplicate: boolean;
+  expanded?: boolean;
   onTitleChange: (title: string) => void;
   onQueryChange: (query: ChartPanelQuery) => void;
   onRemove: () => void;
+  onDuplicate: () => void;
+  onToggleExpand: () => void;
 }
 
 type LiveChartPanelQuery = Extract<ChartPanelQuery, { mode: "live" }>;
@@ -78,9 +82,26 @@ export default function ChartPanel(props: Props) {
   const query = createMemo(() => props.panel.query);
   const [titleDraft, setTitleDraft] = createSignal(props.panel.title);
   const [showControls, setShowControls] = createSignal(false);
+  const [showMenu, setShowMenu] = createSignal(false);
+  let menuRoot: HTMLDivElement | undefined;
 
   createEffect(() => {
     setTitleDraft(props.panel.title);
+  });
+
+  createEffect(() => {
+    if (!showMenu()) {
+      return;
+    }
+
+    const closeMenu = (event: PointerEvent) => {
+      if (!menuRoot?.contains(event.target as Node)) {
+        setShowMenu(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", closeMenu);
+    onCleanup(() => window.removeEventListener("pointerdown", closeMenu));
   });
 
   const [candles] = createResource<Candle[], ChartPanelQuery>(query, async (nextQuery) => {
@@ -243,17 +264,59 @@ export default function ChartPanel(props: Props) {
               <SlidersHorizontal size={14} />
               {showControls() ? "Hide controls" : "Controls"}
             </button>
-            <Show when={props.canRemove}>
+
+            <div ref={menuRoot} class="relative">
               <button
                 type="button"
-                title="Remove this panel"
-                class="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:border-zinc-700 hover:text-zinc-300"
-                onClick={props.onRemove}
+                title="Panel actions"
+                aria-label="Panel actions"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:border-zinc-700 hover:text-zinc-200"
+                onClick={() => setShowMenu((current) => !current)}
               >
-                <Trash2 size={14} />
-                Remove
+                <Ellipsis size={15} />
               </button>
-            </Show>
+
+              <Show when={showMenu()}>
+                <div class="absolute right-0 top-[calc(100%+0.5rem)] z-30 w-48 rounded-2xl border border-zinc-800 bg-zinc-950/98 p-2 shadow-2xl shadow-black/40">
+                  <button
+                    type="button"
+                    class="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-900"
+                    onClick={() => {
+                      setShowMenu(false);
+                      props.onToggleExpand();
+                    }}
+                  >
+                    {props.expanded ? <Minimize2 size={15} /> : <Expand size={15} />}
+                    {props.expanded ? "Collapse panel" : "Expand panel"}
+                  </button>
+                  <button
+                    type="button"
+                    class="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-900 disabled:cursor-not-allowed disabled:text-zinc-600"
+                    onClick={() => {
+                      setShowMenu(false);
+                      props.onDuplicate();
+                    }}
+                    disabled={!props.canDuplicate}
+                  >
+                    <Copy size={15} />
+                    Duplicate panel
+                  </button>
+                  <Show when={props.canRemove}>
+                    <button
+                      type="button"
+                      class="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-red-300 transition-colors hover:bg-red-950/40"
+                      onClick={() => {
+                        setShowMenu(false);
+                        props.onRemove();
+                      }}
+                    >
+                      <Trash2 size={15} />
+                      Remove panel
+                    </button>
+                  </Show>
+                </div>
+              </Show>
+            </div>
           </div>
         </div>
       </div>

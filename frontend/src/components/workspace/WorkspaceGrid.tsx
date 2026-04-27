@@ -1,4 +1,4 @@
-import type { JSX } from "solid-js";
+import { createEffect, createSignal, type JSX } from "solid-js";
 import ChartPanel from "./ChartPanel";
 import {
   clampWorkspaceRatio,
@@ -20,6 +20,7 @@ interface Props {
   onPanelTitleChange: (panelId: string, title: string) => void;
   onPanelQueryChange: (panelId: string, query: ChartPanelQuery) => void;
   onPanelRemove: (panelId: string) => void;
+  onPanelDuplicate: (panelId: string) => void;
 }
 
 interface ResizeHandleProps {
@@ -163,9 +164,13 @@ function beginWeightResize(
 function PanelSlot(props: {
   panel: ChartPanelConfig | undefined;
   canRemove: boolean;
+  canDuplicate: boolean;
+  expanded: boolean;
   onPanelTitleChange: (panelId: string, title: string) => void;
   onPanelQueryChange: (panelId: string, query: ChartPanelQuery) => void;
   onPanelRemove: (panelId: string) => void;
+  onPanelDuplicate: (panelId: string) => void;
+  onToggleExpand: (panelId: string) => void;
 }) {
   const panel = props.panel;
 
@@ -178,9 +183,13 @@ function PanelSlot(props: {
       <ChartPanel
         panel={panel}
         canRemove={props.canRemove}
+        canDuplicate={props.canDuplicate}
+        expanded={props.expanded}
         onTitleChange={(title) => props.onPanelTitleChange(panel.id, title)}
         onQueryChange={(query) => props.onPanelQueryChange(panel.id, query)}
         onRemove={() => props.onPanelRemove(panel.id)}
+        onDuplicate={() => props.onPanelDuplicate(panel.id)}
+        onToggleExpand={() => props.onToggleExpand(panel.id)}
       />
     </div>
   );
@@ -190,10 +199,14 @@ function DesktopRow(props: {
   panels: ChartPanelConfig[];
   columnRatio: number | null;
   canRemove: boolean;
+  canDuplicate: boolean;
   onColumnRatioChange: ((ratio: number) => void) | null;
+  expandedPanelId: string | null;
   onPanelTitleChange: (panelId: string, title: string) => void;
   onPanelQueryChange: (panelId: string, query: ChartPanelQuery) => void;
   onPanelRemove: (panelId: string) => void;
+  onPanelDuplicate: (panelId: string) => void;
+  onToggleExpand: (panelId: string) => void;
 }) {
   let container!: HTMLDivElement;
   const rightPanel = () => props.panels[1];
@@ -208,9 +221,13 @@ function DesktopRow(props: {
           <PanelSlot
             panel={props.panels[0]}
             canRemove={props.canRemove}
+            canDuplicate={props.canDuplicate}
+            expanded={props.expandedPanelId === props.panels[0]?.id}
             onPanelTitleChange={props.onPanelTitleChange}
             onPanelQueryChange={props.onPanelQueryChange}
             onPanelRemove={props.onPanelRemove}
+            onPanelDuplicate={props.onPanelDuplicate}
+            onToggleExpand={props.onToggleExpand}
           />
         </div>
 
@@ -222,9 +239,13 @@ function DesktopRow(props: {
             <PanelSlot
               panel={rightPanel()}
               canRemove={props.canRemove}
+              canDuplicate={props.canDuplicate}
+              expanded={props.expandedPanelId === rightPanel()?.id}
               onPanelTitleChange={props.onPanelTitleChange}
               onPanelQueryChange={props.onPanelQueryChange}
               onPanelRemove={props.onPanelRemove}
+              onPanelDuplicate={props.onPanelDuplicate}
+              onToggleExpand={props.onToggleExpand}
             />
           </div>
         ) : null}
@@ -250,6 +271,9 @@ function ThreePanelDesktopLayout(props: {
   onPanelTitleChange: (panelId: string, title: string) => void;
   onPanelQueryChange: (panelId: string, query: ChartPanelQuery) => void;
   onPanelRemove: (panelId: string) => void;
+  onPanelDuplicate: (panelId: string) => void;
+  onToggleExpand: (panelId: string) => void;
+  expandedPanelId: string | null;
 }) {
   let container!: HTMLDivElement;
   let secondaryColumn!: HTMLDivElement;
@@ -268,9 +292,13 @@ function ThreePanelDesktopLayout(props: {
           <PanelSlot
             panel={props.panels[0]}
             canRemove
+            canDuplicate={props.panels.length < 6}
+            expanded={props.expandedPanelId === props.panels[0]?.id}
             onPanelTitleChange={props.onPanelTitleChange}
             onPanelQueryChange={props.onPanelQueryChange}
             onPanelRemove={props.onPanelRemove}
+            onPanelDuplicate={props.onPanelDuplicate}
+            onToggleExpand={props.onToggleExpand}
           />
         </div>
 
@@ -284,9 +312,13 @@ function ThreePanelDesktopLayout(props: {
               <PanelSlot
                 panel={panel}
                 canRemove
+                canDuplicate={props.panels.length < 6}
+                expanded={props.expandedPanelId === panel.id}
                 onPanelTitleChange={props.onPanelTitleChange}
                 onPanelQueryChange={props.onPanelQueryChange}
                 onPanelRemove={props.onPanelRemove}
+                onPanelDuplicate={props.onPanelDuplicate}
+                onToggleExpand={props.onToggleExpand}
               />
             </div>
           ))}
@@ -341,6 +373,9 @@ function FocusDesktopLayout(props: {
   onPanelTitleChange: (panelId: string, title: string) => void;
   onPanelQueryChange: (panelId: string, query: ChartPanelQuery) => void;
   onPanelRemove: (panelId: string) => void;
+  onPanelDuplicate: (panelId: string) => void;
+  onToggleExpand: (panelId: string) => void;
+  expandedPanelId: string | null;
 }) {
   let container!: HTMLDivElement;
   const rowOffsets = getBoundaryOffsets(props.layout.rowWeights);
@@ -357,9 +392,13 @@ function FocusDesktopLayout(props: {
             <PanelSlot
               panel={panel}
               canRemove={props.panels.length > 1}
+              canDuplicate={props.panels.length < 6}
+              expanded={props.expandedPanelId === panel.id}
               onPanelTitleChange={props.onPanelTitleChange}
               onPanelQueryChange={props.onPanelQueryChange}
               onPanelRemove={props.onPanelRemove}
+              onPanelDuplicate={props.onPanelDuplicate}
+              onToggleExpand={props.onToggleExpand}
             />
           </div>
         ))}
@@ -388,6 +427,9 @@ function TiledDesktopLayout(props: {
   onPanelTitleChange: (panelId: string, title: string) => void;
   onPanelQueryChange: (panelId: string, query: ChartPanelQuery) => void;
   onPanelRemove: (panelId: string) => void;
+  onPanelDuplicate: (panelId: string) => void;
+  onToggleExpand: (panelId: string) => void;
+  expandedPanelId: string | null;
 }) {
   let container!: HTMLDivElement;
   const rows = chunkPanels(props.panels, getWorkspaceColumnCount(props.preset, props.panels.length));
@@ -406,6 +448,8 @@ function TiledDesktopLayout(props: {
               panels={row}
               columnRatio={row.length > 1 ? props.layout.columnRatios[index] ?? 0.5 : null}
               canRemove={props.panels.length > 1}
+              canDuplicate={props.panels.length < 6}
+              expandedPanelId={props.expandedPanelId}
               onColumnRatioChange={
                 row.length > 1
                   ? (ratio) => {
@@ -418,6 +462,8 @@ function TiledDesktopLayout(props: {
               onPanelTitleChange={props.onPanelTitleChange}
               onPanelQueryChange={props.onPanelQueryChange}
               onPanelRemove={props.onPanelRemove}
+              onPanelDuplicate={props.onPanelDuplicate}
+              onToggleExpand={props.onToggleExpand}
             />
           </div>
         ))}
@@ -439,21 +485,57 @@ function TiledDesktopLayout(props: {
 }
 
 export default function WorkspaceGrid(props: Props) {
+  const [expandedPanelId, setExpandedPanelId] = createSignal<string | null>(null);
+  const expandedPanel = () => props.panels.find((panel) => panel.id === expandedPanelId()) ?? null;
+  const canDuplicate = () => props.panels.length < 6;
+
+  createEffect(() => {
+    if (expandedPanelId() && !props.panels.some((panel) => panel.id === expandedPanelId())) {
+      setExpandedPanelId(null);
+    }
+  });
+
+  const toggleExpand = (panelId: string) => {
+    setExpandedPanelId((current) => (current === panelId ? null : panelId));
+  };
+
   return (
     <>
-      <div class="grid gap-3 xl:hidden">
-        {props.panels.map((panel) => (
+      {expandedPanel() ? (
+        <div class="mb-3 rounded-2xl border border-zinc-800 bg-zinc-950/45 p-1">
           <PanelSlot
-            panel={panel}
+            panel={expandedPanel()!}
             canRemove={props.panels.length > 1}
+            canDuplicate={canDuplicate()}
+            expanded
             onPanelTitleChange={props.onPanelTitleChange}
             onPanelQueryChange={props.onPanelQueryChange}
             onPanelRemove={props.onPanelRemove}
+            onPanelDuplicate={props.onPanelDuplicate}
+            onToggleExpand={toggleExpand}
           />
-        ))}
-      </div>
+        </div>
+      ) : null}
 
-      {props.layout.kind === "focus" ? (
+      {expandedPanel() ? null : (
+        <div class="grid gap-3 xl:hidden">
+          {props.panels.map((panel) => (
+            <PanelSlot
+              panel={panel}
+              canRemove={props.panels.length > 1}
+              canDuplicate={canDuplicate()}
+              expanded={expandedPanelId() === panel.id}
+              onPanelTitleChange={props.onPanelTitleChange}
+              onPanelQueryChange={props.onPanelQueryChange}
+              onPanelRemove={props.onPanelRemove}
+              onPanelDuplicate={props.onPanelDuplicate}
+              onToggleExpand={toggleExpand}
+            />
+          ))}
+        </div>
+      )}
+
+      {props.layout.kind === "focus" && !expandedPanel() ? (
         <FocusDesktopLayout
           panels={props.panels}
           layout={props.layout}
@@ -461,10 +543,13 @@ export default function WorkspaceGrid(props: Props) {
           onPanelTitleChange={props.onPanelTitleChange}
           onPanelQueryChange={props.onPanelQueryChange}
           onPanelRemove={props.onPanelRemove}
+          onPanelDuplicate={props.onPanelDuplicate}
+          onToggleExpand={toggleExpand}
+          expandedPanelId={expandedPanelId()}
         />
       ) : null}
 
-      {(props.layout.kind === "split" || props.layout.kind === "grid") && props.panels.length === 3 ? (
+      {(props.layout.kind === "split" || props.layout.kind === "grid") && props.panels.length === 3 && !expandedPanel() ? (
         <ThreePanelDesktopLayout
           panels={props.panels}
           layout={props.layout}
@@ -472,20 +557,28 @@ export default function WorkspaceGrid(props: Props) {
           onPanelTitleChange={props.onPanelTitleChange}
           onPanelQueryChange={props.onPanelQueryChange}
           onPanelRemove={props.onPanelRemove}
+          onPanelDuplicate={props.onPanelDuplicate}
+          onToggleExpand={toggleExpand}
+          expandedPanelId={expandedPanelId()}
         />
       ) : null}
 
       {props.layout.kind === "split" || props.layout.kind === "grid" ? (
         props.panels.length === 3 ? null : (
-          <TiledDesktopLayout
-            preset={props.layout.kind}
-            panels={props.panels}
-            layout={props.layout}
-            onLayoutChange={props.onLayoutChange}
-            onPanelTitleChange={props.onPanelTitleChange}
-            onPanelQueryChange={props.onPanelQueryChange}
-            onPanelRemove={props.onPanelRemove}
-          />
+          expandedPanel() ? null : (
+            <TiledDesktopLayout
+              preset={props.layout.kind}
+              panels={props.panels}
+              layout={props.layout}
+              onLayoutChange={props.onLayoutChange}
+              onPanelTitleChange={props.onPanelTitleChange}
+              onPanelQueryChange={props.onPanelQueryChange}
+              onPanelRemove={props.onPanelRemove}
+              onPanelDuplicate={props.onPanelDuplicate}
+              onToggleExpand={toggleExpand}
+              expandedPanelId={expandedPanelId()}
+            />
+          )
         )
       ) : null}
     </>

@@ -206,6 +206,54 @@ export default function Dashboard() {
     );
   };
 
+  const handlePanelDuplicate = (panelId: string) => {
+    const workspaceIndex = activeWorkspaceIndex();
+    const preset = workspace.workspaces[workspaceIndex].selectedPreset;
+    const currentPanels = workspace.workspaces[workspaceIndex].presets[preset].panels;
+    const panelIndex = currentPanels.findIndex((panel) => panel.id === panelId);
+
+    if (panelIndex === -1 || currentPanels.length >= MAX_WORKSPACE_PANELS) {
+      return;
+    }
+
+    const sourcePanel = currentPanels[panelIndex];
+    const duplicateSeed = createWorkspacePanel(preset, currentPanels.length);
+    const duplicateQuery =
+      sourcePanel.query.mode === "live"
+        ? {
+            ...sourcePanel.query,
+            indicators: sourcePanel.query.indicators
+              ? { ...sourcePanel.query.indicators }
+              : undefined,
+          }
+        : {
+            ...sourcePanel.query,
+            indicators: sourcePanel.query.indicators
+              ? { ...sourcePanel.query.indicators }
+              : undefined,
+          };
+    const duplicatePanel = {
+      id: duplicateSeed.id,
+      title: normalizePanelTitle(`${sourcePanel.title} Copy`, sourcePanel.title),
+      query: duplicateQuery,
+    };
+    const nextPanels = [
+      ...currentPanels.slice(0, panelIndex + 1),
+      duplicatePanel,
+      ...currentPanels.slice(panelIndex + 1),
+    ];
+    const nextLayout = reconcileWorkspaceLayout(
+      preset,
+      workspace.workspaces[workspaceIndex].presets[preset].layout,
+      nextPanels.length,
+    );
+
+    batch(() => {
+      setWorkspace("workspaces", workspaceIndex, "presets", preset, "panels", nextPanels);
+      setWorkspace("workspaces", workspaceIndex, "presets", preset, "layout", nextLayout);
+    });
+  };
+
   const handleLayoutChange = (nextLayout: WorkspaceLayout) => {
     const workspaceIndex = activeWorkspaceIndex();
     const preset = workspace.workspaces[workspaceIndex].selectedPreset;
@@ -356,10 +404,11 @@ export default function Dashboard() {
               panels={activePresetState().panels}
               layout={activePresetState().layout}
               onLayoutChange={handleLayoutChange}
-              onPanelTitleChange={handlePanelTitleChange}
-              onPanelQueryChange={handlePanelQueryChange}
-              onPanelRemove={handleRemovePanel}
-            />
+            onPanelTitleChange={handlePanelTitleChange}
+            onPanelQueryChange={handlePanelQueryChange}
+            onPanelRemove={handleRemovePanel}
+            onPanelDuplicate={handlePanelDuplicate}
+          />
 
             {showUtilityRail() ? (
               <aside class="hidden xl:flex min-h-[640px] flex-col gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
