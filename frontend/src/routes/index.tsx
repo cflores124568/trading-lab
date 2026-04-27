@@ -1,7 +1,7 @@
 import { A, useLocation, useNavigate } from "@solidjs/router";
 import { batch, createEffect, createMemo, createSignal } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
-import { Gauge, LayoutPanelTop, PanelRight, SquareChartGantt } from "lucide-solid";
+import { Gauge, LayoutPanelTop, PanelRight, Radio, SquareChartGantt } from "lucide-solid";
 import AppShell from "../components/AppShell";
 import WorkspaceGrid from "../components/workspace/WorkspaceGrid";
 import WorkspaceToolbar from "../components/workspace/WorkspaceToolbar";
@@ -50,6 +50,30 @@ export default function Dashboard() {
   const canAddChart = createMemo(() => activePresetState().panels.length < MAX_WORKSPACE_PANELS);
   const canDeleteWorkspace = createMemo(() => workspace.workspaces.length > 1);
   const activePanels = createMemo(() => activePresetState().panels);
+  const livePanelCount = createMemo(
+    () => activePanels().filter((panel) => panel.query.mode === "live").length,
+  );
+  const historicalPanelCount = createMemo(
+    () => activePanels().filter((panel) => panel.query.mode === "historical").length,
+  );
+  const symbolMix = createMemo(() => {
+    const counts = new Map<string, number>();
+
+    for (const panel of activePanels()) {
+      counts.set(panel.query.symbol, (counts.get(panel.query.symbol) ?? 0) + 1);
+    }
+
+    return Array.from(counts.entries()).sort((left, right) => right[1] - left[1]);
+  });
+  const intervalMix = createMemo(() => {
+    const counts = new Map<string, number>();
+
+    for (const panel of activePanels()) {
+      counts.set(panel.query.interval, (counts.get(panel.query.interval) ?? 0) + 1);
+    }
+
+    return Array.from(counts.entries()).sort((left, right) => right[1] - left[1]);
+  });
   const layoutRead = createMemo(() => {
     const panelCount = activePanels().length;
     if (panelCount === 3) {
@@ -66,26 +90,22 @@ export default function Dashboard() {
 
     return "Dense multi-panel grid that still keeps everything inside one shell.";
   });
-  const railNotes = createMemo(() => {
-    if (activePanels().length === 3) {
-      return [
-        "Use the left chart as your anchor read and keep the right stack for confirmation.",
-        "This is the first layout where icons start paying off in the panel headers or rail.",
-        "A future trading rail can drop into this slot without blowing up the chart shell.",
-      ];
-    }
-
-    return [
-      "The shell is doing the visual grouping now, so individual panels can stay quiet.",
-      "Icons are worth adding when an action repeats enough to be recognized instantly.",
-      "The right rail is the safest place to grow controls before touching chart density again.",
-    ];
-  });
   const railIconNote = createMemo(() =>
     activePanels().length >= 3
-      ? "Good time to add a small icon set to panel headers and workspace actions."
-      : "Hold off on more icons until the rail and panel actions stop changing.",
+      ? "Now is the right moment for icons on repeated panel actions, symbol chips, and future trade controls."
+      : "Keep icons limited to workspace actions until the panel workflow settles down a bit more.",
   );
+  const railFocusNote = createMemo(() => {
+    if (activePanels().length === 3) {
+      return "Anchor your main read on the left and use the stacked right side for confirmation and failure checks.";
+    }
+
+    if (activePanels().length >= 4) {
+      return "Once you go wider than three charts, the rail should carry summary stats so the panels can stay visually quiet.";
+    }
+
+    return "With one or two charts, keep the shell simple and let the chart body do most of the talking.";
+  });
 
   const handleWorkspaceChange = (workspaceId: string) => {
     setWorkspace("selectedWorkspaceId", workspaceId);
@@ -356,13 +376,43 @@ export default function Dashboard() {
 
                 <div class="rounded-2xl border border-zinc-800 bg-zinc-950/85 p-4">
                   <div class="flex items-center gap-2 text-zinc-100">
-                    <SquareChartGantt size={16} class="text-emerald-300" />
+                    <Radio size={16} class="text-emerald-300" />
+                    <p class="text-sm font-semibold">Workspace Pulse</p>
+                  </div>
+                  <div class="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                    <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-3">
+                      <p class="text-xs uppercase tracking-[0.16em] text-zinc-500">Live Panels</p>
+                      <p class="mt-2 text-xl font-semibold text-zinc-100">{livePanelCount()}</p>
+                    </div>
+                    <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-3">
+                      <p class="text-xs uppercase tracking-[0.16em] text-zinc-500">Historical Panels</p>
+                      <p class="mt-2 text-xl font-semibold text-zinc-100">{historicalPanelCount()}</p>
+                    </div>
+                    <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-3">
+                      <p class="text-xs uppercase tracking-[0.16em] text-zinc-500">Symbols In Play</p>
+                      <p class="mt-2 text-xl font-semibold text-zinc-100">{symbolMix().length}</p>
+                    </div>
+                    <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-3">
+                      <p class="text-xs uppercase tracking-[0.16em] text-zinc-500">Intervals In Play</p>
+                      <p class="mt-2 text-xl font-semibold text-zinc-100">{intervalMix().length}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/85 p-4">
+                  <div class="flex items-center gap-2 text-zinc-100">
+                    <SquareChartGantt size={16} class="text-amber-300" />
                     <p class="text-sm font-semibold">Panel Stack</p>
                   </div>
                   <div class="mt-3 space-y-2">
                     {activePanels().map((panel, index) => (
                       <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2">
-                        <p class="text-xs uppercase tracking-[0.16em] text-zinc-500">Panel {index + 1}</p>
+                        <div class="flex items-center justify-between gap-3">
+                          <p class="text-xs uppercase tracking-[0.16em] text-zinc-500">Panel {index + 1}</p>
+                          <span class="rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                            {panel.query.mode}
+                          </span>
+                        </div>
                         <p class="mt-1 text-sm font-medium text-zinc-100">{panel.title}</p>
                         <p class="mt-1 text-xs text-zinc-500">
                           {panel.query.symbol} · {panel.query.interval}
@@ -374,20 +424,36 @@ export default function Dashboard() {
 
                 <div class="rounded-2xl border border-zinc-800 bg-zinc-950/85 p-4">
                   <div class="flex items-center gap-2 text-zinc-100">
-                    <PanelRight size={16} class="text-amber-300" />
-                    <p class="text-sm font-semibold">Rail Notes</p>
+                    <PanelRight size={16} class="text-fuchsia-300" />
+                    <p class="text-sm font-semibold">Mix Read</p>
                   </div>
-                  <div class="mt-3 space-y-3 text-sm text-zinc-300">
-                    {railNotes().map((note) => (
-                      <p>{note}</p>
-                    ))}
+                  <div class="mt-3">
+                    <p class="text-xs uppercase tracking-[0.16em] text-zinc-500">Symbols</p>
+                    <div class="mt-2 flex flex-wrap gap-2">
+                      {symbolMix().map(([symbol, count]) => (
+                        <span class="rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-zinc-200">
+                          {symbol} x{count}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div class="mt-4">
+                    <p class="text-xs uppercase tracking-[0.16em] text-zinc-500">Intervals</p>
+                    <div class="mt-2 flex flex-wrap gap-2">
+                      {intervalMix().map(([interval, count]) => (
+                        <span class="rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-zinc-200">
+                          {interval} x{count}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                   <div class="mt-4 rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-3">
                     <div class="flex items-center gap-2 text-zinc-100">
                       <Gauge size={15} class="text-fuchsia-300" />
-                      <p class="text-xs font-semibold uppercase tracking-[0.16em]">Icons</p>
+                      <p class="text-xs font-semibold uppercase tracking-[0.16em]">Icon Timing</p>
                     </div>
                     <p class="mt-2 text-sm text-zinc-300">{railIconNote()}</p>
+                    <p class="mt-2 text-sm text-zinc-400">{railFocusNote()}</p>
                   </div>
                 </div>
               </aside>

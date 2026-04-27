@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createResource, createSignal, Show } from "solid-js";
+import { History, Radio, SlidersHorizontal, Trash2 } from "lucide-solid";
 import ChartIndicatorToggleBar from "../ChartIndicatorToggleBar";
 import PriceChart from "../PriceChart";
 import {
@@ -128,6 +129,32 @@ export default function ChartPanel(props: Props) {
     normalizePriceChartIndicatorSettings(query().indicators),
   );
   const modeLabel = createMemo(() => (query().mode === "live" ? "Live" : "History"));
+  const enabledStudyCount = createMemo(
+    () => Object.values(indicatorSettings()).filter(Boolean).length,
+  );
+  const panelStateLabel = createMemo(() => {
+    if (candles.loading) {
+      return "Loading";
+    }
+
+    if (candles.error) {
+      return "Issue";
+    }
+
+    const count = candles()?.length ?? 0;
+    return count > 0 ? `${count.toLocaleString()} bars` : "Empty";
+  });
+  const panelStateTone = createMemo(() => {
+    if (candles.loading) {
+      return "border-amber-700/70 bg-amber-950/70 text-amber-200";
+    }
+
+    if (candles.error) {
+      return "border-red-800 bg-red-950/60 text-red-200";
+    }
+
+    return "border-emerald-800/70 bg-emerald-950/40 text-emerald-200";
+  });
 
   const setMode = (mode: "live" | "historical") => {
     const current = query();
@@ -170,6 +197,12 @@ export default function ChartPanel(props: Props) {
               <span class="rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
                 {modeLabel()}
               </span>
+              <span class={`rounded-full border px-2 py-1 text-[11px] font-medium ${panelStateTone()}`}>
+                {panelStateLabel()}
+              </span>
+              <span class="rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                {enabledStudyCount()} studies
+              </span>
             </div>
             <p class="mt-1 truncate text-xs text-zinc-500">{panelSummary()}</p>
           </div>
@@ -177,39 +210,47 @@ export default function ChartPanel(props: Props) {
           <div class="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              class={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+              title="Switch to live mode"
+              class={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
                 query().mode === "live"
                   ? "bg-zinc-100 text-zinc-950"
                   : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
               }`}
               onClick={() => setMode("live")}
             >
+              <Radio size={14} />
               Live
             </button>
             <button
               type="button"
-              class={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+              title="Switch to historical mode"
+              class={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
               query().mode === "historical"
                 ? "bg-zinc-100 text-zinc-950"
                 : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
               }`}
               onClick={() => setMode("historical")}
             >
+              <History size={14} />
               Historical
             </button>
             <button
               type="button"
-              class="rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100"
+              title={showControls() ? "Hide panel controls" : "Show panel controls"}
+              class="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100"
               onClick={() => setShowControls((current) => !current)}
             >
+              <SlidersHorizontal size={14} />
               {showControls() ? "Hide controls" : "Controls"}
             </button>
             <Show when={props.canRemove}>
               <button
                 type="button"
-                class="rounded-lg border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:border-zinc-700 hover:text-zinc-300"
+                title="Remove this panel"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:border-zinc-700 hover:text-zinc-300"
                 onClick={props.onRemove}
               >
+                <Trash2 size={14} />
                 Remove
               </button>
             </Show>
