@@ -1,12 +1,38 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Share+Tech+Mono&display=swap");
 @import "tailwindcss";
+
+@theme {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-brand: "Share Tech Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
 
 @layer base {
   body {
-    @apply bg-zinc-950 text-zinc-100;
+    @apply bg-zinc-950 font-sans text-zinc-100;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-sans;
   }
 }
 
 @layer components {
+  .app-brand {
+    font-family: var(--font-brand);
+    letter-spacing: 0.08em;
+  }
+
+  .app-data {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
   .app-button {
     @apply inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm transition-colors;
   }
@@ -61,5 +87,11 @@
 
   .app-skeleton {
     @apply animate-pulse rounded-2xl bg-zinc-800/80;
+  }
+}
+
+@layer utilities {
+  .font-mono {
+    font-variant-numeric: tabular-nums;
   }
 }

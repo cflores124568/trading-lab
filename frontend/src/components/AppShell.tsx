@@ -54,12 +54,12 @@ export default function AppShell(props: AppShellProps) {
           <div class="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:gap-7">
             <A
               href="/"
-              class="group inline-flex items-center gap-2 text-sm font-semibold tracking-tight text-zinc-100"
+              class="group inline-flex items-center gap-2 text-sm font-semibold text-zinc-100"
             >
               <span class="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/80 text-sky-300 transition-colors group-hover:border-zinc-700 group-hover:text-sky-200">
                 <CandlestickChart size={17} />
               </span>
-              <span class="leading-tight">
+              <span class="app-brand leading-tight">
                 Trading
                 <span class="block text-zinc-400">Lab</span>
               </span>
