@@ -415,7 +415,7 @@ export default function ExperimentsIndexPage() {
   return (
     <AppShell
       title="Experiments"
-      subtitle="Create parameter sweeps, run the batch against real saved backtests, and rank the keepers without living in curl."
+      subtitle="Parameter sweeps and ranked saved runs."
       actions={
         <>
           <A
@@ -451,8 +451,7 @@ export default function ExperimentsIndexPage() {
                       Starting from `{seed().backtest_id.slice(0, 8)}`
                     </p>
                     <p class="mt-1 text-sm text-zinc-400">
-                      I prefilled the symbol, interval, strategy params, dates, and prop rules
-                      from that saved run so you can widen the grid instead of rebuilding it.
+                      Symbol, interval, params, dates, and rules are prefilled.
                     </p>
                   </div>
                   <A
@@ -471,9 +470,7 @@ export default function ExperimentsIndexPage() {
               <p class="app-kicker">Batch Builder</p>
               <h2 class="text-lg font-semibold text-zinc-100">Build the next sweep</h2>
               <p class="max-w-3xl text-sm text-zinc-400">
-                Pick the markets, intervals, and parameter ranges you want to fan out. Every
-                experiment run still lands as a normal saved backtest underneath, so the research
-                layer stays tied to the real pipeline.
+                Choose coverage, params, and scoring.
               </p>
             </div>
 
@@ -533,8 +530,7 @@ export default function ExperimentsIndexPage() {
             <div class="space-y-1">
               <p class="text-sm font-semibold text-zinc-100">1. Coverage</p>
               <p class="text-xs text-zinc-400">
-                Mix the symbols and intervals you want to sweep. The run count stacks fast, so
-                this card shows you the damage before you press go.
+                Symbols and intervals to sweep.
               </p>
             </div>
 
@@ -596,8 +592,7 @@ export default function ExperimentsIndexPage() {
             <div class="space-y-1">
               <p class="text-sm font-semibold text-zinc-100">2. Strategy Grid</p>
               <p class="text-xs text-zinc-400">
-                Use comma-separated values for each parameter. A single value works fine if you
-                only want to fan out symbols or intervals first.
+                Comma-separated values fan out the grid.
               </p>
             </div>
 
@@ -653,8 +648,7 @@ export default function ExperimentsIndexPage() {
             <div class="space-y-1">
               <p class="text-sm font-semibold text-zinc-100">3. Guardrails + Sizing</p>
               <p class="text-xs text-zinc-400">
-                Reuse the same prop-firm rules and account assumptions you already lean on in the
-                saved backtest flow.
+                Prop rules and account assumptions.
               </p>
             </div>
 
@@ -770,10 +764,6 @@ export default function ExperimentsIndexPage() {
           <section class={section}>
             <div>
               <p class="app-kicker">Saved Batches</p>
-              <p class="mt-2 text-sm text-zinc-400">
-                Open a ranked sweep, rerun a draft, or jump straight into the saved backtest that
-                came out on top.
-              </p>
             </div>
 
             <Show when={!experiments.loading} fallback={<div class="app-skeleton h-48" />}>
@@ -781,8 +771,7 @@ export default function ExperimentsIndexPage() {
                 when={(experiments() ?? []).length > 0}
                 fallback={
                   <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-10 text-center text-sm text-zinc-500">
-                    No experiments yet. Build one on the left and this turns into your research
-                    rack instead of an empty shelf.
+                    No experiments yet. Build one on the left.
                   </div>
                 }
               >

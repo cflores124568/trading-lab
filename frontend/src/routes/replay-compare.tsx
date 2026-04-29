@@ -137,7 +137,7 @@ export default function ReplayComparePage() {
   return (
     <AppShell
       title="Replay Vs System"
-      subtitle="See where your manual session diverged from the source backtest instead of guessing from memory."
+      subtitle="Manual replay against source backtest."
       actions={
         <>
           <A
@@ -171,8 +171,7 @@ export default function ReplayComparePage() {
                 fallback={
                   <div class="app-panel app-panel-section space-y-3">
                     <p class="text-sm text-zinc-300">
-                      This replay session was saved without a source backtest link, so there isn't a
-                      clean manual-vs-system compare to open yet.
+                      This replay session has no source backtest link.
                     </p>
                     <p class="text-sm text-zinc-500">
                       Launch the sim from a saved backtest first, then save that replay session.
@@ -229,31 +228,31 @@ export default function ReplayComparePage() {
                             <InsightCard
                               label="PnL Delta"
                               value={formatMoney(comparison.pnlDiff)}
-                              detail="Manual realized PnL minus the system's realized PnL."
+                              detail="Manual minus system."
                               tone={comparison.pnlDiff >= 0 ? "good" : "bad"}
                             />
                             <InsightCard
                               label="Missed Entries"
                               value={comparison.missedEntryCount}
-                              detail="System trades that never got a nearby manual entry match."
+                              detail="System trades without manual match."
                               tone={comparison.missedEntryCount === 0 ? "good" : "default"}
                             />
                             <InsightCard
                               label="Manual-Only"
                               value={comparison.manualOnlyCount}
-                              detail="Entries you took that don't line up with the source run."
+                              detail="Manual entries without system match."
                               tone={comparison.manualOnlyCount === 0 ? "good" : "default"}
                             />
                             <InsightCard
                               label="Early Exits"
                               value={comparison.earlyExitCount}
-                              detail="Matched trades where you got out before the system did."
+                              detail="Manual exits before system exits."
                               tone={comparison.earlyExitCount === 0 ? "good" : "default"}
                             />
                             <InsightCard
                               label="Better Exits"
                               value={comparison.betterExitCount}
-                              detail="Matched trades where your exit beat the system on PnL."
+                              detail="Manual exit beat system PnL."
                               tone={comparison.betterExitCount > 0 ? "good" : "default"}
                             />
                           </section>
@@ -310,17 +309,12 @@ export default function ReplayComparePage() {
                               <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">
                                 Matched Trades
                               </p>
-                              <p class="mt-2 text-sm text-zinc-400">
-                                These are the manual trades the matcher could line up to a system trade
-                                by side and nearby entry timing.
-                              </p>
                               <div class="mt-4 space-y-3">
                                 <Show
                                   when={comparison.matchedTrades.length > 0}
                                   fallback={
                                     <p class="text-sm text-zinc-500">
-                                      No close trade matches yet. The compare screen still tracks missed
-                                      and manual-only entries.
+                                      No close trade matches yet.
                                     </p>
                                   }
                                 >

@@ -38,7 +38,7 @@ export default function PaperSessionListPage() {
   return (
     <AppShell
       title="Paper Sessions"
-      subtitle="This is the durable paper runtime layer: session shells, operator state, and the event trail you can keep building on later."
+      subtitle="Paper runtime sessions and event trails."
       actions={
         <A
           href="/candidates"
@@ -54,7 +54,7 @@ export default function PaperSessionListPage() {
             when={(sessions() ?? []).length > 0}
             fallback={
               <div class="app-panel app-panel-section py-20 text-center text-sm text-zinc-500">
-                No paper sessions yet. Start from a candidate once a paper bot draft looks worth carrying forward.
+                No paper sessions yet. Start from a candidate.
               </div>
             }
           >

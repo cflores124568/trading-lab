@@ -468,7 +468,7 @@ export default function PaperSessionDetailPage() {
       title={session()?.name ?? "Paper Session"}
       subtitle={
         session()
-          ? "Track the runtime shell, operator notes, and state changes without losing the candidate context that produced it."
+          ? "Runtime state and event trail."
           : "Loading paper session..."
       }
       actions={
@@ -551,17 +551,11 @@ export default function PaperSessionDetailPage() {
                   <p class="mt-2 text-sm font-semibold text-zinc-100">
                     {formatCurrency(numberFromUnknown(metricsSnapshot().marked_equity))}
                   </p>
-                  <p class="mt-1 text-xs text-zinc-500">
-                    Realized equity plus whatever the open position is doing right now.
-                  </p>
                 </div>
                 <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
                   <p class="app-kicker">Total PnL</p>
                   <p class="mt-2 text-sm font-semibold text-zinc-100">
                     {formatCurrency(numberFromUnknown(metricsSnapshot().total_pnl), true)}
-                  </p>
-                  <p class="mt-1 text-xs text-zinc-500">
-                    Closed-trade performance so far in this paper session.
                   </p>
                 </div>
                 <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
@@ -605,9 +599,6 @@ export default function PaperSessionDetailPage() {
                 <section class="app-panel app-panel-section space-y-4">
                   <div class="space-y-2">
                     <p class="app-kicker">Paper Execution</p>
-                    <p class="text-sm text-zinc-400">
-                      This is the first real paper loop: open a position, mark it as price moves, and flatten it into the session trade log.
-                    </p>
                   </div>
 
                   <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4 space-y-4">
@@ -621,9 +612,7 @@ export default function PaperSessionDetailPage() {
                         {stringFromUnknown(runnerState().mode) ?? "idle"}
                       </span>
                     </div>
-                    <p class="text-xs text-zinc-500">
-                      Reads candles from historical DB data as a fake-live feed. Start runs the auto loop, pause freezes it, and step advances deterministic bars on demand.
-                    </p>
+                    <p class="text-xs text-zinc-500">Historical DB candles as fake-live feed.</p>
 
                     <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                       <div class="app-subpanel px-4 py-3">
@@ -810,9 +799,6 @@ export default function PaperSessionDetailPage() {
                 <section class="app-panel app-panel-section space-y-4">
                   <div class="space-y-2">
                     <p class="app-kicker">Manual Event Log</p>
-                    <p class="text-sm text-zinc-400">
-                      This is the lightweight operator journal for now. Add execution notes, handoff breadcrumbs, or whatever happened during the paper run.
-                    </p>
                   </div>
 
                   <div class="grid gap-3 md:grid-cols-[200px_1fr]">
@@ -877,9 +863,6 @@ export default function PaperSessionDetailPage() {
                 <section class="app-panel app-panel-section space-y-4">
                   <div class="space-y-2">
                     <p class="app-kicker">Runtime Snapshot</p>
-                    <p class="text-sm text-zinc-400">
-                      The session now keeps enough runtime state to actually behave like a paper workflow instead of just a handoff stub.
-                    </p>
                   </div>
                   <div class="space-y-4">
                     <div class="grid gap-3 md:grid-cols-2">

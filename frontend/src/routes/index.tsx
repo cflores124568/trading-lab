@@ -1,7 +1,7 @@
 import { A, useLocation, useNavigate } from "@solidjs/router";
 import { batch, createEffect, createMemo, createSignal } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
-import { Gauge, LayoutPanelTop, PanelRight, Radio, SquareChartGantt } from "lucide-solid";
+import { LayoutPanelTop, PanelRight, Radio, SquareChartGantt } from "lucide-solid";
 import AppShell from "../components/AppShell";
 import WorkspaceGrid from "../components/workspace/WorkspaceGrid";
 import WorkspaceToolbar from "../components/workspace/WorkspaceToolbar";
@@ -77,36 +77,19 @@ export default function Dashboard() {
   const layoutRead = createMemo(() => {
     const panelCount = activePanels().length;
     if (panelCount === 3) {
-      return "One anchor chart on the left with two stacked support panels on the right.";
+      return "Anchor chart plus two support panels.";
     }
 
     if (panelCount === 1) {
-      return "Single-chart focus mode. No wasted chrome, just one strong read.";
+      return "Single-chart focus.";
     }
 
     if (panelCount === 2) {
-      return "Balanced split view for side-by-side timeframe or symbol work.";
+      return "Side-by-side comparison.";
     }
 
-    return "Dense multi-panel grid that still keeps everything inside one shell.";
+    return "Multi-panel grid.";
   });
-  const railIconNote = createMemo(() =>
-    activePanels().length >= 3
-      ? "Now is the right moment for icons on repeated panel actions, symbol chips, and future trade controls."
-      : "Keep icons limited to workspace actions until the panel workflow settles down a bit more.",
-  );
-  const railFocusNote = createMemo(() => {
-    if (activePanels().length === 3) {
-      return "Anchor your main read on the left and use the stacked right side for confirmation and failure checks.";
-    }
-
-    if (activePanels().length >= 4) {
-      return "Once you go wider than three charts, the rail should carry summary stats so the panels can stay visually quiet.";
-    }
-
-    return "With one or two charts, keep the shell simple and let the chart body do most of the talking.";
-  });
-
   const handleWorkspaceChange = (workspaceId: string) => {
     setWorkspace("selectedWorkspaceId", workspaceId);
   };
@@ -359,7 +342,7 @@ export default function Dashboard() {
   return (
     <AppShell
       title="Dashboard"
-      subtitle="Work across live previews and warehouse-backed candles in a modular chart workspace."
+      subtitle="Live and historical chart workspaces."
       actions={
         <>
           <A
@@ -437,7 +420,7 @@ export default function Dashboard() {
                   </div>
                   <p class="mt-3 text-sm text-zinc-300">{layoutRead()}</p>
                   <p class="mt-2 text-xs text-zinc-500">
-                    {activePanels().length} panels in `{activeWorkspace().selectedPreset}` mode.
+                    {activePanels().length} panels · {activeWorkspace().selectedPreset}
                   </p>
                 </div>
 
@@ -513,14 +496,6 @@ export default function Dashboard() {
                         </span>
                       ))}
                     </div>
-                  </div>
-                  <div class="mt-4 rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-3">
-                    <div class="flex items-center gap-2 text-zinc-100">
-                      <Gauge size={15} class="text-fuchsia-300" />
-                      <p class="text-xs font-semibold uppercase tracking-[0.16em]">Icon Timing</p>
-                    </div>
-                    <p class="mt-2 text-sm text-zinc-300">{railIconNote()}</p>
-                    <p class="mt-2 text-sm text-zinc-400">{railFocusNote()}</p>
                   </div>
                 </div>
               </aside>

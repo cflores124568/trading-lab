@@ -56,7 +56,7 @@ export default function BacktestComparePage() {
   return (
     <AppShell
       title="Compare Backtests"
-      subtitle="Evaluate two saved runs side by side across returns, drawdown, and trade quality."
+      subtitle="Two saved runs, side by side."
       actions={
         <A
           href="/backtests"
@@ -107,21 +107,18 @@ export default function BacktestComparePage() {
                       <p class="mt-2 font-mono text-2xl font-semibold text-zinc-100">
                         {formatMoney((a.metrics.total_pnl ?? 0) - (b.metrics.total_pnl ?? 0))}
                       </p>
-                      <p class="mt-2 text-sm text-zinc-400">Run A minus Run B total realized PnL.</p>
                     </div>
                     <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4">
                       <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Win Rate Delta</p>
                       <p class="mt-2 font-mono text-2xl font-semibold text-zinc-100">
                         {formatPercent((a.metrics.win_rate ?? 0) - (b.metrics.win_rate ?? 0))}
                       </p>
-                      <p class="mt-2 text-sm text-zinc-400">Hit-rate difference between both saved runs.</p>
                     </div>
                     <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4">
                       <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Drawdown Delta</p>
                       <p class="mt-2 font-mono text-2xl font-semibold text-zinc-100">
                         {formatPercent((a.metrics.max_drawdown ?? 0) - (b.metrics.max_drawdown ?? 0))}
                       </p>
-                      <p class="mt-2 text-sm text-zinc-400">Max drawdown difference, where lower is better.</p>
                     </div>
                   </section>
 
@@ -195,14 +192,6 @@ export default function BacktestComparePage() {
                       );
                     })}
                   </section>
-
-                  <div class="app-panel app-panel-section">
-                    <p class="max-w-3xl text-sm text-zinc-400">
-                      Use the table below to compare both runs across returns, risk, and trade quality.
-                      Once you spot the stronger candidate, jump back into the saved replay to inspect
-                      where the path diverged.
-                    </p>
-                  </div>
 
                   <div class="app-panel overflow-hidden">
                     <div class="grid grid-cols-3 border-b border-zinc-800 bg-zinc-950/60">

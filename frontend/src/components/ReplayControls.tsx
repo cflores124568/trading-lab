@@ -75,10 +75,8 @@ export default function ReplayControls(props: Props) {
       <div class="border-b border-zinc-800 bg-zinc-950/70 px-5 py-4">
         <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div class="space-y-1">
-            <p class="text-xs uppercase tracking-[0.18em] text-sky-300">Replay Control Deck</p>
-            <p class="text-sm text-zinc-400">
-              Run the tape forward honestly, then unlock review mode once the session is done.
-            </p>
+            <p class="text-xs uppercase tracking-[0.18em] text-sky-300">Replay Controls</p>
+            <p class="text-sm text-zinc-400">{props.statusDetail}</p>
           </div>
 
           <div class="flex flex-wrap gap-3">
@@ -135,10 +133,6 @@ export default function ReplayControls(props: Props) {
           </div>
 
           <div class="grid min-w-72 grid-cols-1 gap-2 md:grid-cols-2 xl:max-w-[440px]">
-            <div class="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3 text-xs text-zinc-500 md:col-span-2">
-              <p>Session State</p>
-              <p class="mt-1 text-sm text-zinc-200">{props.statusDetail}</p>
-            </div>
             <div class="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3 text-xs text-zinc-500">
               <p>Time</p>
               <p class="mt-1 font-mono text-sm text-zinc-200">{props.currentTimeLabel}</p>
@@ -181,11 +175,11 @@ export default function ReplayControls(props: Props) {
             </div>
             {props.canSeek ? (
               <p class="text-xs text-zinc-500">
-                Review mode is live, so you can scrub through the full session without changing the tape.
+                Review mode: scrubbing is enabled.
               </p>
             ) : (
               <p class="text-xs text-zinc-500">
-                Timeline is locked during the live run so you can't peek ahead.
+                Timeline locked until review.
               </p>
             )}
           </div>

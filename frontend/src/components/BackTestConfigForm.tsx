@@ -145,9 +145,7 @@ export default function BackTestConfigForm() {
           <p class="app-kicker">Run Plan</p>
           <h2 class="text-lg font-semibold text-zinc-100">Build the next saved run</h2>
           <p class="max-w-3xl text-sm text-zinc-400">
-            Pick a market, choose the strategy parameters, then apply the prop-firm rules you
-            want to test against. The backtest opens straight into the saved replay view once it
-            finishes.
+            Pick a market, set the strategy, and score it against prop-firm rules.
           </p>
         </div>
 
@@ -168,7 +166,7 @@ export default function BackTestConfigForm() {
         <div class="space-y-1">
           <p class="text-sm font-semibold text-zinc-100">1. Market</p>
           <p class="text-xs text-zinc-400">
-            Choose the contract, candle interval, and optional historical window to load for the run.
+            Contract, interval, and optional date range.
           </p>
         </div>
         <Show
@@ -256,7 +254,7 @@ export default function BackTestConfigForm() {
         <div class="space-y-1">
           <p class="text-sm font-semibold text-zinc-100">2. Strategy</p>
           <p class="text-xs text-zinc-400">
-            Pick the signal model and tune the parameters used during bar-by-bar execution.
+            Signal model and execution parameters.
           </p>
         </div>
         <div>
@@ -341,9 +339,6 @@ export default function BackTestConfigForm() {
                 <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
                   <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Selected Challenge</p>
                   <p class="mt-2 text-sm font-semibold text-zinc-100">{p().name}</p>
-                  <p class="mt-1 text-sm text-zinc-400">
-                    Evaluate this run against the same guardrails you would see in a funded challenge.
-                  </p>
                 </div>
 
                 <div class="grid grid-cols-2 gap-2 md:grid-cols-3">
@@ -375,7 +370,7 @@ export default function BackTestConfigForm() {
           <div class="space-y-1">
             <p class="text-sm font-semibold text-zinc-100">4. Launch</p>
             <p class="text-xs text-zinc-400">
-              Run the backtest and open the saved result in the replay-first detail view.
+              Run and save the result.
             </p>
           </div>
 

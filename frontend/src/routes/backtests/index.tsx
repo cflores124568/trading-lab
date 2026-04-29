@@ -85,8 +85,7 @@ function BacktestErrorState(props: { message: string }) {
           </div>
           <p class="mt-5 text-lg font-semibold text-zinc-100">Backtests could not load</p>
           <p class="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
-            The page shell is ready, but the API request failed. Start the backend and refresh
-            this view to bring the saved run library back.
+            Start the backend and refresh this view.
           </p>
         </div>
 
@@ -108,8 +107,7 @@ function BacktestEmptyState() {
           </div>
           <p class="mt-5 text-lg font-semibold text-zinc-100">No saved backtests yet</p>
           <p class="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
-            Once you run a strategy, this page becomes the research shelf: saved runs,
-            replay launch points, workspace context, and two-run comparison all in one place.
+            Run a strategy to start building the saved run library.
           </p>
         </div>
 
@@ -168,7 +166,7 @@ export default function BacktestList() {
   return (
     <AppShell
       title="Backtests"
-      subtitle="Review saved runs, jump into replay, and compare strategy outcomes from one place."
+      subtitle="Saved runs, replay launches, and comparisons."
       actions={
         <>
           <Show when={selected().length === 2}>

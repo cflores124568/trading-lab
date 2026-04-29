@@ -916,13 +916,13 @@ export default function ReplayLabPage() {
               {sessionId()
                 ? "Resume and update a saved replay"
                 : activeSourceBacktest() || sourceBacktestId()
-                  ? "Trade this saved backtest window yourself"
-                  : "Build a replay without a saved backtest"}
+                  ? "Trade the saved window"
+                  : "Build a standalone replay"}
             </h2>
             <p class="max-w-3xl text-sm text-zinc-400">
               {activeSourceBacktest() || sourceBacktestId()
-                ? "This path keeps the session tied to one saved backtest, so the replay still means something later when you compare your manual trades against the system run."
-                : "Pick a warehouse-backed symbol, choose the candle interval, and load a historical window into a forward-only paper trading sim. Save whenever you want to come back later."}
+                ? "Pinned to the source backtest for later manual-vs-system review."
+                : "Load a historical window into a forward-only sim."}
             </p>
           </div>
 
@@ -954,8 +954,8 @@ export default function ReplayLabPage() {
               <p class="text-sm font-semibold text-zinc-100">1. Session Setup</p>
               <p class="text-xs text-zinc-400">
                 {activeSourceBacktest() || sourceBacktestId()
-                  ? "The source backtest locks the symbol, range, and rules once it lands so you're trading the exact run instead of a close cousin."
-                  : "Name the sim, choose the symbol, and pick the date window you want to trade bar by bar."}
+                  ? "Symbol, range, and rules come from the source run."
+                  : "Name the sim and choose the market window."}
               </p>
             </div>
 
@@ -1056,12 +1056,11 @@ export default function ReplayLabPage() {
               </div>
             </div>
 
-            <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4">
-              <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Launch Notes</p>
-              <p class="mt-2 text-sm text-zinc-400">
+            <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+              <p class="text-sm text-zinc-400">
                 {activeSourceBacktest() || sourceBacktestId()
-                  ? "This run stays attached to one saved backtest so the later manual-vs-system compare still means something."
-                  : `Standalone sessions can pull up to ${SESSION_LIMIT.toLocaleString()} bars from the selected window and keep future candles hidden while you trade.`}
+                  ? "Replay stays linked to the saved system run."
+                  : `Limit: ${SESSION_LIMIT.toLocaleString()} bars. Future candles stay hidden while you trade.`}
               </p>
             </div>
           </section>
@@ -1070,7 +1069,7 @@ export default function ReplayLabPage() {
             <div class="space-y-1">
               <p class="text-sm font-semibold text-zinc-100">2. Ruleset And Launch</p>
               <p class="text-xs text-zinc-400">
-                Pick the challenge guardrails, then launch or save the run from one place.
+                Choose guardrails, then launch or save.
               </p>
             </div>
 
@@ -1112,10 +1111,6 @@ export default function ReplayLabPage() {
                     <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4">
                       <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Selected Challenge</p>
                       <p class="mt-2 text-sm font-semibold text-zinc-100">{selectedPreset().name}</p>
-                      <p class="mt-1 text-sm text-zinc-400">
-                        The sim scores your manual trades against these rules while the hidden future
-                        plays out bar by bar.
-                      </p>
                     </div>
 
                     <div class="grid grid-cols-2 gap-2">
@@ -1206,8 +1201,8 @@ export default function ReplayLabPage() {
                       </h2>
                       <p class="max-w-3xl text-sm text-zinc-400">
                         {config().sourceBacktest
-                          ? "Future candles stay hidden while you trade the exact saved backtest window like it is unfolding right now."
-                          : "Future candles stay hidden while you trade this historical market window like it is unfolding right now."}
+                          ? "Trading the saved backtest window."
+                          : "Trading a historical window forward-only."}
                       </p>
                     </div>
 
@@ -1433,9 +1428,6 @@ export default function ReplayLabPage() {
                     <div class="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
                       <div class="app-panel app-panel-section">
                         <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Replay Equity Curve</p>
-                        <p class="mt-2 text-sm text-zinc-400">
-                          Realized equity path for the manual session so far.
-                        </p>
                         <div class="mt-4">
                           <EquityCurve data={session().equityCurve} />
                         </div>
@@ -1445,15 +1437,11 @@ export default function ReplayLabPage() {
                         <PropEvalPanel title="Replay Prop Eval" evaluation={session().propEvaluation} />
                         <div class="rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
                           <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Persistence And Review</p>
-                          <p class="mt-2 text-sm text-zinc-400">
-                            This sim can be saved and reopened later. While the run is active it stays
-                            locked to forward-only trading, then review mode opens up once the session is done.
-                          </p>
+                          <p class="mt-2 text-sm text-zinc-400">Save the run, then review after completion.</p>
                           <Show when={activeSourceBacktest()}>
                             {(source) => (
                               <p class="mt-3 text-sm text-zinc-400">
-                                It stays linked to backtest `{source().backtest_id.slice(0, 8)}` so the
-                                review can show missed entries, early exits, and the prop result delta.
+                                Linked to backtest `{source().backtest_id.slice(0, 8)}`.
                               </p>
                             )}
                           </Show>

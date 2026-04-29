@@ -23,7 +23,7 @@ export default function ReplaySessionListPage() {
   return (
     <AppShell
       title="Replay Sessions"
-      subtitle="Resume saved simulated-live sessions and keep working through old market windows without turning them into hindsight study."
+      subtitle="Saved replay sessions."
       actions={
         <A
           href="/replay"
@@ -60,7 +60,7 @@ export default function ReplaySessionListPage() {
                         <Show when={session.source_backtest}>
                           {(source) => (
                             <p class="text-xs text-zinc-500">
-                              Linked back to `{source().backtest_id.slice(0, 8)}` for manual-vs-system review.
+                              Linked to `{source().backtest_id.slice(0, 8)}`.
                             </p>
                           )}
                         </Show>

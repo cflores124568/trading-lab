@@ -1320,7 +1320,7 @@ export default function BacktestDetail() {
       title={result() ? `${result()!.symbol} • ${result()!.strategy.type}` : "Backtest"}
       subtitle={
         result()?.backtest_id ??
-        "Review summary metrics, inspect prop firm outcomes, and replay the run candle by candle."
+        "Saved run detail."
       }
       actions={
         <>
@@ -1369,10 +1369,6 @@ export default function BacktestDetail() {
                   <h2 class="text-2xl font-semibold text-zinc-100">
                     {bt().symbol} {bt().strategy.type.replace(/_/g, " ")}
                   </h2>
-                  <p class="max-w-3xl text-sm text-zinc-300">
-                    The system trade stream is fixed. Use the tabs below to split raw performance,
-                    prop-firm scoring, and trade review without losing the replay path.
-                  </p>
                 </div>
 
                 <div class="flex flex-wrap gap-2">
@@ -1445,11 +1441,6 @@ export default function BacktestDetail() {
                     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                       <div class="space-y-2">
                         <p class="app-kicker">Replay First</p>
-                        <p class="max-w-3xl text-sm text-zinc-300">
-                          Step through the saved run bar by bar, compare your manual decisions
-                          against the system trades, and see how the replay changes your prop
-                          evaluation.
-                        </p>
                       </div>
 
                       <div class="flex flex-wrap items-center gap-3">
@@ -1494,10 +1485,6 @@ export default function BacktestDetail() {
                     <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
                       <div class="space-y-2">
                         <p class="text-xs uppercase tracking-[0.18em] text-sky-300">Interactive Replay Simulator</p>
-                        <p class="max-w-3xl text-sm text-zinc-400">
-                          Scrub, step, jump between system trades, and place your own manual
-                          long, short, and exit decisions against the saved tape.
-                        </p>
                       </div>
                       <div class="grid gap-3 sm:grid-cols-2">
                         <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
@@ -1565,7 +1552,7 @@ export default function BacktestDetail() {
                             isPlaying={isReplayActive()}
                             speed={speed()}
                             statusLabel="Backtest Replay"
-                            statusDetail="This compare view stays flexible so you can scrub around the saved run and test your own manual decisions against it."
+                            statusDetail="Review mode is unlocked for this saved run."
                             progress={replayProgress()}
                             currentBar={totalBars() === 0 ? 0 : replayIndex() + 1}
                             totalBars={totalBars()}
@@ -1665,9 +1652,6 @@ export default function BacktestDetail() {
 
                         <div class="app-panel app-panel-section">
                           <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Replay Equity Curve</p>
-                          <p class="mt-2 text-sm text-zinc-400">
-                            Equity path for the manual replay layered on top of the same market window.
-                          </p>
                           <div class="mt-4">
                             <EquityCurve data={session().equityCurve} />
                           </div>
@@ -1724,10 +1708,6 @@ export default function BacktestDetail() {
                     <div class="mb-4 flex items-center justify-between">
                       <div>
                         <p class="text-sm text-zinc-400">Strategy Equity Curve</p>
-                        <p class="mt-1 text-xs text-zinc-500">
-                          Raw system performance, independent of which prop-firm preset you score
-                          it against.
-                        </p>
                       </div>
                     </div>
                     <EquityCurve data={bt().equity_curve} />
@@ -1737,10 +1717,6 @@ export default function BacktestDetail() {
                     <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                       <div>
                         <p class="app-kicker">Daily PnL</p>
-                        <p class="max-w-3xl text-sm text-zinc-300">
-                          Exit-day calendar for the saved system trades. This is a nice way to spot
-                          clustering, hot streaks, and ugly chop days fast.
-                        </p>
                       </div>
 
                       <Show when={systemTradeSummary()}>
@@ -1777,8 +1753,7 @@ export default function BacktestDetail() {
                       <div class="space-y-2">
                         <p class="app-kicker">Rule Set Selector</p>
                         <p class="max-w-3xl text-sm text-zinc-300">
-                          The trade stream stays fixed here. We just rebase the equity path to the
-                          selected account size and rescore it against that preset's rules.
+                          Fixed trades, rescored against the selected preset.
                         </p>
                       </div>
 
@@ -1818,7 +1793,7 @@ export default function BacktestDetail() {
                         evaluation={selectedPropEvaluation()!}
                         summary={selectedTradeSummary()!}
                         payoutEstimate={selectedPayoutEstimate()}
-                        note="This now includes a first-payout estimate when that preset has enough official payout metadata to model honestly. Contract caps, prior withdrawals, and compliance reviews still aren't part of the simulator."
+                        note="Payout estimates appear when enough preset metadata exists. Contract caps, prior withdrawals, and compliance reviews are not modeled."
                       />
 
                       <Show when={selectedPresetKey() !== savedPresetKey()}>
@@ -1883,11 +1858,6 @@ export default function BacktestDetail() {
                               <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                                 <div class="space-y-2">
                                   <p class="app-kicker">Saved Baseline</p>
-                                  <p class="max-w-3xl text-sm text-zinc-300">
-                                    This is the exact backtest row the robustness checks are anchored
-                                    to, so you can compare the stress tests against the original saved
-                                    result instead of reading those numbers in a vacuum.
-                                  </p>
                                 </div>
 
                                 <div class="flex flex-wrap gap-2 text-xs text-zinc-400">
@@ -1947,9 +1917,7 @@ export default function BacktestDetail() {
                               <div class="space-y-2">
                                 <p class="app-kicker">Monte Carlo</p>
                                 <p class="max-w-3xl text-sm text-zinc-300">
-                                  These use your saved trade list, not fresh market bars. One scenario
-                                  shuffles the order, the other bootstraps the trade sample, so you can
-                                  see how path-sensitive the saved curve really is.
+                                  Stress tests from the saved trade list.
                                 </p>
                               </div>
 
@@ -2004,11 +1972,6 @@ export default function BacktestDetail() {
                               <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                                 <div>
                                   <p class="app-kicker">Local Parameter Sweep</p>
-                                  <p class="max-w-3xl text-sm text-zinc-300">
-                                    This checks a small neighborhood around the saved params so you can
-                                    tell whether the current setup sits in a healthy cluster or on one
-                                    lonely spike.
-                                  </p>
                                 </div>
 
                                 <div class="grid gap-3 sm:grid-cols-3">
@@ -2098,8 +2061,7 @@ export default function BacktestDetail() {
                                 <div>
                                   <p class="app-kicker">Walk-Forward</p>
                                   <p class="max-w-3xl text-sm text-zinc-300">
-                                    Each fold picks the best local params on the train chunk only,
-                                    then scores that choice on the next untouched chunk out of sample.
+                                    Train chunk selects params; next chunk scores them out of sample.
                                   </p>
                                 </div>
 

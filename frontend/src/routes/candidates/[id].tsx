@@ -174,7 +174,7 @@ export default function CandidateDetailPage() {
       subtitle={
         candidate()
           ? candidate()!.promotion_reason
-          : "Review the promoted run, add notes, and push it into the paper handoff when it deserves it."
+          : "Candidate detail."
       }
       actions={
         <>
@@ -319,10 +319,6 @@ export default function CandidateDetailPage() {
                 <section class="app-panel app-panel-section space-y-4">
                   <div class="space-y-2">
                     <p class="app-kicker">Provenance</p>
-                    <p class="text-sm text-zinc-400">
-                      This keeps the experiment context attached to the candidate so rerunning the
-                      sweep later doesn&apos;t erase why this was worth another look.
-                    </p>
                   </div>
                   <div class="grid gap-4 md:grid-cols-2">
                     <div class="app-subpanel px-4 py-4 text-sm text-zinc-300">
@@ -347,10 +343,6 @@ export default function CandidateDetailPage() {
                   <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                     <div class="space-y-2">
                       <p class="app-kicker">Review Notes</p>
-                      <p class="text-sm text-zinc-400">
-                        Keep the human judgment here, especially the messy why. This is where “looks
-                        good” and “overfit trash” belong.
-                      </p>
                     </div>
                   </div>
                   <div class="space-y-3">
@@ -400,8 +392,7 @@ export default function CandidateDetailPage() {
                   <div class="space-y-2">
                     <p class="app-kicker">Paper Handoff Stub</p>
                     <p class="text-sm text-zinc-400">
-                      No broker wiring yet. This is just the durable config seam so Phase 3 has a
-                      sane place to start.
+                      Durable config seam for paper trading.
                     </p>
                   </div>
                   <Show
@@ -525,9 +516,6 @@ export default function CandidateDetailPage() {
                 <section class="app-panel app-panel-section space-y-4">
                   <div class="space-y-2">
                     <p class="app-kicker">Audit Trail</p>
-                    <p class="text-sm text-zinc-400">
-                      Simple and durable for now: who touched it, when, and what changed.
-                    </p>
                   </div>
                   <div class="space-y-3">
                     <For each={[...entry().audit_log].reverse()}>

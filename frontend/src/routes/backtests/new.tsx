@@ -6,7 +6,7 @@ export default function NewBacktest() {
   return (
     <AppShell
       title="New Backtest"
-      subtitle="Configure the run in sequence, then open the saved result straight into replay."
+      subtitle="Configure and run a saved backtest."
       actions={
         <>
           <A

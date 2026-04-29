@@ -73,7 +73,7 @@ export default function CandidateRegistryPage() {
   return (
     <AppShell
       title="Candidate Registry"
-      subtitle="This is the Phase 2 handoff table: promoted runs, review state, paper bot drafts, and the stuff you rejected on purpose."
+      subtitle="Promoted runs and paper handoffs."
       actions={
         <A
           href="/experiments"
@@ -118,10 +118,6 @@ export default function CandidateRegistryPage() {
           <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div class="space-y-2">
               <p class="app-kicker">Registry</p>
-              <p class="max-w-3xl text-sm text-zinc-400">
-                Each row carries the experiment provenance, the saved backtest link, the review
-                status, and the paper handoff stub if one exists.
-              </p>
             </div>
             <div class="text-xs text-zinc-500">
               Sorted by the most recently touched candidate first.

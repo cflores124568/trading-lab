@@ -164,7 +164,7 @@ export default function ExperimentDetailPage() {
       subtitle={
         experiment()
           ? `${experiment()!.symbols.join(", ")} | ${experiment()!.intervals.join(", ")} | ${experiment()!.strategy_type.replace(/_/g, " ")}`
-          : "Inspect the ranked sweep, the good runs, and the stuff that blew up."
+          : "Ranked sweep detail."
       }
       actions={
         <>
@@ -229,9 +229,8 @@ export default function ExperimentDetailPage() {
                     </span>
                   </div>
                   <p class="max-w-3xl text-sm text-zinc-400">
-                    This batch expands `{batchResult().strategy_type}` across{" "}
-                    {batchResult().symbols.length} symbols and {batchResult().intervals.length}{" "}
-                    intervals, then ranks the saved backtests underneath it.
+                    {batchResult().symbols.length} symbols · {batchResult().intervals.length} intervals ·{" "}
+                    {batchResult().strategy_type}
                   </p>
                 </div>
 
@@ -331,10 +330,6 @@ export default function ExperimentDetailPage() {
               <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                 <div class="space-y-2">
                   <p class="app-kicker">Ranked Results</p>
-                  <p class="max-w-3xl text-sm text-zinc-400">
-                    This is the part that matters for research triage: params, prop pass or fail,
-                    pnl, drawdown, profit factor, and the saved backtest link for each run.
-                  </p>
                 </div>
                 <div class="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
                   <span>{completedRuns().length} completed</span>
