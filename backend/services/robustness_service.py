@@ -65,7 +65,9 @@ def analyze_backtest_robustness(
             "initial_balance": request.initial_balance,
             "position_size": request.position_size,
             "commission": request.commission,
+            "tick_size": request.tick_size,
             "tick_value": request.tick_value,
+            "slippage_ticks": request.slippage_ticks,
         },
         "baseline": {
             "total_pnl": float(backtest["metrics"]["total_pnl"]),
@@ -100,11 +102,14 @@ def _request_from_backtest(backtest: dict) -> tuple[BacktestRequest, list[str]]:
         else (trades[0].get("commission") if trades and trades[0].get("commission") is not None else 5.0)
     )
     tick_value = float(run_config.get("tick_value") or 12.5)
+    tick_size = float(run_config.get("tick_size") or 0.25)
+    slippage_ticks = float(run_config.get("slippage_ticks") or 1.0)
 
     if not run_config:
         warnings.append(
             "This backtest predates persisted run config, so robustness reruns assume "
-            "`position_size=1` and `tick_value=12.5` unless the saved row says otherwise."
+            "`position_size=1`, `tick_size=0.25`, `tick_value=12.5`, and "
+            "`slippage_ticks=1` unless the saved row says otherwise."
         )
 
     return BacktestRequest(
@@ -116,7 +121,9 @@ def _request_from_backtest(backtest: dict) -> tuple[BacktestRequest, list[str]]:
         initial_balance=initial_balance,
         position_size=position_size,
         commission=commission,
+        tick_size=tick_size,
         tick_value=tick_value,
+        slippage_ticks=slippage_ticks,
     ), warnings
 
 

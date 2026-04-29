@@ -164,14 +164,18 @@ def _hydrate_run_config(row) -> dict:
             "initial_balance": float(raw.get("initial_balance") or prop_rules.get("account_size") or 100_000),
             "position_size": float(raw.get("position_size") or 1.0),
             "commission": float(raw.get("commission") if raw.get("commission") is not None else _infer_trade_commission(trades)),
+            "tick_size": float(raw.get("tick_size") or _infer_trade_tick_size(trades)),
             "tick_value": float(raw.get("tick_value") or 12.5),
+            "slippage_ticks": float(raw.get("slippage_ticks") if raw.get("slippage_ticks") is not None else 1.0),
         }
 
     return {
         "initial_balance": float(prop_rules.get("account_size") or 100_000),
         "position_size": 1.0,
         "commission": float(_infer_trade_commission(trades)),
+        "tick_size": float(_infer_trade_tick_size(trades)),
         "tick_value": 12.5,
+        "slippage_ticks": 1.0,
     }
 
 
@@ -179,6 +183,12 @@ def _infer_trade_commission(trades: list[dict]) -> float:
     if trades and trades[0].get("commission") is not None:
         return float(trades[0]["commission"])
     return 5.0
+
+
+def _infer_trade_tick_size(trades: list[dict]) -> float:
+    if trades and trades[0].get("tick_size") is not None:
+        return float(trades[0]["tick_size"])
+    return 0.25
 
 
 def _maybe_json(value: Any) -> Any:

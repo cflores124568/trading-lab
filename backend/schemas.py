@@ -54,6 +54,9 @@ class Trade(BaseModel):
     pnl: float
     status: TradeStatus
     commission: float
+    tick_size: Optional[float] = None
+    tick_value: Optional[float] = None
+    slippage_ticks: Optional[float] = None
 
 #Metrics
 class PerformanceMetrics(BaseModel):
@@ -460,14 +463,18 @@ class BacktestRequest(BaseModel):
     initial_balance: float          = Field(default=100_000, gt=0)
     position_size:   float          = Field(default=1.0, gt=0)
     commission:      float          = Field(default=5.0, ge=0)
+    tick_size:       float          = Field(default=0.25, gt=0)
     tick_value:      float          = Field(default=12.5, gt=0)
+    slippage_ticks:  float          = Field(default=1.0, ge=0)
 
 
 class BacktestRunConfig(BaseModel):
     initial_balance: float = Field(default=100_000, gt=0)
     position_size: float = Field(default=1.0, gt=0)
     commission: float = Field(default=5.0, ge=0)
+    tick_size: float = Field(default=0.25, gt=0)
     tick_value: float = Field(default=12.5, gt=0)
+    slippage_ticks: float = Field(default=1.0, ge=0)
 
 class BacktestResult(BaseModel):
     backtest_id:    str
@@ -610,6 +617,8 @@ class DatasetInfo(BaseModel):
     source: Optional[str] = None
     symbol: Optional[str] = None
     interval: Optional[str] = None
+    tick_size: Optional[float] = None
+    tick_value: Optional[float] = None
 
 # DB Symbol lookup
 class LoadSymbolRequest(BaseModel):

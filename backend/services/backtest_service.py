@@ -45,7 +45,9 @@ def build_backtest_result(
         initial_balance=request.initial_balance,
         position_size=request.position_size,
         commission=request.commission,
+        tick_size=request.tick_size,
         tick_value=request.tick_value,
+        slippage_ticks=request.slippage_ticks,
     )
 
     trades = engine_result["trades"]
@@ -69,7 +71,9 @@ def build_backtest_result(
             "initial_balance": request.initial_balance,
             "position_size": request.position_size,
             "commission": request.commission,
+            "tick_size": request.tick_size,
             "tick_value": request.tick_value,
+            "slippage_ticks": request.slippage_ticks,
         },
         "status": "completed",
         "created_at": created_at or datetime.utcnow().isoformat(),
