@@ -149,6 +149,8 @@ def _store_dataset(
     source: str = "parquet",
     symbol: str | None = None,
     interval: str | None = None,
+    tick_size: float | None = None,
+    tick_value: float | None = None,
     dataset_id: str | None = None,
     locator: dict | None = None,
     persist: bool = True,
@@ -168,6 +170,10 @@ def _store_dataset(
         info["symbol"] = symbol.upper()
     if interval:
         info["interval"] = interval
+    if tick_size is not None:
+        info["tick_size"] = float(tick_size)
+    if tick_value is not None:
+        info["tick_value"] = float(tick_value)
     _store()[dataset_id] = {
         "info": info,
         "df": df,
@@ -892,9 +898,10 @@ def load_from_db(
     Raises ValueError if the query comes back empty, or RuntimeError if the DB
     isn’t configured (propagated from the pool init).
     """
-    from services.db import get_ohlcv
+    from services.db import get_ohlcv, get_symbol_info
 
     interval = normalise_interval(interval)
+    symbol_info = get_symbol_info(symbol.upper())
 
     df = get_ohlcv(
         symbol=symbol.upper(),
@@ -919,6 +926,8 @@ def load_from_db(
         source="timescaledb",
         symbol=symbol.upper(),
         interval=interval,
+        tick_size=(symbol_info or {}).get("tick_size"),
+        tick_value=(symbol_info or {}).get("tick_value"),
         locator={
             "source": "timescaledb",
             "symbol": symbol.upper(),

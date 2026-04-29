@@ -116,6 +116,9 @@ def run_experiment(experiment: dict) -> tuple[dict, list[dict]]:
                 initial_balance=experiment["initial_balance"],
                 position_size=experiment["position_size"],
                 commission=experiment["commission"],
+                tick_size=dataset_info.get("tick_size") or 0.25,
+                tick_value=dataset_info.get("tick_value") or 12.5,
+                slippage_ticks=experiment.get("slippage_ticks") or 1.0,
             )
             backtest = build_backtest_result(dataset, request)
             persist_backtest_result(backtest)
