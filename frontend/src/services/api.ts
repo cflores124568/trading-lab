@@ -78,6 +78,8 @@ export interface DatasetInfo {
   start_date: string;
   end_date: string;
   uploaded_at: string;
+  tick_size?: number | null;
+  tick_value?: number | null;
 }
 
 //Metadata returned by GET /api/data/db/symbols for a single futures contract
@@ -118,6 +120,9 @@ export interface Trade {
   pnl: number;
   status: string;
   commission: number;
+  tick_size?: number | null;
+  tick_value?: number | null;
+  slippage_ticks?: number | null;
 }
 
 //Performance statistics calculated from trades.
@@ -178,7 +183,9 @@ export interface BacktestResult {
     initial_balance: number;
     position_size: number;
     commission: number;
+    tick_size: number;
     tick_value: number;
+    slippage_ticks: number;
   };
   status: string;
   created_at: string;
@@ -315,7 +322,9 @@ export interface BacktestRobustnessResult {
     initial_balance: number;
     position_size: number;
     commission: number;
+    tick_size: number;
     tick_value: number;
+    slippage_ticks: number;
   };
   baseline: {
     total_pnl: number;

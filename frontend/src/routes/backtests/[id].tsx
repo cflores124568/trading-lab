@@ -175,7 +175,8 @@ function formatRunConfigSummary(runConfig: BacktestRobustnessResult["run_config"
     `Balance ${formatCurrency(runConfig.initial_balance)}`,
     `Size ${positionSize}`,
     `Comm ${formatCurrency(runConfig.commission)}`,
-    `Tick ${formatCurrency(runConfig.tick_value)}`,
+    `Tick ${runConfig.tick_size} / ${formatCurrency(runConfig.tick_value)}`,
+    `Slip ${runConfig.slippage_ticks}t`,
   ].join(" · ");
 }
 

@@ -44,6 +44,7 @@ export default function BackTestConfigForm() {
   const [preset, setPreset] = createSignal<PropFirmPreset | null>(null);
   const [startDate, setStartDate] = createSignal("");
   const [endDate, setEndDate] = createSignal("");
+  const [slippageTicks, setSlippageTicks] = createSignal(1);
   const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const [step, setStep] = createSignal<"idle" | "loading-data" | "running">("idle");
@@ -118,6 +119,9 @@ export default function BackTestConfigForm() {
         initial_balance: pre.account_size,
         position_size: 1,
         commission: 5,
+        tick_size: sym.tick_size,
+        tick_value: sym.tick_value,
+        slippage_ticks: slippageTicks(),
       });
       navigate(`/backtests/${result.backtest_id}`);
     } catch (e: unknown) {
@@ -296,10 +300,50 @@ export default function BackTestConfigForm() {
         </div>
       </section>
 
+      <section class={section}>
+        <div class="space-y-1">
+          <p class="text-sm font-semibold text-zinc-100">3. Execution</p>
+          <p class="text-xs text-zinc-400">
+            Futures contract specs and conservative fill assumptions.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 md:grid-cols-4">
+          {(
+            [
+              ["Tick size", symbol()?.tick_size ?? "—"],
+              ["Tick value", symbol() ? `$${symbol()!.tick_value.toFixed(2)}` : "—"],
+              ["Commission", "$5.00"],
+              ["Fill model", "Next open"],
+            ] as [string, string | number][]
+          ).map(([k, v]) => (
+            <div class="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2">
+              <p class="text-zinc-400 text-xs">{k}</p>
+              <p class="text-zinc-100 text-sm font-mono">{v}</p>
+            </div>
+          ))}
+        </div>
+
+        <div>
+          <label class={label}>Slippage ticks per fill</label>
+          <input
+            type="number"
+            min="0"
+            step="0.25"
+            class={field}
+            value={slippageTicks()}
+            onInput={(e) => {
+              const value = parseFloat(e.currentTarget.value);
+              if (!Number.isNaN(value) && value >= 0) setSlippageTicks(value);
+            }}
+          />
+        </div>
+      </section>
+
       {/* Prop firm preset  */}
       <section class={section}>
         <div class="space-y-1">
-          <p class="text-sm font-semibold text-zinc-100">3. Prop Firm Rules</p>
+          <p class="text-sm font-semibold text-zinc-100">4. Prop Firm Rules</p>
           <p class="text-xs text-zinc-400">
             Select the evaluation ruleset you want this strategy run to survive.
           </p>
@@ -368,7 +412,7 @@ export default function BackTestConfigForm() {
       <section class={section}>
         <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div class="space-y-1">
-            <p class="text-sm font-semibold text-zinc-100">4. Launch</p>
+            <p class="text-sm font-semibold text-zinc-100">5. Launch</p>
             <p class="text-xs text-zinc-400">
               Run and save the result.
             </p>
