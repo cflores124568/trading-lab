@@ -62,9 +62,18 @@ type DetailTab = "overview" | "stats" | "prop-eval" | "trades" | "robustness";
 interface PropEvalDetails {
   account_size?: number;
   daily_loss_limit_pct?: number;
+  daily_loss_limit_amount?: number;
+  daily_loss_actual_loss?: number;
+  daily_loss_actual_loss_pct?: number;
+  daily_loss_breach_time?: string | null;
+  daily_loss_breach_equity?: number | null;
   drawdown_type?: "intraday" | "eod";
   max_drawdown_limit_pct?: number;
   actual_drawdown_pct?: number;
+  drawdown_breach_time?: string | null;
+  drawdown_breach_equity?: number | null;
+  drawdown_peak_equity?: number | null;
+  drawdown_peak_time?: string | null;
   profit_target_pct?: number;
   actual_profit_pct?: number;
   best_day_profit_pct?: number;
@@ -72,6 +81,8 @@ interface PropEvalDetails {
   min_trading_days_required?: number | null;
   trading_days_completed?: number;
   daily_pnls?: Record<string, number>;
+  first_breach_rule?: "daily_loss" | "drawdown" | null;
+  first_breach_time?: string | null;
 }
 
 interface CalendarCell {
@@ -199,6 +210,12 @@ function propEvalTone(passed: boolean): string {
 
 function getPropEvalDetails(evaluation: PropFirmEvaluation): PropEvalDetails {
   return evaluation.details as PropEvalDetails;
+}
+
+function formatBreachTime(value?: string | null): string {
+  if (!value) return "n/a";
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? value : new Date(parsed).toLocaleString();
 }
 
 function formatDuration(startIso: string, endIso?: string | null): string {
@@ -413,6 +430,10 @@ function PropEvalPanel(props: {
     details().min_trading_days_required ?? props.rules.min_trading_days;
   const tradingDaysCompleted = () =>
     details().trading_days_completed ?? props.summary.trading_days;
+  const firstBreachLabel = () => {
+    if (!details().first_breach_rule) return "None";
+    return details().first_breach_rule === "daily_loss" ? "Daily loss" : "Drawdown";
+  };
 
   return (
     <div class={`rounded-2xl border p-5 ${propEvalTone(props.evaluation.passed)}`}>
@@ -493,13 +514,18 @@ function PropEvalPanel(props: {
         <MetricCard
           label="Daily Loss Limit"
           value={formatPercent(props.rules.daily_loss_limit, 2)}
-          hint={formatCurrency(props.rules.account_size * props.rules.daily_loss_limit)}
+          hint={
+            details().daily_loss_actual_loss !== undefined
+              ? `${formatCurrency(details().daily_loss_actual_loss ?? 0)} max intraday loss`
+              : formatCurrency(props.rules.account_size * props.rules.daily_loss_limit)
+          }
           tone={!props.evaluation.daily_loss_breached ? "good" : "bad"}
         />
         <MetricCard
-          label="Account Size"
-          value={formatCurrency(props.rules.account_size)}
-          hint={`Net PnL ${formatCurrency(actualProfitPct() * props.rules.account_size, { signed: true })}`}
+          label="First Rule Breach"
+          value={firstBreachLabel()}
+          hint={formatBreachTime(details().first_breach_time)}
+          tone={details().first_breach_rule ? "bad" : "good"}
         />
       </div>
 
@@ -631,12 +657,12 @@ function PropEvalPanel(props: {
         <ul class="mt-4 space-y-2 text-sm text-red-300">
           <Show when={props.evaluation.daily_loss_breached}>
             <li class="flex items-center gap-1.5">
-              <TriangleAlert size={13} /> Daily loss limit breached
+              <TriangleAlert size={13} /> Daily loss limit breached at {formatBreachTime(details().daily_loss_breach_time)}
             </li>
           </Show>
           <Show when={props.evaluation.drawdown_breached}>
             <li class="flex items-center gap-1.5">
-              <TriangleAlert size={13} /> Max drawdown breached
+              <TriangleAlert size={13} /> Max drawdown breached at {formatBreachTime(details().drawdown_breach_time)}
             </li>
           </Show>
           <Show when={!props.evaluation.consistency_passed}>
@@ -957,6 +983,7 @@ export default function BacktestDetail() {
       backtest.trades,
       rebasedSelectedEquityCurve(),
       rules.account_size,
+      (candles() ?? []).map((candle) => Number(candle.time)),
     );
   });
   const strategySummary = createMemo(() => {

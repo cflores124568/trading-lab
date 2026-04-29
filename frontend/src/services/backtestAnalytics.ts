@@ -134,34 +134,12 @@ export function summarizeTrades(
   };
 }
 
-function getReplayDrawdown(
-  equityCurve: number[],
-  accountSize: number,
-  drawdownType: "intraday" | "eod",
-): number {
-  if (equityCurve.length < 2) return 0;
-
-  if (drawdownType === "eod") {
-    return Math.max(0, ...equityCurve.map((value) => (accountSize - value) / accountSize));
-  }
-
-  let peak = equityCurve[0];
-  let max = 0;
-  for (const value of equityCurve) {
-    peak = Math.max(peak, value);
-    if (peak > 0) {
-      max = Math.max(max, (peak - value) / peak);
-    }
-  }
-
-  return max;
-}
-
 export function evaluatePropFirmRules(
   rules: PropFirmRules,
   trades: Trade[],
   equityCurve: number[],
   initialBalance: number,
+  equityTimes: (number | string)[] = [],
 ): PropFirmEvaluation {
   const accountSize = rules.account_size ?? initialBalance;
   const dailyLossLimit = rules.daily_loss_limit ?? 0.04;
@@ -183,12 +161,21 @@ export function evaluatePropFirmRules(
   const minTradingDaysPassed =
     minTradingDays === null || tradingDaysCompleted >= minTradingDays;
 
-  const dailyLossBreached = Array.from(dailyPnls.values()).some(
-    (pnl) => pnl < -(accountSize * dailyLossLimit),
-  );
+  const dailyLossReport =
+    equityTimes.length > 0
+      ? getPathDailyLoss(equityCurve, equityTimes, accountSize, dailyLossLimit)
+      : getTradeDailyLoss(dailyPnls, accountSize, dailyLossLimit);
 
-  const actualDrawdown = getReplayDrawdown(equityCurve, accountSize, drawdownType);
-  const drawdownBreached = actualDrawdown > maxDrawdownLimit;
+  const drawdownReport = getPathDrawdown(
+    equityCurve,
+    equityTimes,
+    accountSize,
+    maxDrawdownLimit,
+    drawdownType,
+  );
+  const actualDrawdown = drawdownReport.actual_drawdown_pct;
+  const drawdownBreached = drawdownReport.breached;
+  const firstBreach = getFirstBreach(dailyLossReport, drawdownReport);
 
   const finalBalance =
     equityCurve.length > 0 ? equityCurve[equityCurve.length - 1] : initialBalance;
@@ -208,12 +195,12 @@ export function evaluatePropFirmRules(
 
   return {
     passed:
-      !dailyLossBreached &&
+      !dailyLossReport.breached &&
       !drawdownBreached &&
       profitTargetHit &&
       consistencyPassed &&
       minTradingDaysPassed,
-    daily_loss_breached: dailyLossBreached,
+    daily_loss_breached: dailyLossReport.breached,
     drawdown_breached: drawdownBreached,
     profit_target_hit: profitTargetHit,
     consistency_passed: consistencyPassed,
@@ -221,9 +208,18 @@ export function evaluatePropFirmRules(
     details: {
       account_size: accountSize,
       daily_loss_limit_pct: dailyLossLimit,
+      daily_loss_limit_amount: round(accountSize * dailyLossLimit),
+      daily_loss_actual_loss: round(dailyLossReport.actual_loss_amount),
+      daily_loss_actual_loss_pct: round(dailyLossReport.actual_loss_pct, 4),
+      daily_loss_breach_time: dailyLossReport.breach_time,
+      daily_loss_breach_equity: dailyLossReport.breach_equity,
       drawdown_type: drawdownType,
       max_drawdown_limit_pct: maxDrawdownLimit,
       actual_drawdown_pct: round(actualDrawdown, 4),
+      drawdown_breach_time: drawdownReport.breach_time,
+      drawdown_breach_equity: drawdownReport.breach_equity,
+      drawdown_peak_equity: drawdownReport.peak_equity,
+      drawdown_peak_time: drawdownReport.peak_time,
       profit_target_pct: profitTarget,
       actual_profit_pct: round(totalProfitPct, 4),
       best_day_profit_pct: round(bestDayProfitPct, 4),
@@ -233,8 +229,146 @@ export function evaluatePropFirmRules(
       daily_pnls: Object.fromEntries(
         Array.from(dailyPnls.entries()).map(([key, value]) => [key, round(value)]),
       ),
+      first_breach_rule: firstBreach.rule,
+      first_breach_time: firstBreach.time,
     },
   };
+}
+
+function getTradeDailyLoss(
+  dailyPnls: Map<string, number>,
+  accountSize: number,
+  dailyLossLimit: number,
+) {
+  const limit = accountSize * dailyLossLimit;
+  let actualLoss = 0;
+  let breachTime: string | null = null;
+
+  for (const [date, pnl] of dailyPnls.entries()) {
+    actualLoss = Math.max(actualLoss, -pnl);
+    if (breachTime === null && pnl < -limit) {
+      breachTime = date;
+    }
+  }
+
+  return {
+    breached: breachTime !== null,
+    breach_time: breachTime,
+    breach_equity: null,
+    actual_loss_amount: actualLoss,
+    actual_loss_pct: accountSize === 0 ? 0 : actualLoss / accountSize,
+  };
+}
+
+function getPathDailyLoss(
+  equityCurve: number[],
+  equityTimes: (number | string)[],
+  accountSize: number,
+  dailyLossLimit: number,
+) {
+  const limit = accountSize * dailyLossLimit;
+  const starts = new Map<string, number>();
+  let actualLoss = 0;
+  let breachTime: string | null = null;
+  let breachEquity: number | null = null;
+
+  for (let index = 0; index < Math.min(equityCurve.length, equityTimes.length); index += 1) {
+    const time = normalizeEquityTime(equityTimes[index]);
+    const day = time.slice(0, 10);
+    const equity = equityCurve[index];
+    if (!starts.has(day)) starts.set(day, equity);
+    const loss = Math.max(0, (starts.get(day) ?? equity) - equity);
+    actualLoss = Math.max(actualLoss, loss);
+
+    if (breachTime === null && loss > limit) {
+      breachTime = time;
+      breachEquity = equity;
+    }
+  }
+
+  return {
+    breached: breachTime !== null,
+    breach_time: breachTime,
+    breach_equity: breachEquity === null ? null : round(breachEquity),
+    actual_loss_amount: actualLoss,
+    actual_loss_pct: accountSize === 0 ? 0 : actualLoss / accountSize,
+  };
+}
+
+function getPathDrawdown(
+  equityCurve: number[],
+  equityTimes: (number | string)[],
+  accountSize: number,
+  maxDrawdownLimit: number,
+  drawdownType: "intraday" | "eod",
+) {
+  let runningPeak = equityCurve[0] ?? accountSize;
+  let peakTime: string | null = equityTimes[0] === undefined ? null : normalizeEquityTime(equityTimes[0]);
+  let actualDrawdown = 0;
+  let breachTime: string | null = null;
+  let breachEquity: number | null = null;
+  let peakEquity = drawdownType === "eod" ? accountSize : runningPeak;
+  let maxPeakTime = drawdownType === "eod" ? null : peakTime;
+
+  for (let index = 0; index < equityCurve.length; index += 1) {
+    const equity = equityCurve[index];
+    const time = equityTimes[index] === undefined ? null : normalizeEquityTime(equityTimes[index]);
+    let drawdown = 0;
+    let currentPeak = accountSize;
+    let currentPeakTime: string | null = null;
+
+    if (drawdownType === "eod") {
+      drawdown = accountSize === 0 ? 0 : Math.max(0, (accountSize - equity) / accountSize);
+    } else {
+      if (equity > runningPeak) {
+        runningPeak = equity;
+        peakTime = time;
+      }
+      currentPeak = runningPeak;
+      currentPeakTime = peakTime;
+      drawdown = runningPeak === 0 ? 0 : Math.max(0, (runningPeak - equity) / runningPeak);
+    }
+
+    if (drawdown > actualDrawdown) {
+      actualDrawdown = drawdown;
+      peakEquity = currentPeak;
+      maxPeakTime = currentPeakTime;
+    }
+    if (breachTime === null && drawdown > maxDrawdownLimit) {
+      breachTime = time;
+      breachEquity = equity;
+    }
+  }
+
+  return {
+    breached: breachTime !== null,
+    actual_drawdown_pct: actualDrawdown,
+    breach_time: breachTime,
+    breach_equity: breachEquity === null ? null : round(breachEquity),
+    peak_equity: round(peakEquity),
+    peak_time: maxPeakTime,
+  };
+}
+
+function getFirstBreach(
+  dailyLoss: { breach_time: string | null },
+  drawdown: { breach_time: string | null },
+) {
+  const candidates = [
+    { rule: "daily_loss", time: dailyLoss.breach_time },
+    { rule: "drawdown", time: drawdown.breach_time },
+  ].filter((item): item is { rule: "daily_loss" | "drawdown"; time: string } => Boolean(item.time));
+
+  candidates.sort((a, b) => a.time.localeCompare(b.time));
+  return candidates[0] ?? { rule: null, time: null };
+}
+
+function normalizeEquityTime(value: number | string): string {
+  if (typeof value === "number") {
+    return new Date(value * 1000).toISOString();
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? value : new Date(parsed).toISOString();
 }
 
 function normalizeFirmName(name: string): string {
