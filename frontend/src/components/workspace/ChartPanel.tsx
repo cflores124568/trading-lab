@@ -513,6 +513,7 @@ export default function ChartPanel(props: Props) {
               <PriceChart
                 candles={candles() ?? []}
                 indicators={indicatorSettings()}
+                indicatorLegend="compact"
                 class="h-full"
               />
             </div>

@@ -1266,6 +1266,7 @@ export default function ReplayLabPage() {
                                 visibleIndex={replayIndex()}
                                 height={520}
                                 indicators={indicatorSettings()}
+                                indicatorLegend="full"
                                 class="rounded-2xl"
                               />
                             </Show>
