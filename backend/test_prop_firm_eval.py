@@ -21,6 +21,70 @@ def _trade(day: str, pnl: float) -> dict:
 
 
 class PropFirmEvalTests(unittest.TestCase):
+    def test_daily_loss_uses_intraday_equity_when_timestamps_are_available(self):
+        rules = {
+            "name": "Replay Test",
+            "account_size": 100_000,
+            "daily_loss_limit": 0.05,
+            "max_drawdown": 0.20,
+            "profit_target": 0.01,
+            "consistency_rule": False,
+            "consistency_threshold": 0.30,
+            "drawdown_type": "intraday",
+            "min_trading_days": None,
+        }
+
+        result = evaluate_prop_firm(
+            rules,
+            trades=[],
+            equity_curve=[100_000, 98_000, 94_500, 101_500],
+            initial_balance=100_000,
+            equity_timestamps=[
+                "2024-01-02T09:30:00",
+                "2024-01-02T10:00:00",
+                "2024-01-02T10:30:00",
+                "2024-01-02T15:00:00",
+            ],
+        )
+
+        self.assertFalse(result["passed"])
+        self.assertTrue(result["daily_loss_breached"])
+        self.assertEqual(result["details"]["daily_loss_breach_time"], "2024-01-02T10:30:00")
+        self.assertEqual(result["details"]["daily_loss_actual_loss"], 5500)
+        self.assertEqual(result["details"]["first_breach_rule"], "daily_loss")
+
+    def test_drawdown_reports_the_first_breach_bar(self):
+        rules = {
+            "name": "Replay Test",
+            "account_size": 100_000,
+            "daily_loss_limit": 0.20,
+            "max_drawdown": 0.08,
+            "profit_target": 0.01,
+            "consistency_rule": False,
+            "consistency_threshold": 0.30,
+            "drawdown_type": "intraday",
+            "min_trading_days": None,
+        }
+
+        result = evaluate_prop_firm(
+            rules,
+            trades=[],
+            equity_curve=[100_000, 108_000, 99_000, 101_500],
+            initial_balance=100_000,
+            equity_timestamps=[
+                "2024-01-02T09:30:00",
+                "2024-01-02T10:00:00",
+                "2024-01-02T10:30:00",
+                "2024-01-02T15:00:00",
+            ],
+        )
+
+        self.assertFalse(result["passed"])
+        self.assertTrue(result["drawdown_breached"])
+        self.assertEqual(result["details"]["drawdown_breach_time"], "2024-01-02T10:30:00")
+        self.assertEqual(result["details"]["drawdown_peak_equity"], 108000)
+        self.assertEqual(result["details"]["first_breach_rule"], "drawdown")
+
     def test_min_trading_days_fails_when_run_finishes_too_early(self):
         rules = {
             "name": "Replay Test",

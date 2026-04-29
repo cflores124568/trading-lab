@@ -58,6 +58,7 @@ def build_backtest_result(
         trades=trades,
         equity_curve=equity_curve,
         initial_balance=request.initial_balance,
+        equity_timestamps=list(df.index),
     )
 
     return to_plain_data({
