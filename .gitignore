@@ -4,6 +4,8 @@ __pycache__/
 .env
 .env.local
 # C++ build outputs
+backend/cpp/build/
+backend/*.so
 backend/services/cpp/build/
 backend/services/*.so
 backend/services/*.dylib
