@@ -1,5 +1,14 @@
 import { A, useLocation, useNavigate } from "@solidjs/router";
-import { batch, createEffect, createMemo, createResource, createSignal, For, Show } from "solid-js";
+import {
+  batch,
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  For,
+  onCleanup,
+  Show,
+} from "solid-js";
 import AppShell from "../../components/AppShell";
 import {
   BACKTEST_INTERVALS,
@@ -19,14 +28,75 @@ import {
   type ExperimentCreateRequest,
   type ExperimentResult,
   type ExperimentScoringRule,
+  type ExperimentStatus,
   type PropFirmPreset,
 } from "../../services/api";
 
-const field =
-  "w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 " +
-  "focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:opacity-40";
-const label = "mb-1 block text-xs text-zinc-400";
-const section = "app-panel app-panel-section space-y-4";
+const field = "app-input-quiet w-full text-sm";
+const label = "mb-1.5 block text-[11px] uppercase tracking-[0.18em] text-zinc-500";
+const section = "app-panel app-panel-elevated app-panel-section space-y-5";
+
+const intervalMinutesMap: Record<string, number> = {
+  "1m": 1,
+  "1min": 1,
+  "5m": 5,
+  "5min": 5,
+  "10m": 10,
+  "10min": 10,
+  "15m": 15,
+  "15min": 15,
+  "30m": 30,
+  "30min": 30,
+  "1h": 60,
+  "4h": 240,
+  "1d": 1440,
+  "1w": 10_080,
+};
+
+const strategyProfiles: Record<
+  StrategyValue,
+  {
+    glyph: string;
+    description: string;
+    note: string;
+    formula: string;
+    spark: number[];
+    family: string;
+  }
+> = {
+  ma_crossover: {
+    glyph: "MA",
+    description: "Classic trend handoff",
+    note: "Fast/slow pairs that stay readable when you fan out the grid.",
+    formula: "SMA(close, fast) > SMA(close, slow)",
+    spark: [3, 6, 8, 5, 9, 6],
+    family: "momentum",
+  },
+  ema_crossover: {
+    glyph: "EMA",
+    description: "Faster trend response",
+    note: "A little twitchier, good when you want quicker handoffs.",
+    formula: "EMA(close, fast) > EMA(close, slow)",
+    spark: [2, 5, 9, 7, 6, 8],
+    family: "momentum",
+  },
+  rsi_overbought: {
+    glyph: "RSI",
+    description: "Mean-revert stretched moves",
+    note: "Works best when the thresholds stay sane and the cadence is stable.",
+    formula: "RSI(close, n) < oversold or RSI(close, n) > overbought",
+    spark: [8, 6, 4, 7, 5, 3],
+    family: "mean reversion",
+  },
+  bollinger_bands: {
+    glyph: "BB",
+    description: "Volatility envelope fades",
+    note: "Nice for seeing where parameter sensitivity gets weird fast.",
+    formula: "close crosses Bollinger(close, n, std_dev) bands",
+    spark: [4, 7, 5, 9, 4, 6],
+    family: "volatility",
+  },
+};
 
 const scoringOptions: { value: ExperimentScoringRule; label: string; blurb: string }[] = [
   {
@@ -50,6 +120,16 @@ const scoringOptions: { value: ExperimentScoringRule; label: string; blurb: stri
     blurb: "Favor setups that keep losses tight relative to gains.",
   },
 ];
+
+const numberFormatter = new Intl.NumberFormat();
+const compactFormatter = new Intl.NumberFormat(undefined, {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+type SortKey = "updated" | "name" | "runs" | "status";
+type SortDirection = "asc" | "desc";
+type PreflightTone = "pass" | "warn";
 
 function groupPresets(presets: PropFirmPreset[]): Record<string, PropFirmPreset[]> {
   return presets.reduce<Record<string, PropFirmPreset[]>>((acc, preset) => {
@@ -76,6 +156,21 @@ function paramsFromBacktest(
   return Object.fromEntries(
     STRATEGY_PARAMS[strategy].map((param) => {
       const raw = values[param.key];
+      return [param.key, raw === undefined ? String(param.default) : String(raw)];
+    }),
+  );
+}
+
+function paramsFromSpace(
+  strategy: StrategyValue,
+  values: Record<string, unknown>,
+): Record<string, string> {
+  return Object.fromEntries(
+    STRATEGY_PARAMS[strategy].map((param) => {
+      const raw = values[param.key];
+      if (Array.isArray(raw)) {
+        return [param.key, raw.join(", ")];
+      }
       return [param.key, raw === undefined ? String(param.default) : String(raw)];
     }),
   );
@@ -118,10 +213,7 @@ function countParameterCombos(grid: Record<string, number[]>): number {
   return Object.values(grid).reduce((count, values) => count * Math.max(values.length, 1), 1);
 }
 
-function countInvalidCombos(
-  strategy: StrategyValue,
-  grid: Record<string, number[]>,
-): number {
+function countInvalidCombos(strategy: StrategyValue, grid: Record<string, number[]>): number {
   if (strategy === "ma_crossover" || strategy === "ema_crossover") {
     const fast = grid.fast_period ?? [];
     const slow = grid.slow_period ?? [];
@@ -147,7 +239,7 @@ function countInvalidCombos(
   return 0;
 }
 
-function describeStatus(status: ExperimentResult["status"]): string {
+function describeStatus(status: ExperimentStatus): string {
   switch (status) {
     case "completed":
       return "Completed";
@@ -160,16 +252,29 @@ function describeStatus(status: ExperimentResult["status"]): string {
   }
 }
 
-function statusTone(status: ExperimentResult["status"]): string {
+function statusTone(status: ExperimentStatus): string {
   switch (status) {
     case "completed":
-      return "border-emerald-800 bg-emerald-950/40 text-emerald-200";
+      return "border-emerald-800/80 bg-emerald-950/50 text-emerald-200";
     case "running":
-      return "border-blue-800 bg-blue-950/40 text-blue-200";
+      return "border-sky-800/80 bg-sky-950/45 text-sky-200";
     case "failed":
-      return "border-red-800 bg-red-950/40 text-red-200";
+      return "border-red-800/80 bg-red-950/45 text-red-200";
     default:
       return "border-zinc-700 bg-zinc-900 text-zinc-200";
+  }
+}
+
+function statusSortValue(status: ExperimentStatus): number {
+  switch (status) {
+    case "running":
+      return 0;
+    case "completed":
+      return 1;
+    case "draft":
+      return 2;
+    default:
+      return 3;
   }
 }
 
@@ -183,6 +288,34 @@ function formatDate(value?: string | null): string {
 
 function formatStrategyLabel(value: string): string {
   return value.replace(/_/g, " ");
+}
+
+function formatCount(value: number): string {
+  return numberFormatter.format(value);
+}
+
+function formatCompactCount(value: number): string {
+  return compactFormatter.format(value);
+}
+
+function formatDuration(minutes: number): string {
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    return "<1 min";
+  }
+  if (minutes < 60) {
+    return `${Math.max(1, Math.round(minutes))} min`;
+  }
+  if (minutes < 24 * 60) {
+    return `${(minutes / 60).toFixed(minutes >= 120 ? 0 : 1)} hr`;
+  }
+  return `${(minutes / (24 * 60)).toFixed(1)} d`;
+}
+
+function formatMemory(megabytes: number): string {
+  if (megabytes < 1024) {
+    return `${Math.round(megabytes)} MB`;
+  }
+  return `${(megabytes / 1024).toFixed(1)} GB`;
 }
 
 function resolveBackendInterval(raw?: string | null): string | null {
@@ -201,12 +334,154 @@ function buildSeedName(backtest: BacktestResult): string {
   return `${backtest.symbol} ${formatStrategyLabel(backtest.strategy.type)} sweep`;
 }
 
+function intervalMinutes(interval: string): number {
+  return intervalMinutesMap[interval] ?? 60;
+}
+
+function rangeToIntervals(startIndex: number, endIndex: number): string[] {
+  const [from, to] = [startIndex, endIndex].sort((a, b) => a - b);
+  return BACKTEST_INTERVALS.slice(from, to + 1).map((interval) => getBackendInterval(interval));
+}
+
+function describeComplexity(runCount: number): {
+  label: string;
+  tone: string;
+  note: string;
+} {
+  if (runCount >= 180) {
+    return {
+      label: "Extreme",
+      tone: "border-red-800/80 bg-red-950/45 text-red-200",
+      note: "This is getting expensive. Great for a real sweep, not great for casual poking.",
+    };
+  }
+  if (runCount >= 90) {
+    return {
+      label: "High",
+      tone: "border-amber-800/80 bg-amber-950/40 text-amber-200",
+      note: "Still sane, but you're definitely committing real compute now.",
+    };
+  }
+  if (runCount >= 30) {
+    return {
+      label: "Medium",
+      tone: "border-sky-800/80 bg-sky-950/45 text-sky-200",
+      note: "Good middle ground for directional exploration.",
+    };
+  }
+  return {
+    label: "Low",
+    tone: "border-emerald-800/80 bg-emerald-950/45 text-emerald-200",
+    note: "Cheap enough to validate ideas fast without much drama.",
+  };
+}
+
+function buildParameterPreview(
+  grid: Record<string, number[]>,
+  limit: number,
+): Record<string, number>[] {
+  const entries = Object.entries(grid);
+  const rows: Record<string, number>[] = [];
+
+  const walk = (index: number, current: Record<string, number>) => {
+    if (rows.length >= limit) {
+      return;
+    }
+
+    if (index >= entries.length) {
+      rows.push({ ...current });
+      return;
+    }
+
+    const [key, values] = entries[index];
+    for (const value of values) {
+      current[key] = value;
+      walk(index + 1, current);
+      if (rows.length >= limit) {
+        return;
+      }
+    }
+  };
+
+  walk(0, {});
+  return rows;
+}
+
+function buildExperimentTags(experiment: ExperimentResult): string[] {
+  const tags = [strategyProfiles[experiment.strategy_type].family];
+
+  if (experiment.symbols.length > 1) {
+    tags.push("cross-market");
+  } else {
+    tags.push("single-asset");
+  }
+
+  if (experiment.scoring_rule === "sharpe_ratio" || experiment.scoring_rule === "profit_factor") {
+    tags.push("risk-aware");
+  } else if (experiment.scoring_rule === "total_pnl") {
+    tags.push("raw-pnl");
+  } else {
+    tags.push("prop-eval");
+  }
+
+  return tags;
+}
+
+function encodeTemplatePayload(payload: ExperimentCreateRequest): string {
+  return window.btoa(JSON.stringify(payload));
+}
+
+function decodeTemplatePayload(raw: string): ExperimentCreateRequest | null {
+  try {
+    const parsed = JSON.parse(window.atob(raw)) as ExperimentCreateRequest;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function availabilityBadge(interval: string, rows: number): {
+  label: string;
+  tone: string;
+} {
+  const minutes = intervalMinutes(interval);
+
+  if (minutes <= 60) {
+    if (rows >= 60_000) {
+      return { label: "Full", tone: "bg-emerald-400" };
+    }
+    if (rows >= 20_000) {
+      return { label: "Partial", tone: "bg-amber-400" };
+    }
+    return { label: "Sparse", tone: "bg-red-400" };
+  }
+
+  if (minutes <= 1440) {
+    if (rows >= 15_000) {
+      return { label: "Full", tone: "bg-emerald-400" };
+    }
+    if (rows >= 4_000) {
+      return { label: "Partial", tone: "bg-amber-400" };
+    }
+    return { label: "Sparse", tone: "bg-red-400" };
+  }
+
+  if (rows >= 10_000) {
+    return { label: "Partial", tone: "bg-amber-400" };
+  }
+  return { label: "Sparse", tone: "bg-red-400" };
+}
+
 export default function ExperimentsIndexPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const fromBacktestId = createMemo(
     () => new URLSearchParams(location.search).get("fromBacktestId") ?? "",
   );
+  const templateSeed = createMemo(
+    () => new URLSearchParams(location.search).get("template") ?? "",
+  );
+
   const [symbols] = createResource(fetchSymbols);
   const [presets] = createResource(fetchPropPresets);
   const [experiments, { refetch: refetchExperiments }] = createResource(fetchExperiments);
@@ -237,10 +512,51 @@ export default function ExperimentsIndexPage() {
   const [busyAction, setBusyAction] = createSignal<string | null>(null);
   const [error, setError] = createSignal<string | null>(null);
   const [appliedSeedId, setAppliedSeedId] = createSignal("");
+  const [appliedTemplate, setAppliedTemplate] = createSignal("");
+  const [dragStartIndex, setDragStartIndex] = createSignal<number | null>(null);
+  const [autoOptimizeIntervals, setAutoOptimizeIntervals] = createSignal(false);
+  const [validatedSignature, setValidatedSignature] = createSignal("");
+  const [sortKey, setSortKey] = createSignal<SortKey>("updated");
+  const [sortDirection, setSortDirection] = createSignal<SortDirection>("desc");
+  const [showShortcuts, setShowShortcuts] = createSignal(false);
+  const [copiedTemplate, setCopiedTemplate] = createSignal(false);
 
   const selectedPreset = createMemo(
     () => presets()?.find((preset) => preset.name === selectedPresetName()) ?? null,
   );
+  const selectedStrategyProfile = createMemo(() => strategyProfiles[strategy()]);
+  const selectedSymbolRecords = createMemo(() => {
+    const lookup = new Set(selectedSymbols());
+    return (symbols() ?? []).filter((symbol) => lookup.has(symbol.symbol));
+  });
+  const coverageStats = createMemo(() => {
+    const records = selectedSymbolRecords();
+    if (records.length === 0) {
+      return {
+        hasCoverage: false,
+        minRows: 0,
+        overlapDays: 0,
+        overlapStart: null as string | null,
+        overlapEnd: null as string | null,
+      };
+    }
+
+    const minRows = Math.min(...records.map((record) => record.rows));
+    const overlapStartMs = Math.max(...records.map((record) => Date.parse(record.start_date)));
+    const overlapEndMs = Math.min(...records.map((record) => Date.parse(record.end_date)));
+    const overlapDays = Math.max(
+      0,
+      Math.round((overlapEndMs - overlapStartMs) / (1000 * 60 * 60 * 24)),
+    );
+
+    return {
+      hasCoverage: overlapEndMs > overlapStartMs,
+      minRows,
+      overlapDays,
+      overlapStart: Number.isFinite(overlapStartMs) ? new Date(overlapStartMs).toISOString() : null,
+      overlapEnd: Number.isFinite(overlapEndMs) ? new Date(overlapEndMs).toISOString() : null,
+    };
+  });
   const parsedGrid = createMemo(() => {
     try {
       return {
@@ -264,6 +580,212 @@ export default function ExperimentsIndexPage() {
   const estimatedRunCount = createMemo(
     () => selectedSymbols().length * selectedIntervals().length * parameterComboCount(),
   );
+  const requestedRangeDays = createMemo(() => {
+    if (startDate() && endDate()) {
+      const diff =
+        (Date.parse(endDate()) - Date.parse(startDate())) / (1000 * 60 * 60 * 24);
+      return Math.max(1, Math.round(diff) + 1);
+    }
+    if (coverageStats().overlapDays > 0) {
+      return Math.max(30, Math.min(coverageStats().overlapDays, 365));
+    }
+    return 90;
+  });
+  const runtimeEstimateMinutes = createMemo(() => {
+    const runs = estimatedRunCount();
+    if (runs === 0) {
+      return 0;
+    }
+    const secondsPerRun =
+      3.2 +
+      STRATEGY_PARAMS[strategy()].length * 0.65 +
+      requestedRangeDays() / 120 +
+      selectedIntervals().length * 0.3;
+    return (runs * secondsPerRun) / 60;
+  });
+  const memoryEstimateMb = createMemo(
+    () =>
+      140 +
+      estimatedRunCount() * 5.5 +
+      selectedSymbols().length * 28 +
+      selectedIntervals().length * 16 +
+      parameterComboCount() * 1.8,
+  );
+  const complexity = createMemo(() => describeComplexity(estimatedRunCount()));
+  const queueDepth = createMemo(
+    () => (experiments() ?? []).filter((experiment) => experiment.status === "running").length,
+  );
+  const builderSignature = createMemo(() =>
+    JSON.stringify({
+      name: name().trim(),
+      selectedSymbols: selectedSymbols(),
+      selectedIntervals: selectedIntervals(),
+      strategy: strategy(),
+      paramInputs: paramInputs(),
+      selectedPresetName: selectedPresetName(),
+      startDate: startDate(),
+      endDate: endDate(),
+      scoringRule: scoringRule(),
+      initialBalance: initialBalance(),
+      positionSize: positionSize(),
+      commission: commission(),
+    }),
+  );
+  const isValidated = createMemo(
+    () => validatedSignature() !== "" && validatedSignature() === builderSignature(),
+  );
+  const correlationRisk = createMemo(() => {
+    if (selectedIntervals().length < 2) {
+      return false;
+    }
+    const indices = selectedIntervals()
+      .map((interval) =>
+        BACKTEST_INTERVALS.findIndex((candidate) => getBackendInterval(candidate) === interval),
+      )
+      .filter((index) => index >= 0)
+      .sort((a, b) => a - b);
+
+    if (indices.length < 2) {
+      return false;
+    }
+
+    const clustered =
+      indices[indices.length - 1] - indices[0] <= Math.max(indices.length, 2) &&
+      (strategy() === "ma_crossover" || strategy() === "ema_crossover");
+
+    return clustered;
+  });
+  const nyquistWarning = createMemo(() => {
+    const grid = parsedGrid().grid;
+    if (!grid || selectedIntervals().length === 0) {
+      return null;
+    }
+
+    const baseKey =
+      strategy() === "ma_crossover" || strategy() === "ema_crossover"
+        ? "fast_period"
+        : strategy() === "rsi_overbought"
+          ? "rsi_period"
+          : "bb_period";
+    const periods = grid[baseKey] ?? [];
+    const minPeriod = periods.length > 0 ? Math.min(...periods) : 0;
+    const maxInterval = Math.max(...selectedIntervals().map((interval) => intervalMinutes(interval)));
+
+    if ((maxInterval >= 240 && minPeriod < 6) || (maxInterval >= 1440 && minPeriod < 12)) {
+      return "Sampling is getting coarse for the smallest lookback in this grid. You may be inviting aliasing noise.";
+    }
+
+    return null;
+  });
+  const sharpeVarianceBand = createMemo(() => {
+    const band =
+      0.18 +
+      0.22 * Number(correlationRisk()) +
+      0.35 / Math.sqrt(Math.max(selectedSymbols().length * selectedIntervals().length, 1));
+    return Number(band.toFixed(2));
+  });
+  const previewRuns = createMemo(() => {
+    const grid = parsedGrid().grid;
+    if (!grid || selectedSymbols().length === 0 || selectedIntervals().length === 0) {
+      return [] as {
+        symbol: string;
+        interval: string;
+        params: Record<string, number>;
+      }[];
+    }
+
+    const params = buildParameterPreview(grid, 10);
+    const rows: { symbol: string; interval: string; params: Record<string, number> }[] = [];
+
+    for (const symbol of selectedSymbols()) {
+      for (const interval of selectedIntervals()) {
+        for (const combo of params) {
+          rows.push({ symbol, interval, params: combo });
+          if (rows.length >= 10) {
+            return rows;
+          }
+        }
+      }
+    }
+
+    return rows;
+  });
+  const preflightChecks = createMemo(
+    () =>
+      [
+        {
+          label: "Sufficient data coverage",
+          tone: coverageStats().hasCoverage && coverageStats().minRows >= 20_000 ? "pass" : "warn",
+          detail: coverageStats().hasCoverage
+            ? `${formatCompactCount(coverageStats().minRows)} overlapping bars across the selected symbols.`
+            : "Selected symbols do not share a clean date overlap yet.",
+        },
+        {
+          label: "Strategy grid within bounds",
+          tone: parsedGrid().error || invalidComboCount() > 0 ? "warn" : "pass",
+          detail:
+            parsedGrid().error ??
+            (invalidComboCount() > 0
+              ? "Some parameter pairs violate the basic ordering rules."
+              : "Parameter relationships look internally consistent."),
+        },
+        {
+          label: "Cross-run correlation watch",
+          tone: correlationRisk() ? "warn" : "pass",
+          detail: correlationRisk()
+            ? "Nearby intervals with the same trend family will likely tell a very similar story."
+            : "This mix has enough separation that the sweep should stay informative.",
+        },
+        {
+          label: "Look-ahead / sampling bias watch",
+          tone: nyquistWarning() ? "warn" : "pass",
+          detail:
+            nyquistWarning() ??
+            "No obvious sampling mismatch jumped out from the interval and lookback pairing.",
+        },
+        {
+          label: "Estimated Sharpe variance band",
+          tone: sharpeVarianceBand() > 0.4 ? "warn" : "pass",
+          detail: `About +/-${sharpeVarianceBand().toFixed(2)}. Bigger means the ranking may still be pretty squishy.`,
+        },
+      ] as { label: string; tone: PreflightTone; detail: string }[],
+  );
+  const launchGaugeRatio = createMemo(() => Math.min(estimatedRunCount() / 250, 1));
+  const launchGaugeColor = createMemo(() => {
+    if (estimatedRunCount() >= 180) {
+      return "#f97316";
+    }
+    if (estimatedRunCount() >= 90) {
+      return "#facc15";
+    }
+    return "#38bdf8";
+  });
+  const runningCapacityDegrees = createMemo(() => launchGaugeRatio() * 180);
+  const recentWinner = createMemo(
+    () => (experiments() ?? []).find((experiment) => experiment.status === "completed") ?? null,
+  );
+  const sortedExperiments = createMemo(() => {
+    const direction = sortDirection() === "asc" ? 1 : -1;
+    const list = [...(experiments() ?? [])];
+
+    list.sort((left, right) => {
+      if (sortKey() === "name") {
+        return left.name.localeCompare(right.name) * direction;
+      }
+      if (sortKey() === "runs") {
+        return (left.total_runs - right.total_runs) * direction;
+      }
+      if (sortKey() === "status") {
+        return (statusSortValue(left.status) - statusSortValue(right.status)) * direction;
+      }
+      return (
+        (Date.parse(left.last_run_at ?? left.updated_at) -
+          Date.parse(right.last_run_at ?? right.updated_at)) * direction
+      );
+    });
+
+    return list;
+  });
   const validationError = createMemo(() => {
     if (!name().trim()) {
       return "Give the batch a name so it isn't just mystery meat later.";
@@ -273,6 +795,9 @@ export default function ExperimentsIndexPage() {
     }
     if (selectedIntervals().length === 0) {
       return "Pick at least one interval.";
+    }
+    if (startDate() && endDate() && Date.parse(endDate()) < Date.parse(startDate())) {
+      return "Your end date is earlier than your start date.";
     }
     if (!selectedPreset()) {
       return "Choose a prop-firm preset.";
@@ -300,50 +825,53 @@ export default function ExperimentsIndexPage() {
     if (estimatedRunCount() > 250) {
       return `This expands to ${estimatedRunCount()} runs. Keep it under 250 so it stays usable.`;
     }
+    if (!coverageStats().hasCoverage) {
+      return "Those symbols do not share enough overlapping coverage for a clean sweep.";
+    }
     return null;
   });
 
-  createEffect(() => {
-    const availableSymbols = symbols();
-    if (!availableSymbols || availableSymbols.length === 0 || selectedSymbols().length > 0) {
-      return;
-    }
-
-    setSelectedSymbols([availableSymbols[0].symbol]);
-  });
-
-  createEffect(() => {
-    const preset = selectedPreset();
-    if (!preset) {
-      return;
-    }
-
-    setInitialBalance(preset.account_size);
-  });
-
-  createEffect(() => {
-    const seed = seedBacktest();
-    const seedId = fromBacktestId();
-    if (!seed || !seedId || appliedSeedId() === seedId) {
-      return;
-    }
-
-    const nextStrategy = seed.strategy.type as StrategyValue;
-    const nextInterval = resolveBackendInterval(seed.replay_context?.interval) ?? defaultInterval;
+  const hydrateFromRequest = (request: ExperimentCreateRequest, titleSuffix = "") => {
+    const nextStrategy = request.strategy_type as StrategyValue;
 
     batch(() => {
-      setName(buildSeedName(seed));
-      setSelectedSymbols(seed.symbol ? [seed.symbol] : selectedSymbols());
-      setSelectedIntervals([nextInterval]);
+      setName(titleSuffix ? `${request.name} ${titleSuffix}`.trim() : request.name);
+      setSelectedSymbols(request.symbols);
+      setSelectedIntervals(request.intervals);
       setStrategy(nextStrategy);
-      setParamInputs(paramsFromBacktest(nextStrategy, seed.strategy.params));
-      setSelectedPresetName(seed.prop_firm_rules.name);
-      setInitialBalance(seed.prop_firm_rules.account_size);
-      setStartDate(seed.replay_context?.start_date ?? "");
-      setEndDate(seed.replay_context?.end_date ?? "");
-      setAppliedSeedId(seedId);
+      setParamInputs(paramsFromSpace(nextStrategy, request.parameter_space));
+      setSelectedPresetName(request.prop_firm_rules.name);
+      setStartDate(request.start_date ?? "");
+      setEndDate(request.end_date ?? "");
+      setScoringRule(request.scoring_rule);
+      setInitialBalance(request.initial_balance);
+      setPositionSize(request.position_size);
+      setCommission(request.commission);
+      setAutoOptimizeIntervals(false);
+      setError(null);
+      setValidatedSignature("");
     });
-  });
+  };
+
+  const hydrateFromExperiment = (experiment: ExperimentResult) => {
+    hydrateFromRequest(
+      {
+        name: experiment.name,
+        symbols: experiment.symbols,
+        intervals: experiment.intervals,
+        strategy_type: experiment.strategy_type,
+        parameter_space: experiment.parameter_space,
+        start_date: experiment.start_date,
+        end_date: experiment.end_date,
+        prop_firm_rules: experiment.prop_firm_rules,
+        initial_balance: experiment.initial_balance,
+        position_size: experiment.position_size,
+        commission: experiment.commission,
+        scoring_rule: experiment.scoring_rule,
+      },
+      "clone",
+    );
+  };
 
   const toggleValue = (values: string[], nextValue: string) => {
     if (values.includes(nextValue)) {
@@ -375,9 +903,23 @@ export default function ExperimentsIndexPage() {
     };
   };
 
+  const handleValidate = () => {
+    const nextError = validationError();
+    if (nextError) {
+      setError(nextError);
+      setValidatedSignature("");
+      return;
+    }
+
+    batch(() => {
+      setError(null);
+      setValidatedSignature(builderSignature());
+    });
+  };
+
   const handleCreate = async (runNow: boolean) => {
     batch(() => {
-      setBusyAction(runNow ? "create-run" : "create");
+      setBusyAction(runNow ? "launch" : "save");
       setError(null);
     });
 
@@ -412,31 +954,171 @@ export default function ExperimentsIndexPage() {
     }
   };
 
+  const handleCopyTemplate = async () => {
+    try {
+      const payload = buildPayload();
+      const url = new URL(window.location.href);
+      url.searchParams.set("template", encodeTemplatePayload(payload));
+      url.searchParams.delete("fromBacktestId");
+      await navigator.clipboard.writeText(url.toString());
+      setCopiedTemplate(true);
+      window.setTimeout(() => setCopiedTemplate(false), 1800);
+    } catch (errorValue) {
+      setError(errorValue instanceof Error ? errorValue.message : "Template copy failed.");
+    }
+  };
+
+  const toggleSort = (nextKey: SortKey) => {
+    if (sortKey() === nextKey) {
+      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+      return;
+    }
+
+    setSortKey(nextKey);
+    setSortDirection(nextKey === "name" ? "asc" : "desc");
+  };
+
+  createEffect(() => {
+    const availableSymbols = symbols();
+    if (!availableSymbols || availableSymbols.length === 0 || selectedSymbols().length > 0) {
+      return;
+    }
+
+    setSelectedSymbols([availableSymbols[0].symbol]);
+  });
+
+  createEffect(() => {
+    const preset = selectedPreset();
+    if (!preset) {
+      return;
+    }
+
+    setInitialBalance(preset.account_size);
+  });
+
+  createEffect(() => {
+    const seed = seedBacktest();
+    const seedId = fromBacktestId();
+    if (!seed || !seedId || appliedSeedId() === seedId || templateSeed()) {
+      return;
+    }
+
+    const nextStrategy = seed.strategy.type as StrategyValue;
+    const nextInterval = resolveBackendInterval(seed.replay_context?.interval) ?? defaultInterval;
+
+    batch(() => {
+      setName(buildSeedName(seed));
+      setSelectedSymbols(seed.symbol ? [seed.symbol] : selectedSymbols());
+      setSelectedIntervals([nextInterval]);
+      setStrategy(nextStrategy);
+      setParamInputs(paramsFromBacktest(nextStrategy, seed.strategy.params));
+      setSelectedPresetName(seed.prop_firm_rules.name);
+      setInitialBalance(seed.prop_firm_rules.account_size);
+      setStartDate(seed.replay_context?.start_date ?? "");
+      setEndDate(seed.replay_context?.end_date ?? "");
+      setAppliedSeedId(seedId);
+      setAutoOptimizeIntervals(false);
+      setValidatedSignature("");
+    });
+  });
+
+  createEffect(() => {
+    const template = templateSeed();
+    if (!template || appliedTemplate() === template) {
+      return;
+    }
+
+    const decoded = decodeTemplatePayload(template);
+    if (!decoded) {
+      setError("That template link is busted.");
+      setAppliedTemplate(template);
+      return;
+    }
+
+    hydrateFromRequest(decoded);
+    setAppliedTemplate(template);
+  });
+
+  createEffect(() => {
+    const signature = builderSignature();
+    if (validatedSignature() && validatedSignature() !== signature) {
+      setValidatedSignature("");
+    }
+  });
+
+  createEffect(() => {
+    if (!autoOptimizeIntervals()) {
+      return;
+    }
+
+    let nextRange: [number, number];
+    switch (strategy()) {
+      case "ma_crossover":
+        nextRange = [1, 5];
+        break;
+      case "ema_crossover":
+        nextRange = [2, 5];
+        break;
+      case "rsi_overbought":
+        nextRange = [2, 4];
+        break;
+      default:
+        nextRange = [3, 6];
+        break;
+    }
+
+    setSelectedIntervals(rangeToIntervals(nextRange[0], nextRange[1]));
+  });
+
+  createEffect(() => {
+    if (dragStartIndex() === null) {
+      return;
+    }
+
+    const stopDragging = () => setDragStartIndex(null);
+    window.addEventListener("mouseup", stopDragging);
+    onCleanup(() => window.removeEventListener("mouseup", stopDragging));
+  });
+
+  createEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const isTyping = tag === "input" || tag === "textarea" || tag === "select";
+
+      if (event.key === "?" && !isTyping) {
+        event.preventDefault();
+        setShowShortcuts((current) => !current);
+      }
+
+      if (event.key === "Escape") {
+        setShowShortcuts(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleShortcut);
+    onCleanup(() => window.removeEventListener("keydown", handleShortcut));
+  });
+
   return (
     <AppShell
       title="Experiments"
-      subtitle="Parameter sweeps and ranked saved runs."
+      subtitle="Sweep parameters like you mean it, then launch with eyes open."
       actions={
         <>
-          <A
-            href="/backtests"
-            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
-          >
+          <A href="/backtests" class="app-button-secondary">
             Backtests
           </A>
-          <A
-            href="/backtests/new"
-            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
-          >
+          <A href="/backtests/new" class="app-button-secondary">
             Single Backtest
           </A>
         </>
       }
     >
-      <div class="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+      <div class="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
         <div class="space-y-6">
           <Show when={error()}>
-            <div class="rounded-2xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">
+            <div class="rounded-2xl border border-red-800/80 bg-red-950/40 px-4 py-3 text-sm text-red-200">
               {error()}
             </div>
           </Show>
@@ -444,20 +1126,17 @@ export default function ExperimentsIndexPage() {
           <Show when={seedBacktest()}>
             {(seed) => (
               <section class={section}>
-                <p class="app-kicker">Seeded From Backtest</p>
-                <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div class="space-y-2">
+                    <p class="app-kicker">Seeded From Backtest</p>
                     <p class="text-sm font-semibold text-zinc-100">
                       Starting from `{seed().backtest_id.slice(0, 8)}`
                     </p>
-                    <p class="mt-1 text-sm text-zinc-400">
-                      Symbol, interval, params, dates, and rules are prefilled.
+                    <p class="text-sm text-zinc-400">
+                      Symbol, interval, params, dates, and prop rules are already loaded.
                     </p>
                   </div>
-                  <A
-                    href={`/backtests/${seed().backtest_id}`}
-                    class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
-                  >
+                  <A href={`/backtests/${seed().backtest_id}`} class="app-button-secondary">
                     Open Source Run
                   </A>
                 </div>
@@ -466,12 +1145,110 @@ export default function ExperimentsIndexPage() {
           </Show>
 
           <section class={section}>
-            <div class="space-y-2">
-              <p class="app-kicker">Batch Builder</p>
-              <h2 class="text-lg font-semibold text-zinc-100">Build the next sweep</h2>
-              <p class="max-w-3xl text-sm text-zinc-400">
-                Choose coverage, params, and scoring.
-              </p>
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div class="space-y-2">
+                <p class="app-kicker">Batch Builder</p>
+                <h2 class="text-xl font-semibold text-zinc-100">Build the next sweep</h2>
+                <p class="max-w-3xl text-sm text-zinc-400">
+                  This should feel like setting up an experiment, not filling out a form.
+                </p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <Show when={recentWinner()}>
+                  {(winner) => (
+                    <button
+                      type="button"
+                      onClick={() => hydrateFromExperiment(winner())}
+                      class="app-button-secondary"
+                    >
+                      Load Last Winner
+                    </button>
+                  )}
+                </Show>
+                <button
+                  type="button"
+                  onClick={() => setShowShortcuts(true)}
+                  class="app-button-secondary"
+                >
+                  Shortcut Guide
+                </button>
+              </div>
+            </div>
+
+            <div class="app-hairline" />
+
+            <div class="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(260px,0.9fr)]">
+              <div
+                class={`rounded-[26px] border px-5 py-5 ${
+                  estimatedRunCount() >= 180
+                    ? "app-shake-soft border-amber-700/70 bg-gradient-to-br from-amber-500/16 via-zinc-950 to-zinc-950"
+                    : "border-sky-900/70 bg-gradient-to-br from-sky-400/14 via-zinc-950 to-zinc-950"
+                }`}
+              >
+                <p class="text-xs uppercase tracking-[0.22em] text-zinc-500">Live Scope Preview</p>
+                <div class="mt-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                  <div class="space-y-2">
+                    <p class="text-sm text-zinc-300">
+                      Ready to test:{" "}
+                      <span class="app-data text-zinc-100">{selectedSymbols().length}</span> symbols x{" "}
+                      <span class="app-data text-zinc-100">{selectedIntervals().length}</span> intervals x{" "}
+                      <span class="app-data text-zinc-100">1</span> strategy x{" "}
+                      <span class="app-data text-zinc-100">{parameterComboCount()}</span> param combos
+                    </p>
+                    <div class="flex items-baseline gap-3">
+                      <span class="app-data animate-pulse text-4xl font-semibold text-white">
+                        {formatCount(estimatedRunCount())}
+                      </span>
+                      <span class="text-sm text-zinc-400">total backtests</span>
+                    </div>
+                  </div>
+                  <span
+                    class={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${complexity().tone}`}
+                  >
+                    {complexity().label} complexity
+                  </span>
+                </div>
+                <p class="mt-3 max-w-2xl text-sm text-zinc-400">{complexity().note}</p>
+                <div class="mt-4 flex flex-wrap gap-2">
+                  <span class="rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-1 text-xs text-zinc-300">
+                    {selectedStrategyProfile().glyph} {selectedStrategyProfile().description}
+                  </span>
+                  <span class="rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-1 text-xs text-zinc-300">
+                    {scoringOptions.find((option) => option.value === scoringRule())?.label}
+                  </span>
+                  <span class="rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-1 text-xs text-zinc-300">
+                    {formatDuration(runtimeEstimateMinutes())} est. runtime
+                  </span>
+                </div>
+              </div>
+
+              <div class="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-4 py-4">
+                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Runtime</p>
+                  <p class="app-data mt-2 text-2xl font-semibold text-zinc-100">
+                    {formatDuration(runtimeEstimateMinutes())}
+                  </p>
+                  <p class="mt-1 text-xs text-zinc-500">Includes date span and strategy width heuristics.</p>
+                </div>
+                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-4 py-4">
+                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Memory Footprint</p>
+                  <p class="app-data mt-2 text-2xl font-semibold text-zinc-100">
+                    {formatMemory(memoryEstimateMb())}
+                  </p>
+                  <p class="mt-1 text-xs text-zinc-500">A rough peak working-set estimate for the batch.</p>
+                </div>
+                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-4 py-4">
+                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Coverage Overlap</p>
+                  <p class="app-data mt-2 text-2xl font-semibold text-zinc-100">
+                    {coverageStats().hasCoverage ? `${coverageStats().overlapDays}d` : "0d"}
+                  </p>
+                  <p class="mt-1 text-xs text-zinc-500">
+                    {coverageStats().hasCoverage
+                      ? `${formatCompactCount(coverageStats().minRows)} shared bars at minimum.`
+                      : "Pick symbols with overlapping history."}
+                  </p>
+                </div>
+              </div>
             </div>
 
             <div class="grid gap-3 md:grid-cols-2">
@@ -527,16 +1304,17 @@ export default function ExperimentsIndexPage() {
           </section>
 
           <section class={section}>
-            <div class="space-y-1">
+            <div class="space-y-2">
               <p class="text-sm font-semibold text-zinc-100">1. Coverage</p>
-              <p class="text-xs text-zinc-400">
-                Symbols and intervals to sweep.
+              <div class="app-hairline" />
+              <p class="text-sm text-zinc-400">
+                Pick the symbol universe, then drag across the interval timeline to define the cadence band.
               </p>
             </div>
 
             <div>
               <label class={label}>Symbols</label>
-              <div class="flex flex-wrap gap-2">
+              <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                 <For each={symbols() ?? []}>
                   {(symbol) => {
                     const checked = () => selectedSymbols().includes(symbol.symbol);
@@ -546,13 +1324,19 @@ export default function ExperimentsIndexPage() {
                         onClick={() =>
                           setSelectedSymbols((current) => toggleValue(current, symbol.symbol))
                         }
-                        class={`rounded-full border px-3 py-2 text-sm transition-colors ${
+                        class={`rounded-2xl border px-4 py-3 text-left transition-all ${
                           checked()
-                            ? "border-blue-500 bg-blue-500/15 text-blue-100"
-                            : "border-zinc-700 bg-zinc-950/60 text-zinc-300 hover:border-zinc-500"
+                            ? "app-card-glow"
+                            : "border-zinc-800 bg-zinc-950/70 text-zinc-300 hover:border-zinc-600"
                         }`}
                       >
-                        {symbol.symbol}
+                        <div class="flex items-start justify-between gap-3">
+                          <div>
+                            <p class="text-sm font-semibold">{symbol.symbol}</p>
+                            <p class="mt-1 text-xs text-zinc-400">{symbol.full_name}</p>
+                          </div>
+                          <span class="app-data text-xs text-zinc-500">{formatCompactCount(symbol.rows)}</span>
+                        </div>
                       </button>
                     );
                   }}
@@ -560,60 +1344,172 @@ export default function ExperimentsIndexPage() {
               </div>
             </div>
 
-            <div>
-              <label class={label}>Intervals</label>
-              <div class="flex flex-wrap gap-2">
-                <For each={BACKTEST_INTERVALS}>
-                  {(interval) => {
-                    const backendValue = getBackendInterval(interval);
-                    const checked = () => selectedIntervals().includes(backendValue);
-                    return (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setSelectedIntervals((current) => toggleValue(current, backendValue))
-                        }
-                        class={`rounded-full border px-3 py-2 text-sm transition-colors ${
-                          checked()
-                            ? "border-blue-500 bg-blue-500/15 text-blue-100"
-                            : "border-zinc-700 bg-zinc-950/60 text-zinc-300 hover:border-zinc-500"
-                        }`}
-                      >
-                        {interval.label}
-                      </button>
-                    );
-                  }}
+            <div class="rounded-2xl border border-zinc-800 bg-zinc-950/75 p-4">
+              <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <label class={label}>Intervals</label>
+                  <p class="text-sm text-zinc-400">
+                    Drag across adjacent steps for a continuous sweep. Availability dots show how healthy the coverage looks.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAutoOptimizeIntervals((current) => !current)}
+                  class={`rounded-full border px-3 py-2 text-xs font-medium transition-colors ${
+                    autoOptimizeIntervals()
+                      ? "app-card-glow"
+                      : "border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-zinc-500"
+                  }`}
+                >
+                  {autoOptimizeIntervals() ? "Auto-optimize on" : "Auto-optimize intervals"}
+                </button>
+              </div>
+
+              <div class="relative mt-5">
+                <div class="absolute left-5 right-5 top-6 h-px bg-gradient-to-r from-zinc-800 via-zinc-700 to-zinc-800" />
+                <div class="relative grid gap-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9">
+                  <For each={BACKTEST_INTERVALS}>
+                    {(interval, index) => {
+                      const backendValue = getBackendInterval(interval);
+                      const checked = () => selectedIntervals().includes(backendValue);
+                      const availability = () =>
+                        availabilityBadge(backendValue, coverageStats().minRows || 0);
+
+                      return (
+                        <button
+                          type="button"
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            setDragStartIndex(index());
+                            setSelectedIntervals(rangeToIntervals(index(), index()));
+                          }}
+                          onMouseEnter={() => {
+                            if (dragStartIndex() !== null) {
+                              setSelectedIntervals(rangeToIntervals(dragStartIndex()!, index()));
+                            }
+                          }}
+                          onClick={() => {
+                            setDragStartIndex(null);
+                            setSelectedIntervals((current) =>
+                              current.includes(backendValue) && current.length === 1
+                                ? current
+                                : rangeToIntervals(index(), index()),
+                            );
+                          }}
+                          class={`rounded-2xl border px-3 py-3 text-center transition-all ${
+                            checked()
+                              ? "app-card-glow"
+                              : "border-zinc-800 bg-zinc-950/75 text-zinc-300 hover:border-zinc-600"
+                          }`}
+                        >
+                          <div class="mx-auto flex w-full max-w-[88px] items-center justify-center gap-2">
+                            <span class={`h-2.5 w-2.5 rounded-full ${availability().tone}`} />
+                            <span class="text-xs text-zinc-500">{availability().label}</span>
+                          </div>
+                          <p class="mt-3 text-sm font-semibold">{interval.label}</p>
+                          <p class="mt-1 app-data text-[11px] text-zinc-500">
+                            {intervalMinutes(backendValue)}m
+                          </p>
+                        </button>
+                      );
+                    }}
+                  </For>
+                </div>
+              </div>
+
+              <div class="mt-4 flex flex-wrap gap-2">
+                <For each={selectedIntervals()}>
+                  {(interval) => (
+                    <span class="rounded-full border border-sky-800/70 bg-sky-950/40 px-3 py-1 text-xs text-sky-100">
+                      {BACKTEST_INTERVALS.find((candidate) => getBackendInterval(candidate) === interval)
+                        ?.label ?? interval}
+                    </span>
+                  )}
                 </For>
               </div>
             </div>
           </section>
 
           <section class={section}>
-            <div class="space-y-1">
+            <div class="space-y-2">
               <p class="text-sm font-semibold text-zinc-100">2. Strategy Grid</p>
-              <p class="text-xs text-zinc-400">
-                Comma-separated values fan out the grid.
+              <div class="app-hairline" />
+              <p class="text-sm text-zinc-400">
+                Give each strategy enough visual weight that you can tell what you're actually sweeping.
               </p>
             </div>
 
-            <div>
-              <label class={label}>Strategy type</label>
-              <select
-                class={field}
-                value={strategy()}
-                onChange={(event) => {
-                  const nextStrategy = event.currentTarget.value as StrategyValue;
-                  batch(() => {
-                    setStrategy(nextStrategy);
-                    setParamInputs(defaultParamInputs(nextStrategy));
-                    setError(null);
-                  });
+            <div class="flex flex-wrap gap-2">
+              <span class="rounded-full border border-sky-800/70 bg-sky-950/40 px-3 py-1 text-xs text-sky-100">
+                Active strategy: {STRATEGIES.find((item) => item.value === strategy())?.label}
+              </span>
+              <span class="rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-1 text-xs text-zinc-300">
+                {STRATEGY_PARAMS[strategy()].length} params
+              </span>
+              <span class="rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-1 text-xs text-zinc-300">
+                Formula: {selectedStrategyProfile().formula}
+              </span>
+            </div>
+
+            <div class="grid gap-3 md:grid-cols-2">
+              <For each={STRATEGIES}>
+                {(item) => {
+                  const profile = strategyProfiles[item.value];
+                  const checked = () => strategy() === item.value;
+                  return (
+                    <button
+                      type="button"
+                      title={profile.formula}
+                      onClick={() => {
+                        const nextStrategy = item.value as StrategyValue;
+                        batch(() => {
+                          setStrategy(nextStrategy);
+                          setParamInputs(defaultParamInputs(nextStrategy));
+                          setError(null);
+                        });
+                      }}
+                      class={`rounded-[24px] border p-4 text-left transition-all ${
+                        checked()
+                          ? "app-card-glow"
+                          : "border-zinc-800 bg-zinc-950/75 text-zinc-300 hover:border-zinc-600"
+                      }`}
+                    >
+                      <div class="flex items-start justify-between gap-4">
+                        <div>
+                          <div class="flex items-center gap-3">
+                            <span class="rounded-xl border border-zinc-700 bg-zinc-950/70 px-2.5 py-1.5 app-data text-xs text-zinc-200">
+                              {profile.glyph}
+                            </span>
+                            <div>
+                              <p class="text-sm font-semibold text-zinc-100">{item.label}</p>
+                              <p class="mt-1 text-xs text-zinc-400">{profile.description}</p>
+                            </div>
+                          </div>
+                          <p class="mt-3 text-sm text-zinc-400">{profile.note}</p>
+                        </div>
+                        <span class="rounded-full border border-zinc-800 bg-zinc-950/80 px-2.5 py-1 text-xs text-zinc-300">
+                          {STRATEGY_PARAMS[item.value].length} params
+                        </span>
+                      </div>
+
+                      <div class="mt-4 flex items-end gap-1">
+                        <For each={profile.spark}>
+                          {(value) => (
+                            <span
+                              class={`w-5 rounded-sm ${
+                                checked() ? "bg-sky-300/80" : "bg-zinc-700/90"
+                              }`}
+                              style={{ height: `${12 + value * 3}px` }}
+                            />
+                          )}
+                        </For>
+                      </div>
+
+                      <p class="mt-3 app-data text-[11px] text-zinc-500">{profile.formula}</p>
+                    </button>
+                  );
                 }}
-              >
-                <For each={STRATEGIES}>
-                  {(item) => <option value={item.value}>{item.label}</option>}
-                </For>
-              </select>
+              </For>
             </div>
 
             <div class="grid gap-3 md:grid-cols-2">
@@ -622,7 +1518,7 @@ export default function ExperimentsIndexPage() {
                   <div>
                     <label class={label}>{param.label}</label>
                     <input
-                      class={field}
+                      class={`${field} app-data`}
                       value={paramInputs()[param.key] ?? ""}
                       onInput={(event) =>
                         setParamInputs((current) => ({
@@ -632,23 +1528,27 @@ export default function ExperimentsIndexPage() {
                       }
                       placeholder={String(param.default)}
                     />
+                    <p class="mt-2 text-xs text-zinc-500">
+                      Comma-separated grid values. Wider sweeps blow up faster than you think.
+                    </p>
                   </div>
                 )}
               </For>
             </div>
 
-            <Show when={validationError()}>
-              <div class="rounded-2xl border border-yellow-800 bg-yellow-950/30 px-4 py-3 text-sm text-yellow-100">
-                {validationError()}
+            <Show when={validationError() || nyquistWarning()}>
+              <div class="rounded-2xl border border-amber-800/70 bg-amber-950/25 px-4 py-3 text-sm text-amber-100">
+                {validationError() ?? nyquistWarning()}
               </div>
             </Show>
           </section>
 
           <section class={section}>
-            <div class="space-y-1">
+            <div class="space-y-2">
               <p class="text-sm font-semibold text-zinc-100">3. Guardrails + Sizing</p>
-              <p class="text-xs text-zinc-400">
-                Prop rules and account assumptions.
+              <div class="app-hairline" />
+              <p class="text-sm text-zinc-400">
+                Prop rules, account assumptions, and position sizing all sit here so the launch math stays honest.
               </p>
             </div>
 
@@ -678,7 +1578,7 @@ export default function ExperimentsIndexPage() {
                 <input
                   type="number"
                   min="1"
-                  class={field}
+                  class={`${field} app-data`}
                   value={initialBalance()}
                   onInput={(event) => setInitialBalance(Number(event.currentTarget.value) || 0)}
                 />
@@ -689,7 +1589,7 @@ export default function ExperimentsIndexPage() {
                   type="number"
                   min="0.01"
                   step="0.01"
-                  class={field}
+                  class={`${field} app-data`}
                   value={positionSize()}
                   onInput={(event) => setPositionSize(Number(event.currentTarget.value) || 0)}
                 />
@@ -700,7 +1600,7 @@ export default function ExperimentsIndexPage() {
                   type="number"
                   min="0"
                   step="0.01"
-                  class={field}
+                  class={`${field} app-data`}
                   value={commission()}
                   onInput={(event) => setCommission(Number(event.currentTarget.value) || 0)}
                 />
@@ -711,145 +1611,449 @@ export default function ExperimentsIndexPage() {
 
         <div class="space-y-6">
           <section class={section}>
-            <p class="app-kicker">Launch</p>
-            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-1">
-              <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Estimated Runs</p>
-                <p class="mt-2 text-2xl font-semibold text-zinc-100">{estimatedRunCount()}</p>
-                <p class="mt-1 text-xs text-zinc-500">
-                  {selectedSymbols().length} symbols x {selectedIntervals().length} intervals x{" "}
-                  {parameterComboCount()} param combos
-                </p>
+            <div class="space-y-2">
+              <p class="app-kicker">Launch Control</p>
+              <h3 class="text-lg font-semibold text-zinc-100">Validate, then commit the compute</h3>
+            </div>
+
+            <div class="rounded-[28px] border border-zinc-800 bg-zinc-950/80 p-5">
+              <div class="relative mx-auto h-36 w-full max-w-[280px] overflow-hidden">
+                <div
+                  class="absolute inset-x-0 bottom-0 h-[280px] rounded-full border border-zinc-800/80"
+                  style={{
+                    background: `conic-gradient(from 180deg at 50% 100%, ${launchGaugeColor()} 0deg ${runningCapacityDegrees()}deg, rgba(39,39,42,0.96) ${runningCapacityDegrees()}deg 180deg, rgba(9,9,11,0) 180deg 360deg)`,
+                  }}
+                />
+                <div class="absolute inset-x-9 bottom-0 h-[190px] rounded-full border border-zinc-900 bg-zinc-950" />
+                <div class="absolute inset-x-0 bottom-5 text-center">
+                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Capacity</p>
+                  <p class="app-data mt-2 text-3xl font-semibold text-zinc-100">
+                    {formatCount(estimatedRunCount())}
+                    <span class="text-lg text-zinc-500"> / 250</span>
+                  </p>
+                  <p class="mt-1 text-xs text-zinc-500">Queue slot {queueDepth() + 1} if launched now</p>
+                </div>
+                <div class="absolute bottom-1 left-3 text-[11px] text-zinc-600">0</div>
+                <div class="absolute bottom-1 left-1/2 -translate-x-1/2 text-[11px] text-zinc-600">
+                  125
+                </div>
+                <div class="absolute bottom-1 right-3 text-[11px] text-zinc-600">250</div>
               </div>
 
-              <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Scoring Bias</p>
-                <p class="mt-2 text-sm font-semibold text-zinc-100">
-                  {scoringOptions.find((option) => option.value === scoringRule())?.label}
-                </p>
-                <p class="mt-1 text-xs text-zinc-500">
-                  {scoringOptions.find((option) => option.value === scoringRule())?.blurb}
-                </p>
+              <div class="mt-4 grid gap-3 sm:grid-cols-3">
+                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/75 px-4 py-3">
+                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">ETA</p>
+                  <p class="app-data mt-2 text-xl font-semibold text-zinc-100">
+                    {formatDuration(runtimeEstimateMinutes() + queueDepth() * 4)}
+                  </p>
+                  <p class="mt-1 text-xs text-zinc-500">Includes the current run queue.</p>
+                </div>
+                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/75 px-4 py-3">
+                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Scoring Bias</p>
+                  <p class="mt-2 text-sm font-semibold text-zinc-100">
+                    {scoringOptions.find((option) => option.value === scoringRule())?.label}
+                  </p>
+                  <p class="mt-1 text-xs text-zinc-500">
+                    {scoringOptions.find((option) => option.value === scoringRule())?.blurb}
+                  </p>
+                </div>
+                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/75 px-4 py-3">
+                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Confidence Band</p>
+                  <p class="app-data mt-2 text-xl font-semibold text-zinc-100">
+                    +/-{sharpeVarianceBand().toFixed(2)}
+                  </p>
+                  <p class="mt-1 text-xs text-zinc-500">A rough stability hint, not gospel.</p>
+                </div>
               </div>
             </div>
 
-            <div class="flex flex-col gap-3">
+            <div class="rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4">
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <p class="text-sm font-semibold text-zinc-100">Pre-flight validator</p>
+                  <p class="mt-1 text-xs text-zinc-500">This updates live so weird setups get called out early.</p>
+                </div>
+                <span
+                  class={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                    isValidated()
+                      ? "border-emerald-800/80 bg-emerald-950/45 text-emerald-200"
+                      : "border-zinc-700 bg-zinc-900 text-zinc-300"
+                  }`}
+                >
+                  {isValidated() ? "Validated" : "Needs validation"}
+                </span>
+              </div>
+
+              <div class="mt-4 space-y-3">
+                <For each={preflightChecks()}>
+                  {(check) => (
+                    <div class="rounded-2xl border border-zinc-800 bg-zinc-950/70 px-4 py-3">
+                      <div class="flex items-start gap-3">
+                        <span
+                          class={`mt-0.5 flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${
+                            check.tone === "pass"
+                              ? "bg-emerald-500/15 text-emerald-300"
+                              : "bg-amber-500/15 text-amber-300"
+                          }`}
+                        >
+                          {check.tone === "pass" ? "OK" : "!"}
+                        </span>
+                        <div>
+                          <p class="text-sm font-medium text-zinc-100">{check.label}</p>
+                          <p class="mt-1 text-sm text-zinc-400">{check.detail}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </div>
+
+            <div class="grid gap-3">
               <button
                 type="button"
                 disabled={!!validationError() || busyAction() !== null}
+                onClick={handleValidate}
+                class={`app-button-primary w-full justify-center py-3 ${
+                  validationError() || busyAction() ? "cursor-not-allowed opacity-50" : ""
+                }`}
+              >
+                {isValidated() ? "Validated for launch" : "Validate Experiment"}
+              </button>
+
+              <button
+                type="button"
+                disabled={!isValidated() || busyAction() !== null}
                 onClick={() => handleCreate(true)}
                 class={`rounded-xl px-4 py-3 text-sm font-semibold transition-colors ${
-                  validationError() || busyAction()
+                  !isValidated() || busyAction()
                     ? "cursor-not-allowed bg-zinc-800 text-zinc-500"
                     : "bg-zinc-100 text-zinc-950 hover:bg-white"
                 }`}
               >
-                {busyAction() === "create-run" ? "Creating + running..." : "Create and Run Batch"}
+                {busyAction() === "launch" ? "Launching batch..." : "Launch Batch"}
               </button>
-              <button
-                type="button"
-                disabled={!!validationError() || busyAction() !== null}
-                onClick={() => handleCreate(false)}
-                class={`rounded-xl border px-4 py-3 text-sm font-medium transition-colors ${
-                  validationError() || busyAction()
-                    ? "cursor-not-allowed border-zinc-800 text-zinc-500"
-                    : "border-zinc-700 text-zinc-200 hover:border-zinc-500 hover:bg-zinc-900"
-                }`}
-              >
-                {busyAction() === "create" ? "Saving draft..." : "Save Draft First"}
-              </button>
+
+              <div class="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  disabled={!!validationError() || busyAction() !== null}
+                  onClick={() => handleCreate(false)}
+                  class={`app-button-secondary justify-center ${
+                    validationError() || busyAction() ? "cursor-not-allowed opacity-50" : ""
+                  }`}
+                >
+                  {busyAction() === "save" ? "Saving draft..." : "Save Draft"}
+                </button>
+                <button
+                  type="button"
+                  disabled={!!validationError() || busyAction() !== null}
+                  onClick={handleCopyTemplate}
+                  class={`app-button-secondary justify-center ${
+                    validationError() || busyAction() ? "cursor-not-allowed opacity-50" : ""
+                  }`}
+                >
+                  {copiedTemplate() ? "Template link copied" : "Copy Template Link"}
+                </button>
+              </div>
+            </div>
+
+            <Show when={isValidated()}>
+              <div class="rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4">
+                <div class="flex items-center justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-semibold text-zinc-100">First 10 runs</p>
+                    <p class="mt-1 text-xs text-zinc-500">A quick sanity check before you spend anything.</p>
+                  </div>
+                  <span class="rounded-full border border-sky-800/70 bg-sky-950/40 px-3 py-1 text-xs text-sky-100">
+                    Preview
+                  </span>
+                </div>
+
+                <div class="mt-4 overflow-x-auto">
+                  <table class="min-w-full text-left text-sm">
+                    <thead class="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                      <tr>
+                        <th class="pb-2 pr-4">Symbol</th>
+                        <th class="pb-2 pr-4">Interval</th>
+                        <For each={STRATEGY_PARAMS[strategy()]}>
+                          {(param) => <th class="pb-2 pr-4">{param.label}</th>}
+                        </For>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <For each={previewRuns()}>
+                        {(row) => (
+                          <tr class="border-t border-zinc-800/80">
+                            <td class="py-3 pr-4 font-medium text-zinc-100">{row.symbol}</td>
+                            <td class="py-3 pr-4 text-zinc-300">{row.interval}</td>
+                            <For each={STRATEGY_PARAMS[strategy()]}>
+                              {(param) => (
+                                <td class="py-3 pr-4 app-data text-zinc-300">{row.params[param.key]}</td>
+                              )}
+                            </For>
+                          </tr>
+                        )}
+                      </For>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </Show>
+
+            <div class="rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4">
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <p class="text-sm font-semibold text-zinc-100">Preview results view</p>
+                  <p class="mt-1 text-xs text-zinc-500">A little teaser for where the batch lands after launch.</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <span class="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-300">
+                    Equity Curve
+                  </span>
+                  <span class="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-300">
+                    Drawdown
+                  </span>
+                  <span class="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-300">
+                    Param Surface
+                  </span>
+                  <span class="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-300">
+                    Trade Dist.
+                  </span>
+                </div>
+              </div>
+
+              <div class="mt-4 grid gap-3">
+                <div class="app-skeleton h-28" />
+                <div class="grid gap-3 sm:grid-cols-3">
+                  <div class="app-skeleton h-16" />
+                  <div class="app-skeleton h-16" />
+                  <div class="app-skeleton h-16" />
+                </div>
+              </div>
             </div>
           </section>
 
           <section class={section}>
-            <div>
-              <p class="app-kicker">Saved Batches</p>
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p class="app-kicker">Saved Batches</p>
+                <p class="mt-2 text-sm text-zinc-400">
+                  Sortable history, quick clone flow, and enough metadata to spot what deserves another run.
+                </p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => toggleSort("updated")}
+                  class={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                    sortKey() === "updated"
+                      ? "app-card-glow"
+                      : "border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-zinc-500"
+                  }`}
+                >
+                  Last activity
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleSort("runs")}
+                  class={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                    sortKey() === "runs"
+                      ? "app-card-glow"
+                      : "border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-zinc-500"
+                  }`}
+                >
+                  Runs
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleSort("status")}
+                  class={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                    sortKey() === "status"
+                      ? "app-card-glow"
+                      : "border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-zinc-500"
+                  }`}
+                >
+                  Status
+                </button>
+              </div>
             </div>
 
-            <Show when={!experiments.loading} fallback={<div class="app-skeleton h-48" />}>
+            <Show when={!experiments.loading} fallback={<div class="app-skeleton h-56" />}>
               <Show
-                when={(experiments() ?? []).length > 0}
+                when={sortedExperiments().length > 0}
                 fallback={
                   <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-10 text-center text-sm text-zinc-500">
                     No experiments yet. Build one on the left.
                   </div>
                 }
               >
-                <div class="space-y-3">
-                  <For each={experiments()}>
-                    {(experiment) => (
-                      <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4">
-                        <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                          <div class="space-y-2">
-                            <div class="flex flex-wrap items-center gap-2">
-                              <A
-                                href={`/experiments/${experiment.experiment_id}`}
-                                class="text-sm font-semibold text-zinc-100 hover:text-white"
-                              >
-                                {experiment.name}
-                              </A>
-                              <span
-                                class={`rounded-full border px-2.5 py-1 text-xs font-medium ${statusTone(
-                                  experiment.status,
-                                )}`}
-                              >
-                                {describeStatus(experiment.status)}
-                              </span>
-                            </div>
-                            <p class="text-xs text-zinc-500">
-                              {experiment.symbols.join(", ")} | {experiment.intervals.join(", ")} |{" "}
-                              {formatStrategyLabel(experiment.strategy_type)}
-                            </p>
-                            <p class="text-xs text-zinc-400">
-                              {experiment.total_runs > 0
-                                ? `${experiment.completed_runs}/${experiment.total_runs} complete with ${experiment.failed_runs} failed`
-                                : "Draft only so far."}
-                            </p>
-                            <p class="text-xs text-zinc-500">
-                              Last activity: {formatDate(experiment.last_run_at ?? experiment.updated_at)}
-                            </p>
-                          </div>
+                <div class="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-950/70">
+                  <table class="min-w-full text-left text-sm">
+                    <thead class="bg-zinc-950/95 text-xs uppercase tracking-[0.18em] text-zinc-500">
+                      <tr>
+                        <th class="px-4 py-3">Name</th>
+                        <th class="px-4 py-3">Runs</th>
+                        <th class="px-4 py-3">Status</th>
+                        <th class="px-4 py-3">Coverage</th>
+                        <th class="px-4 py-3">Run Mix</th>
+                        <th class="px-4 py-3">Last Activity</th>
+                        <th class="px-4 py-3">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <For each={sortedExperiments()}>
+                        {(experiment) => {
+                          const completedRatio =
+                            experiment.total_runs > 0
+                              ? experiment.completed_runs / experiment.total_runs
+                              : 0;
+                          const failedRatio =
+                            experiment.total_runs > 0 ? experiment.failed_runs / experiment.total_runs : 0;
+                          const pendingRatio = Math.max(0, 1 - completedRatio - failedRatio);
 
-                          <div class="flex flex-wrap items-center gap-2">
-                            <Show when={experiment.best_backtest_id}>
-                              <A
-                                href={`/backtests/${experiment.best_backtest_id}`}
-                                class="rounded-xl border border-zinc-700 px-3 py-2 text-xs font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
-                              >
-                                Best Backtest
-                              </A>
-                            </Show>
-                            <Show when={experiment.status === "draft" || experiment.status === "failed"}>
-                              <button
-                                type="button"
-                                disabled={busyAction() !== null}
-                                onClick={() => handleRunSaved(experiment.experiment_id)}
-                                class={`rounded-xl px-3 py-2 text-xs font-semibold transition-colors ${
-                                  busyAction() === experiment.experiment_id
-                                    ? "cursor-not-allowed bg-zinc-800 text-zinc-500"
-                                    : "bg-zinc-100 text-zinc-950 hover:bg-white"
-                                }`}
-                              >
-                                {busyAction() === experiment.experiment_id ? "Running..." : "Run"}
-                              </button>
-                            </Show>
-                            <A
-                              href={`/experiments/${experiment.experiment_id}`}
-                              class="rounded-xl border border-zinc-700 px-3 py-2 text-xs font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
-                            >
-                              Open
-                            </A>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </For>
+                          return (
+                            <tr class="border-t border-zinc-800/80 align-top">
+                              <td class="px-4 py-4">
+                                <div class="space-y-2">
+                                  <A
+                                    href={`/experiments/${experiment.experiment_id}`}
+                                    class="text-sm font-semibold text-zinc-100 hover:text-white"
+                                  >
+                                    {experiment.name}
+                                  </A>
+                                  <p class="text-xs text-zinc-500">
+                                    {experiment.symbols.join(", ")} | {experiment.intervals.join(", ")} |{" "}
+                                    {formatStrategyLabel(experiment.strategy_type)}
+                                  </p>
+                                  <div class="flex flex-wrap gap-2">
+                                    <For each={buildExperimentTags(experiment)}>
+                                      {(tag) => (
+                                        <span class="rounded-full border border-zinc-800 bg-zinc-950 px-2.5 py-1 text-[11px] text-zinc-300">
+                                          {tag}
+                                        </span>
+                                      )}
+                                    </For>
+                                  </div>
+                                </div>
+                              </td>
+                              <td class="px-4 py-4 app-data text-zinc-200">
+                                {experiment.total_runs > 0
+                                  ? `${experiment.completed_runs}/${experiment.total_runs}`
+                                  : "draft"}
+                              </td>
+                              <td class="px-4 py-4">
+                                <span
+                                  class={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${statusTone(
+                                    experiment.status,
+                                  )}`}
+                                >
+                                  {describeStatus(experiment.status)}
+                                </span>
+                              </td>
+                              <td class="px-4 py-4 text-zinc-300">
+                                <div class="space-y-1">
+                                  <p>{experiment.symbols.length} symbols</p>
+                                  <p>{experiment.intervals.length} intervals</p>
+                                </div>
+                              </td>
+                              <td class="px-4 py-4">
+                                <div class="w-28">
+                                  <div class="flex h-2 overflow-hidden rounded-full bg-zinc-900">
+                                    <div
+                                      class="bg-emerald-400"
+                                      style={{ width: `${completedRatio * 100}%` }}
+                                    />
+                                    <div
+                                      class="bg-red-400"
+                                      style={{ width: `${failedRatio * 100}%` }}
+                                    />
+                                    <div
+                                      class="bg-zinc-700"
+                                      style={{ width: `${pendingRatio * 100}%` }}
+                                    />
+                                  </div>
+                                  <p class="mt-2 text-xs text-zinc-500">
+                                    {experiment.failed_runs} failed
+                                  </p>
+                                </div>
+                              </td>
+                              <td class="px-4 py-4 text-zinc-300">
+                                {formatDate(experiment.last_run_at ?? experiment.updated_at)}
+                              </td>
+                              <td class="px-4 py-4">
+                                <div class="flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => hydrateFromExperiment(experiment)}
+                                    class="app-button-compact-secondary"
+                                  >
+                                    Clone
+                                  </button>
+                                  <Show when={experiment.status === "draft" || experiment.status === "failed"}>
+                                    <button
+                                      type="button"
+                                      disabled={busyAction() !== null}
+                                      onClick={() => handleRunSaved(experiment.experiment_id)}
+                                      class={`app-button-compact-primary ${
+                                        busyAction() === experiment.experiment_id
+                                          ? "cursor-not-allowed opacity-50"
+                                          : ""
+                                      }`}
+                                    >
+                                      {busyAction() === experiment.experiment_id ? "Running..." : "Run"}
+                                    </button>
+                                  </Show>
+                                  <A href={`/experiments/${experiment.experiment_id}`} class="app-button-compact-secondary">
+                                    Open
+                                  </A>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        }}
+                      </For>
+                    </tbody>
+                  </table>
                 </div>
               </Show>
             </Show>
           </section>
         </div>
       </div>
+
+      <Show when={showShortcuts()}>
+        <div class="fixed inset-0 z-40 flex items-center justify-center bg-zinc-950/80 px-4 backdrop-blur-sm">
+          <div class="w-full max-w-md rounded-[28px] border border-zinc-800 bg-zinc-950 p-6 shadow-2xl">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <p class="app-kicker">Power User</p>
+                <h3 class="mt-2 text-lg font-semibold text-zinc-100">Keyboard shortcuts</h3>
+                <p class="mt-2 text-sm text-zinc-400">
+                  A small nod to the quant crowd. I kept it simple for now.
+                </p>
+              </div>
+              <button type="button" onClick={() => setShowShortcuts(false)} class="app-button-secondary">
+                Close
+              </button>
+            </div>
+
+            <div class="mt-5 space-y-3">
+              <div class="flex items-center justify-between rounded-2xl border border-zinc-800 bg-zinc-950/80 px-4 py-3">
+                <span class="text-sm text-zinc-300">Open or close this overlay</span>
+                <span class="app-kbd">?</span>
+              </div>
+              <div class="flex items-center justify-between rounded-2xl border border-zinc-800 bg-zinc-950/80 px-4 py-3">
+                <span class="text-sm text-zinc-300">Dismiss modal overlays</span>
+                <span class="app-kbd">Esc</span>
+              </div>
+              <div class="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-4 py-3 text-sm text-zinc-400">
+                Validation and launch are still button-first on purpose. I didn't want to sneak destructive shortcuts in yet.
+              </div>
+            </div>
+          </div>
+        </div>
+      </Show>
     </AppShell>
   );
 }

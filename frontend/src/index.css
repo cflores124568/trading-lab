@@ -73,6 +73,14 @@
     @apply rounded-3xl border border-zinc-800 bg-zinc-900/75;
   }
 
+  .app-panel-elevated {
+    @apply rounded-3xl border border-zinc-800/90 bg-zinc-900/88;
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.32),
+      0 10px 24px rgba(15, 23, 42, 0.18),
+      inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  }
+
   .app-panel-section {
     @apply p-5 lg:p-6;
   }
@@ -88,10 +96,50 @@
   .app-skeleton {
     @apply animate-pulse rounded-2xl bg-zinc-800/80;
   }
+
+  .app-hairline {
+    @apply h-px w-full bg-gradient-to-r from-sky-400/55 via-zinc-600/35 to-transparent;
+  }
+
+  .app-kbd {
+    @apply rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 font-mono text-[11px] text-zinc-300;
+  }
+
+  .app-input-quiet {
+    @apply rounded-xl border border-zinc-800 bg-zinc-950/75 px-3 py-2 text-zinc-100 transition-colors focus:border-sky-400/70 focus:outline-none;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  }
+
+  .app-card-glow {
+    @apply border-sky-400/70 bg-sky-400/12 text-sky-50;
+    box-shadow:
+      0 0 0 1px rgba(56, 189, 248, 0.35),
+      0 10px 24px rgba(14, 165, 233, 0.16),
+      0 0 24px rgba(56, 189, 248, 0.12);
+  }
 }
 
 @layer utilities {
   .font-mono {
     font-variant-numeric: tabular-nums;
+  }
+
+  .app-shake-soft {
+    animation: app-soft-shake 0.38s ease-in-out 1;
+  }
+}
+
+@keyframes app-soft-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  25% {
+    transform: translateX(-2px);
+  }
+
+  75% {
+    transform: translateX(2px);
   }
 }
