@@ -2,17 +2,28 @@ import numpy as np
 from typing import List
 
 def calculate_metrics(trades: List[dict], equity_curve: List[float], initial_balance: float) -> dict:
-    #Compute every metric in one pass over the trade list.
+    """Compute the saved stats from closed trades and the visible equity path.
+
+    Most runs end with every trade closed, so trade PnL and end equity tell the
+    same story. When a prop-rule breach stops the report mid-trade though, I
+    still want `total_pnl` and drawdown to reflect that frozen equity snapshot
+    instead of pretending nothing happened just because the trade never got an
+    exit fill.
+    """
+    final_balance = float(equity_curve[-1]) if equity_curve else float(initial_balance)
+    total_pnl = final_balance - float(initial_balance)
+    max_dd = _max_drawdown(equity_curve)
+
     if not trades:
-        return _empty_metrics()
+        return _empty_metrics(total_pnl=total_pnl, max_drawdown=max_dd)
 
     pnls = np.array([t["pnl"] for t in trades], dtype=float)
     total_trades   = len(trades)
     winning_trades = int(np.sum(pnls > 0))
     losing_trades  = int(np.sum(pnls < 0))
     win_rate       = round(winning_trades / total_trades, 4) if total_trades else 0.0
-    total_pnl  = float(np.sum(pnls))
-    average_pnl = round(total_pnl / total_trades, 2)
+    closed_trade_total = float(np.sum(pnls))
+    average_pnl = round(closed_trade_total / total_trades, 2)
     gross_wins   = float(np.sum(pnls[pnls > 0]))
     gross_losses = float(np.abs(np.sum(pnls[pnls < 0])))
     if gross_losses == 0:
@@ -21,7 +32,6 @@ def calculate_metrics(trades: List[dict], equity_curve: List[float], initial_bal
         profit_factor = round(gross_wins, 4) if gross_wins > 0 else 0.0
     else:
         profit_factor = round(gross_wins / gross_losses, 4)
-    max_dd = _max_drawdown(equity_curve)
     sharpe  = _sharpe_ratio(pnls)
     sortino = _sortino_ratio(pnls)
     avg_duration = _avg_duration_minutes(trades)
@@ -43,11 +53,11 @@ def calculate_metrics(trades: List[dict], equity_curve: List[float], initial_bal
     }
 
 #Helpers
-def _empty_metrics() -> dict:
+def _empty_metrics(*, total_pnl: float = 0.0, max_drawdown: float = 0.0) -> dict:
     return {
         "total_trades": 0, "winning_trades": 0, "losing_trades": 0,
-        "win_rate": 0.0, "total_pnl": 0.0, "average_pnl": 0.0,
-        "profit_factor": 0.0, "max_drawdown": 0.0, "sharpe_ratio": 0.0,
+        "win_rate": 0.0, "total_pnl": round(total_pnl, 2), "average_pnl": 0.0,
+        "profit_factor": 0.0, "max_drawdown": round(max_drawdown, 4), "sharpe_ratio": 0.0,
         "sortino_ratio": 0.0, "avg_trade_duration": 0.0,
         "best_trade": 0.0, "worst_trade": 0.0,
     }

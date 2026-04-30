@@ -83,6 +83,12 @@ interface PropEvalDetails {
   daily_pnls?: Record<string, number>;
   first_breach_rule?: "daily_loss" | "drawdown" | null;
   first_breach_time?: string | null;
+  stopped_at_first_breach?: boolean;
+  first_breach_equity?: number;
+  first_breach_balance?: number;
+  first_breach_open_pnl?: number;
+  stopped_trade_count?: number;
+  trades_after_breach_ignored?: number;
 }
 
 interface CalendarCell {
@@ -434,6 +440,8 @@ function PropEvalPanel(props: {
     if (!details().first_breach_rule) return "None";
     return details().first_breach_rule === "daily_loss" ? "Daily loss" : "Drawdown";
   };
+  const equityLabel = () =>
+    details().stopped_at_first_breach ? "Stopped Equity" : "Current Equity";
 
   return (
     <div class={`rounded-2xl border p-5 ${propEvalTone(props.evaluation.passed)}`}>
@@ -456,7 +464,7 @@ function PropEvalPanel(props: {
         </div>
 
         <div class="rounded-xl border border-zinc-800 bg-zinc-950/70 px-4 py-3 text-right">
-          <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Current Equity</p>
+          <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">{equityLabel()}</p>
           <p class="mt-2 font-mono text-xl font-semibold text-zinc-100">
             {formatCurrency(props.summary.current_balance)}
           </p>
@@ -663,6 +671,15 @@ function PropEvalPanel(props: {
           <Show when={props.evaluation.drawdown_breached}>
             <li class="flex items-center gap-1.5">
               <TriangleAlert size={13} /> Max drawdown breached at {formatBreachTime(details().drawdown_breach_time)}
+            </li>
+          </Show>
+          <Show when={details().stopped_at_first_breach}>
+            <li class="flex items-center gap-1.5">
+              <TriangleAlert size={13} />
+              Reporting stops there at {formatCurrency(details().first_breach_equity ?? props.summary.current_balance)}
+              <Show when={details().first_breach_open_pnl !== undefined}>
+                {` (${formatCurrency(details().first_breach_open_pnl ?? 0, { signed: true })} open PnL)`}
+              </Show>
             </li>
           </Show>
           <Show when={!props.evaluation.consistency_passed}>
