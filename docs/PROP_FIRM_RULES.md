@@ -26,23 +26,28 @@ These are stored as percentages or flags, except `account_size` and
 
 ### Daily Loss Limit
 
-The evaluator groups realized trade PnL by each trade's `exit_time` date.
+For timestamped backtests, the evaluator watches the equity curve bar by bar.
+Each trading day starts from that day's first equity point, then the rule checks
+whether intraday equity ever drops more than `account_size * daily_loss_limit`.
 
-If any single day drops below `-(account_size * daily_loss_limit)`, that rule
-is marked as breached.
+Closed-trade daily PnL is still kept for consistency and calendar summaries,
+but the actual daily-loss breach now comes from the path the account took, not
+just where trades happened to close.
 
-Important gotcha: this is based on closed-trade PnL by exit date. It is not a
-full intraday unrealized drawdown monitor.
+Older callers that don't pass equity timestamps still fall back to the old
+closed-trade-by-exit-date check so replay/session code doesn't randomly break.
 
 ### Max Drawdown
 
+The evaluator also checks drawdown bar by bar and records the first breach time.
 There are two modes right now:
 
 - `intraday`: drawdown is measured off the running peak of the equity curve
 - `eod`: drawdown is measured against `account_size` directly
 
-That `eod` version is intentionally simple right now. It is not a full
-session-close trailing rule engine yet, so don't oversell it in a demo.
+That `eod` version is intentionally simple right now. It uses the account size
+as the reference point instead of a full session-close trailing rule engine, so
+don't oversell it in a demo.
 
 ### Profit Target
 
@@ -107,7 +112,8 @@ That result comes back as:
 
 - `passed`
 - individual breach/pass booleans
-- a `details` object with the computed percentages and per-day PnL
+- a `details` object with computed percentages, breach timestamps, per-day PnL,
+  and daily equity loss summaries when a timestamped equity path was available
 
 ## Why This Doc Exists
 
