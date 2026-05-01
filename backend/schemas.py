@@ -466,6 +466,8 @@ class BacktestRequest(BaseModel):
     tick_size:       float          = Field(default=0.25, gt=0)
     tick_value:      float          = Field(default=12.5, gt=0)
     slippage_ticks:  float          = Field(default=1.0, ge=0)
+    stop_loss_ticks: Optional[float] = Field(default=None, gt=0)
+    take_profit_ticks: Optional[float] = Field(default=None, gt=0)
 
 
 class BacktestRunConfig(BaseModel):
@@ -475,6 +477,8 @@ class BacktestRunConfig(BaseModel):
     tick_size: float = Field(default=0.25, gt=0)
     tick_value: float = Field(default=12.5, gt=0)
     slippage_ticks: float = Field(default=1.0, ge=0)
+    stop_loss_ticks: Optional[float] = Field(default=None, gt=0)
+    take_profit_ticks: Optional[float] = Field(default=None, gt=0)
 
 class BacktestResult(BaseModel):
     backtest_id:    str

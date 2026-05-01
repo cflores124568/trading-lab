@@ -68,6 +68,8 @@ def analyze_backtest_robustness(
             "tick_size": request.tick_size,
             "tick_value": request.tick_value,
             "slippage_ticks": request.slippage_ticks,
+            "stop_loss_ticks": request.stop_loss_ticks,
+            "take_profit_ticks": request.take_profit_ticks,
         },
         "baseline": {
             "total_pnl": float(backtest["metrics"]["total_pnl"]),
@@ -104,12 +106,22 @@ def _request_from_backtest(backtest: dict) -> tuple[BacktestRequest, list[str]]:
     tick_value = float(run_config.get("tick_value") or 12.5)
     tick_size = float(run_config.get("tick_size") or 0.25)
     slippage_ticks = float(run_config.get("slippage_ticks") or 1.0)
+    stop_loss_ticks = (
+        float(run_config.get("stop_loss_ticks"))
+        if run_config.get("stop_loss_ticks") is not None
+        else None
+    )
+    take_profit_ticks = (
+        float(run_config.get("take_profit_ticks"))
+        if run_config.get("take_profit_ticks") is not None
+        else None
+    )
 
     if not run_config:
         warnings.append(
             "This backtest predates persisted run config, so robustness reruns assume "
             "`position_size=1`, `tick_size=0.25`, `tick_value=12.5`, and "
-            "`slippage_ticks=1` unless the saved row says otherwise."
+            "`slippage_ticks=1` unless the saved row says otherwise. Bracket exits stay off."
         )
 
     return BacktestRequest(
@@ -124,6 +136,8 @@ def _request_from_backtest(backtest: dict) -> tuple[BacktestRequest, list[str]]:
         tick_size=tick_size,
         tick_value=tick_value,
         slippage_ticks=slippage_ticks,
+        stop_loss_ticks=stop_loss_ticks,
+        take_profit_ticks=take_profit_ticks,
     ), warnings
 
 

@@ -48,6 +48,8 @@ def build_backtest_result(
         tick_size=request.tick_size,
         tick_value=request.tick_value,
         slippage_ticks=request.slippage_ticks,
+        stop_loss_ticks=request.stop_loss_ticks,
+        take_profit_ticks=request.take_profit_ticks,
     )
 
     trades = engine_result["trades"]
@@ -85,6 +87,8 @@ def build_backtest_result(
             "tick_size": request.tick_size,
             "tick_value": request.tick_value,
             "slippage_ticks": request.slippage_ticks,
+            "stop_loss_ticks": request.stop_loss_ticks,
+            "take_profit_ticks": request.take_profit_ticks,
         },
         "status": "completed",
         "created_at": created_at or datetime.utcnow().isoformat(),

@@ -167,6 +167,8 @@ def _hydrate_run_config(row) -> dict:
             "tick_size": float(raw.get("tick_size") or _infer_trade_tick_size(trades)),
             "tick_value": float(raw.get("tick_value") or 12.5),
             "slippage_ticks": float(raw.get("slippage_ticks") if raw.get("slippage_ticks") is not None else 1.0),
+            "stop_loss_ticks": float(raw.get("stop_loss_ticks")) if raw.get("stop_loss_ticks") is not None else None,
+            "take_profit_ticks": float(raw.get("take_profit_ticks")) if raw.get("take_profit_ticks") is not None else None,
         }
 
     return {
@@ -176,6 +178,8 @@ def _hydrate_run_config(row) -> dict:
         "tick_size": float(_infer_trade_tick_size(trades)),
         "tick_value": 12.5,
         "slippage_ticks": 1.0,
+        "stop_loss_ticks": None,
+        "take_profit_ticks": None,
     }
 
 

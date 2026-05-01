@@ -30,8 +30,8 @@ def _rules(**overrides) -> dict:
     return {**base, **overrides}
 
 
-def _request() -> BacktestRequest:
-    return BacktestRequest(
+def _request(**overrides) -> BacktestRequest:
+    payload = dict(
         dataset_id="dataset-1",
         strategy={"type": "ma_crossover", "params": {"fast_period": 9, "slow_period": 21}},
         prop_firm_rules=_rules(),
@@ -42,6 +42,8 @@ def _request() -> BacktestRequest:
         tick_value=12.5,
         slippage_ticks=1.0,
     )
+    payload.update(overrides)
+    return BacktestRequest(**payload)
 
 
 def _dataset() -> dict:
@@ -177,8 +179,32 @@ class BacktestServiceTests(unittest.TestCase):
         self.assertEqual(len(result["trades"]), 1)
         self.assertEqual(len(result["equity_curve"]), 5)
         self.assertEqual(result["metrics"]["total_pnl"], 1_500.0)
+        self.assertIsNone(result["run_config"]["stop_loss_ticks"])
+        self.assertIsNone(result["run_config"]["take_profit_ticks"])
         self.assertNotIn("stopped_at_first_breach", result["prop_firm_eval"]["details"])
         self.assertTrue(result["prop_firm_eval"]["details"]["first_breach_time"] is None)
+
+    @patch("services.backtest_service.run_backtest")
+    @patch("services.backtest_service.generate_signals", side_effect=lambda df, *_args, **_kwargs: df)
+    @patch("services.backtest_service.add_all_indicators", side_effect=lambda df, *_args, **_kwargs: df)
+    def test_build_backtest_result_persists_bracket_config(
+        self,
+        _mock_indicators,
+        _mock_signals,
+        mock_run_backtest,
+    ):
+        mock_run_backtest.return_value = {
+            "trades": [],
+            "equity_curve": [100_000.0] * 5,
+        }
+
+        result = build_backtest_result(
+            _dataset(),
+            _request(stop_loss_ticks=8.0, take_profit_ticks=16.0),
+        )
+
+        self.assertEqual(result["run_config"]["stop_loss_ticks"], 8.0)
+        self.assertEqual(result["run_config"]["take_profit_ticks"], 16.0)
 
 
 if __name__ == "__main__":

@@ -22,18 +22,21 @@ def run_backtest(
     tick_size:       float = 0.25,
     tick_value:      float = 12.50,
     slippage_ticks:  float = 1.0,
+    stop_loss_ticks: float | None = None,
+    take_profit_ticks: float | None = None,
 ) -> dict:
     """Run a next-bar futures backtest from completed-bar signals.
 
-    A signal on one bar fills at the next bar's open, rounded to the contract's
-    tick size with adverse slippage applied. PnL is calculated in ticks, not raw
-    price points, and `commission` is treated as one round-trip cost per closed
-    trade. Open equity includes the estimated exit cost so drawdown isn't too
-    cute while a trade is still alive.
+    A signal on one bar still fills at the next bar's open with adverse
+    slippage applied. If you turn on `stop_loss_ticks` or
+    `take_profit_ticks`, the trade can also exit inside that same bar off its
+    `high`/`low`, and I resolve double-hits conservatively by assuming the
+    stop got tagged first.
     """
-    _validate(df)
+    uses_brackets = _uses_bracket_exits(stop_loss_ticks, take_profit_ticks)
+    _validate(df, require_ohlc_range=uses_brackets)
 
-    if _CPP_AVAILABLE:
+    if _CPP_AVAILABLE and not uses_brackets:
         try:
             return _run_cpp(
                 df,
@@ -56,14 +59,22 @@ def run_backtest(
         tick_size,
         tick_value,
         slippage_ticks,
+        stop_loss_ticks,
+        take_profit_ticks,
     )
 
 #Internal helpers
-def _validate(df: pd.DataFrame) -> None:
+def _validate(df: pd.DataFrame, *, require_ohlc_range: bool = False) -> None:
     required = {"open", "close", "signal"}
+    if require_ohlc_range:
+        required |= {"high", "low"}
     missing  = required - set(df.columns)
     if missing:
         raise KeyError(f"DataFrame is missing required columns: {missing}")
+
+
+def _uses_bracket_exits(stop_loss_ticks: float | None, take_profit_ticks: float | None) -> bool:
+    return stop_loss_ticks is not None or take_profit_ticks is not None
 
 def _iso(index_val) -> str:
     return index_val.isoformat() if hasattr(index_val, "isoformat") else str(index_val)
@@ -125,6 +136,8 @@ def _run_python(
     tick_size:       float,
     tick_value:      float,
     slippage_ticks:  float,
+    stop_loss_ticks: float | None,
+    take_profit_ticks: float | None,
 ) -> dict:
     if tick_size <= 0:
         raise ValueError("tick_size must be greater than zero.")
@@ -197,6 +210,48 @@ def _run_python(
                 "entry_price": entry_price,
                 "entry_time":  _iso(bar.name),
             }
+
+        bracket_exit_price = None
+        if position is not None and _uses_bracket_exits(stop_loss_ticks, take_profit_ticks):
+            bracket_exit_price = _get_bracket_exit_price(
+                position=position,
+                bar=bar,
+                tick_size=tick_size,
+                slippage_ticks=slippage_ticks,
+                stop_loss_ticks=stop_loss_ticks,
+                take_profit_ticks=take_profit_ticks,
+            )
+
+        if position is not None and bracket_exit_price is not None:
+            pnl = _position_pnl(
+                side=position["side"],
+                entry_price=position["entry_price"],
+                exit_price=bracket_exit_price,
+                position_size=position_size,
+                tick_size=tick_size,
+                tick_value=tick_value,
+                commission=commission,
+            )
+            balance += pnl
+
+            trades.append({
+                "trade_id":    trade_id,
+                "entry_time":  position["entry_time"],
+                "exit_time":   _iso(bar.name),
+                "side":        position["side"],
+                "entry_price": position["entry_price"],
+                "exit_price":  bracket_exit_price,
+                "pnl":         round(pnl, 2),
+                "status":      "closed",
+                "commission":  commission,
+                "tick_size":   tick_size,
+                "tick_value":  tick_value,
+                "slippage_ticks": slippage_ticks,
+            })
+            trade_id += 1
+            position = None
+            equity_curve.append(round(balance, 2))
+            continue
 
         #Mark-to-market
         if position is not None:
@@ -273,6 +328,65 @@ def _apply_slippage(
     if action == "exit":
         direction *= -1
     return _round_to_tick(price + direction * slippage_ticks * tick_size, tick_size)
+
+
+def _get_bracket_exit_price(
+    *,
+    position: dict,
+    bar,
+    tick_size: float,
+    slippage_ticks: float,
+    stop_loss_ticks: float | None,
+    take_profit_ticks: float | None,
+) -> float | None:
+    entry_price = float(position["entry_price"])
+    side = position["side"]
+    high = float(bar["high"])
+    low = float(bar["low"])
+
+    stop_price = None
+    if stop_loss_ticks is not None:
+        offset = stop_loss_ticks * tick_size
+        stop_price = _round_to_tick(
+            entry_price - offset if side == "buy" else entry_price + offset,
+            tick_size,
+        )
+
+    target_price = None
+    if take_profit_ticks is not None:
+        offset = take_profit_ticks * tick_size
+        target_price = _round_to_tick(
+            entry_price + offset if side == "buy" else entry_price - offset,
+            tick_size,
+        )
+
+    if side == "buy":
+        hit_stop = stop_price is not None and low <= stop_price
+        hit_target = target_price is not None and high >= target_price
+    else:
+        hit_stop = stop_price is not None and high >= stop_price
+        hit_target = target_price is not None and low <= target_price
+
+    # If one candle tags both, I assume the worse outcome so the sim stays honest.
+    if hit_stop and stop_price is not None:
+        return _apply_slippage(
+            stop_price,
+            side=side,
+            action="exit",
+            tick_size=tick_size,
+            slippage_ticks=slippage_ticks,
+        )
+
+    if hit_target and target_price is not None:
+        return _apply_slippage(
+            target_price,
+            side=side,
+            action="exit",
+            tick_size=tick_size,
+            slippage_ticks=slippage_ticks,
+        )
+
+    return None
 
 
 def _position_pnl(
