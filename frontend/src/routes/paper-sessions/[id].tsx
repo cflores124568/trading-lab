@@ -13,6 +13,7 @@ import {
   updatePaperSessionStatus,
 } from "../../services/api";
 import type { PaperSessionStatus, PaperSessionTradeAction, Trade } from "../../services/api";
+import { buildPaperExecutionAnalytics } from "../../services/executionAnalytics";
 
 function describeStatus(status: string): string {
   return status.replace(/_/g, " ");
@@ -62,6 +63,14 @@ function formatNumber(value?: number | null, digits = 2): string {
   }
 
   return value.toFixed(digits);
+}
+
+function formatTicks(value?: number | null): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "n/a";
+  }
+
+  return `${value >= 0 ? "+" : ""}${value.toFixed(2)}t`;
 }
 
 function formatPercent(value?: number | null, digits = 1): string {
@@ -365,6 +374,18 @@ export default function PaperSessionDetailPage() {
     () => (session()?.runner_state ?? {}) as Record<string, unknown>,
   );
   const tradeLog = createMemo(() => session()?.trade_log ?? []);
+  const executionAnalytics = createMemo(() => {
+    const liveSession = session();
+    if (!liveSession) {
+      return null;
+    }
+
+    return buildPaperExecutionAnalytics({
+      trades: liveSession.trade_log ?? [],
+      events: events() ?? [],
+      tickSize: liveSession.tick_size ?? 0.25,
+    });
+  });
 
   createEffect(() => {
     const state = runnerState();
@@ -774,6 +795,71 @@ export default function PaperSessionDetailPage() {
                     </div>
                   </div>
 
+                  <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    <div class="app-subpanel px-4 py-4">
+                      <p class="app-kicker">Entry Mix</p>
+                      <p class="mt-2 text-sm font-semibold text-zinc-100">
+                        {executionAnalytics()
+                          ? `${executionAnalytics()!.summary.makerEntries} maker / ${executionAnalytics()!.summary.takerEntries} taker`
+                          : "0 / 0"}
+                      </p>
+                      <p class="mt-1 text-xs text-zinc-500">How the session has been getting in.</p>
+                    </div>
+                    <div class="app-subpanel px-4 py-4">
+                      <p class="app-kicker">Exit Mix</p>
+                      <p class="mt-2 text-sm font-semibold text-zinc-100">
+                        {executionAnalytics()
+                          ? `${executionAnalytics()!.summary.makerExits} maker / ${executionAnalytics()!.summary.takerExits} taker`
+                          : "0 / 0"}
+                      </p>
+                      <p class="mt-1 text-xs text-zinc-500">Mostly taker for now until resting exits land.</p>
+                    </div>
+                    <div class="app-subpanel px-4 py-4">
+                      <p class="app-kicker">Avg Entry Slip</p>
+                      <p
+                        class={`mt-2 text-sm font-semibold ${
+                          (executionAnalytics()?.summary.avgEntrySlippageTicks ?? 0) < 0
+                            ? "text-emerald-300"
+                            : (executionAnalytics()?.summary.avgEntrySlippageTicks ?? 0) > 0
+                              ? "text-red-300"
+                              : "text-zinc-100"
+                        }`}
+                      >
+                        {formatTicks(executionAnalytics()?.summary.avgEntrySlippageTicks)}
+                      </p>
+                      <p class="mt-1 text-xs text-zinc-500">Versus the synthetic reference on that fill.</p>
+                    </div>
+                    <div class="app-subpanel px-4 py-4">
+                      <p class="app-kicker">Avg Exit Slip</p>
+                      <p
+                        class={`mt-2 text-sm font-semibold ${
+                          (executionAnalytics()?.summary.avgExitSlippageTicks ?? 0) < 0
+                            ? "text-emerald-300"
+                            : (executionAnalytics()?.summary.avgExitSlippageTicks ?? 0) > 0
+                              ? "text-red-300"
+                              : "text-zinc-100"
+                        }`}
+                      >
+                        {formatTicks(executionAnalytics()?.summary.avgExitSlippageTicks)}
+                      </p>
+                      <p class="mt-1 text-xs text-zinc-500">Reversal exits count now too, not just manual flatten.</p>
+                    </div>
+                    <div class="app-subpanel px-4 py-4">
+                      <p class="app-kicker">Closed Fills</p>
+                      <p class="mt-2 text-sm font-semibold text-zinc-100">
+                        {executionAnalytics()?.summary.totalExits ?? 0}
+                      </p>
+                      <p class="mt-1 text-xs text-zinc-500">Matched against the session trade log.</p>
+                    </div>
+                    <div class="app-subpanel px-4 py-4">
+                      <p class="app-kicker">Tape Coverage</p>
+                      <p class="mt-2 text-sm font-semibold text-zinc-100">
+                        {executionAnalytics()?.summary.totalFills ?? 0} fills
+                      </p>
+                      <p class="mt-1 text-xs text-zinc-500">Markouts stay n/a here until we persist bar-level fill history.</p>
+                    </div>
+                  </div>
+
                   <textarea
                     value={executionNote()}
                     onInput={(event) => setExecutionNote(event.currentTarget.value)}
@@ -868,6 +954,75 @@ export default function PaperSessionDetailPage() {
                   >
                     {busyAction() === "event-save" ? "Saving event..." : "Save Event"}
                   </button>
+
+                  <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60">
+                    <div class="border-b border-zinc-800 px-4 py-4">
+                      <p class="app-kicker">Execution Tape</p>
+                      <p class="mt-1 text-sm text-zinc-400">
+                        Recent fills and order lifecycle pulled out of the paper event trail.
+                      </p>
+                    </div>
+                    <table class="w-full text-sm">
+                      <thead class="text-xs text-zinc-400">
+                        <tr>
+                          <th class="p-3 text-left">Time</th>
+                          <th class="p-3 text-left">Action</th>
+                          <th class="p-3 text-left">Role</th>
+                          <th class="p-3 text-right">Price</th>
+                          <th class="p-3 text-right">Slip</th>
+                          <th class="p-3 text-left">Note</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <Show
+                          when={(executionAnalytics()?.tape.length ?? 0) > 0}
+                          fallback={
+                            <tr class="border-t border-zinc-800">
+                              <td class="p-4 text-zinc-500" colSpan={6}>
+                                No paper execution events yet.
+                              </td>
+                            </tr>
+                          }
+                        >
+                          <For each={[...(executionAnalytics()?.tape ?? [])].reverse().slice(0, 12)}>
+                            {(row) => (
+                              <tr class="border-t border-zinc-800 transition-colors hover:bg-zinc-900/70">
+                                <td class="p-3 font-mono text-xs text-zinc-400">{formatTimestamp(row.time)}</td>
+                                <td class="p-3 text-zinc-200">
+                                  {row.action}
+                                  <Show when={row.side}>
+                                    <span class="ml-2 text-xs uppercase tracking-[0.18em] text-zinc-500">
+                                      {row.side}
+                                    </span>
+                                  </Show>
+                                </td>
+                                <td class="p-3 text-zinc-400">
+                                  {row.role === "n/a" ? row.category : `${row.role} ${row.liquidity}`}
+                                </td>
+                                <td class="p-3 text-right font-mono text-zinc-200">
+                                  {row.price === null ? "n/a" : row.price.toFixed(2)}
+                                </td>
+                                <td
+                                  class={`p-3 text-right font-mono ${
+                                    row.slippageTicks === null
+                                      ? "text-zinc-500"
+                                      : row.slippageTicks < 0
+                                        ? "text-emerald-300"
+                                        : row.slippageTicks > 0
+                                          ? "text-red-300"
+                                          : "text-zinc-200"
+                                  }`}
+                                >
+                                  {formatTicks(row.slippageTicks)}
+                                </td>
+                                <td class="p-3 text-zinc-400">{row.note ?? " "}</td>
+                              </tr>
+                            )}
+                          </For>
+                        </Show>
+                      </tbody>
+                    </table>
+                  </div>
 
                   <div class="space-y-3">
                     <Show

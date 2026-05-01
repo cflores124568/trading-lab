@@ -400,12 +400,13 @@ def execute_paper_session_action(
 
         side = "buy" if action_key == "lift_ask" else "sell"
         previous_status = session["status"]
+        closed_trade = None
         if _has_open_position(session):
             position = _require_open_position(session)
             if position.get("side") == side:
                 raise ValueError("That side is already open. Use `mark`, `flatten`, or the opposite action.")
-            trade = _close_position(session, position, execution_price, timestamp)
-            session["trade_log"] = [*(session.get("trade_log") or []), trade]
+            closed_trade = _close_position(session, position, execution_price, timestamp)
+            session["trade_log"] = [*(session.get("trade_log") or []), closed_trade]
 
         session["active_order"] = {}
         session["current_position"] = _open_position(side, execution_price, timestamp)
@@ -421,6 +422,7 @@ def execute_paper_session_action(
             "entry_time": timestamp,
             "side": side,
             "status_auto_started": previous_status != session["status"],
+            "closed_trade": closed_trade,
         }
         audit_summary = summary
         event_type = "position_opened"
