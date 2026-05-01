@@ -165,6 +165,22 @@ export interface PropFirmRules {
   min_trading_days: number | null;
 }
 
+export interface BacktestCreateRequest {
+  dataset_id: string;
+  strategy: { type: StrategyValue; params: Record<string, number> };
+  prop_firm_rules: PropFirmRules;
+  start_date?: string;
+  end_date?: string;
+  initial_balance: number;
+  position_size: number;
+  commission: number;
+  tick_size: number;
+  tick_value: number;
+  slippage_ticks: number;
+  stop_loss_ticks?: number;
+  take_profit_ticks?: number;
+}
+
 //Full backtest result returned by the backend.
 export interface BacktestResult {
   backtest_id: string;
@@ -186,6 +202,8 @@ export interface BacktestResult {
     tick_size: number;
     tick_value: number;
     slippage_ticks: number;
+    stop_loss_ticks?: number | null;
+    take_profit_ticks?: number | null;
   };
   status: string;
   created_at: string;
@@ -325,6 +343,8 @@ export interface BacktestRobustnessResult {
     tick_size: number;
     tick_value: number;
     slippage_ticks: number;
+    stop_loss_ticks?: number | null;
+    take_profit_ticks?: number | null;
   };
   baseline: {
     total_pnl: number;
@@ -1000,7 +1020,7 @@ export const fetchBacktestRobustness = async (
 };
 
 //Run a new backtest with a strategy configuration.
-export const runBacktest = async (payload: unknown): Promise<BacktestResult> => {
+export const runBacktest = async (payload: BacktestCreateRequest): Promise<BacktestResult> => {
   return api<BacktestResult>(API_ROUTES.backtests, {
     method: "POST",
     headers: {"Content-Type": "application/json"},

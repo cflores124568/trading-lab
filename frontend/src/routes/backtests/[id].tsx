@@ -183,6 +183,25 @@ function formatRank(value?: number | null): string {
   return value == null ? "n/a" : `#${value}`;
 }
 
+function formatBracketConfig(runConfig?: {
+  stop_loss_ticks?: number | null;
+  take_profit_ticks?: number | null;
+} | null): string {
+  const stopLoss = runConfig?.stop_loss_ticks;
+  const takeProfit = runConfig?.take_profit_ticks;
+
+  if (stopLoss == null && takeProfit == null) {
+    return "Brackets off";
+  }
+
+  return [
+    stopLoss != null ? `SL ${stopLoss}t` : null,
+    takeProfit != null ? `TP ${takeProfit}t` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 function formatRunConfigSummary(runConfig: BacktestRobustnessResult["run_config"]): string {
   const positionSize = Number.isInteger(runConfig.position_size)
     ? runConfig.position_size.toFixed(0)
@@ -194,6 +213,7 @@ function formatRunConfigSummary(runConfig: BacktestRobustnessResult["run_config"
     `Comm ${formatCurrency(runConfig.commission)}`,
     `Tick ${runConfig.tick_size} / ${formatCurrency(runConfig.tick_value)}`,
     `Slip ${runConfig.slippage_ticks}t`,
+    formatBracketConfig(runConfig),
   ].join(" · ");
 }
 
@@ -1013,6 +1033,7 @@ export default function BacktestDetail() {
       ["Symbol", backtest.symbol || "Unknown"],
       ["Strategy", backtest.strategy.type],
       ["Saved Preset", backtest.prop_firm_rules.name],
+      ["Brackets", formatBracketConfig(backtest.run_config)],
       ["Created", new Date(backtest.created_at).toLocaleString()],
     ] as [string, string][];
   });

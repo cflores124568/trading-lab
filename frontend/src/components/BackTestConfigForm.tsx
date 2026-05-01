@@ -29,6 +29,36 @@ function groupPresets(presets: PropFirmPreset[]): Record<string, PropFirmPreset[
   }, {});
 }
 
+function parseOptionalTickInput(raw: string, label: string): { value?: number; error?: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return {};
+  }
+
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || value <= 0) {
+    return { error: `${label} must be greater than 0.` };
+  }
+
+  return { value };
+}
+
+function formatBracketSummary(stopLossTicks: string, takeProfitTicks: string): string {
+  const stopLoss = stopLossTicks.trim();
+  const takeProfit = takeProfitTicks.trim();
+
+  if (!stopLoss && !takeProfit) {
+    return "Bracket exits off";
+  }
+
+  return [
+    stopLoss ? `SL ${stopLoss}t` : null,
+    takeProfit ? `TP ${takeProfit}t` : null,
+  ]
+    .filter(Boolean)
+    .join(" / ");
+}
+
 export default function BackTestConfigForm() {
   const navigate = useNavigate();
   const [symbols] = createResource(fetchSymbols);
@@ -45,6 +75,8 @@ export default function BackTestConfigForm() {
   const [startDate, setStartDate] = createSignal("");
   const [endDate, setEndDate] = createSignal("");
   const [slippageTicks, setSlippageTicks] = createSignal(1);
+  const [stopLossTicks, setStopLossTicks] = createSignal("");
+  const [takeProfitTicks, setTakeProfitTicks] = createSignal("");
   const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const [step, setStep] = createSignal<"idle" | "loading-data" | "running">("idle");
@@ -56,6 +88,7 @@ export default function BackTestConfigForm() {
     ["Interval", interval().label],
     ["Strategy", selectedStrategy().label],
     ["Preset", preset()?.name ?? "Choose a challenge"],
+    ["Brackets", formatBracketSummary(stopLossTicks(), takeProfitTicks())],
   ] as [string, string][]);
 
   // Auto select first symbol upon load
@@ -88,6 +121,8 @@ export default function BackTestConfigForm() {
   async function handleSubmit() {
     const sym = symbol();
     const pre = preset();
+    const stopLoss = parseOptionalTickInput(stopLossTicks(), "Stop loss");
+    const takeProfit = parseOptionalTickInput(takeProfitTicks(), "Take profit");
     if(!sym){
         setError("Select a symbol.");
         return;
@@ -95,6 +130,14 @@ export default function BackTestConfigForm() {
     if(!pre){ 
         setError("Select a prop firm preset."); 
         return;
+    }
+    if (stopLoss.error) {
+      setError(stopLoss.error);
+      return;
+    }
+    if (takeProfit.error) {
+      setError(takeProfit.error);
+      return;
     }
     
     batch(() => { setLoading(true); setError(null); setStep("loading-data"); });
@@ -122,6 +165,8 @@ export default function BackTestConfigForm() {
         tick_size: sym.tick_size,
         tick_value: sym.tick_value,
         slippage_ticks: slippageTicks(),
+        stop_loss_ticks: stopLoss.value,
+        take_profit_ticks: takeProfit.value,
       });
       navigate(`/backtests/${result.backtest_id}`);
     } catch (e: unknown) {
@@ -153,7 +198,7 @@ export default function BackTestConfigForm() {
           </p>
         </div>
 
-        <div class="grid gap-3 md:grid-cols-4">
+        <div class="grid gap-3 md:grid-cols-3 xl:grid-cols-5">
           <For each={runSummary()}>
             {([key, value]) => (
               <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
@@ -338,6 +383,38 @@ export default function BackTestConfigForm() {
             }}
           />
         </div>
+
+        <div class="grid gap-3 md:grid-cols-2">
+          <div>
+            <label class={label}>Stop loss ticks (optional)</label>
+            <input
+              type="number"
+              min="0.25"
+              step="0.25"
+              class={field}
+              value={stopLossTicks()}
+              placeholder="Off"
+              onInput={(e) => setStopLossTicks(e.currentTarget.value)}
+            />
+          </div>
+          <div>
+            <label class={label}>Take profit ticks (optional)</label>
+            <input
+              type="number"
+              min="0.25"
+              step="0.25"
+              class={field}
+              value={takeProfitTicks()}
+              placeholder="Off"
+              onInput={(e) => setTakeProfitTicks(e.currentTarget.value)}
+            />
+          </div>
+        </div>
+
+        <p class="text-xs text-zinc-500">
+          Brackets are measured from entry in ticks. If one candle tags both the stop and
+          target, I treat it as stop-first so the sim stays conservative.
+        </p>
       </section>
 
       {/* Prop firm preset  */}
