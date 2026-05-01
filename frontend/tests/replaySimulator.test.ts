@@ -10,6 +10,7 @@ import {
   type ReplayAction,
 } from "../src/services/replaySimulator.ts";
 import type { Candle, PropFirmRules } from "../src/services/api.ts";
+import { buildReplayExecutionAnalytics } from "../src/services/executionAnalytics.ts";
 
 function makeCandles(count: number): Candle[] {
   return Array.from({ length: count }, (_, index) => ({
@@ -137,6 +138,49 @@ test("synthetic taker actions fill at ask and bid", () => {
   assert.equal(session.trades[0].pnl, 17.5);
   assert.equal(session.currentQuote?.bid, 102);
   assert.equal(session.currentQuote?.ask, 102.25);
+});
+
+test("execution analytics summarize taker slippage and short-term markout", () => {
+  const candles = makeCandles(4);
+  const actions: ReplayAction[] = [
+    { id: "a", barIndex: 0, type: "lift_ask", createdAt: 1 },
+    { id: "b", barIndex: 2, type: "flatten", createdAt: 2 },
+  ];
+
+  const session = simulateReplaySession({
+    candles,
+    currentIndex: 3,
+    actions,
+    initialBalance: 100_000,
+    commission: 0,
+    tickValue: 10,
+    tickSize: 0.25,
+    spreadTicks: 1,
+    propFirmRules: rules,
+  });
+
+  const analytics = buildReplayExecutionAnalytics({
+    candles,
+    trades: session.trades,
+    executionEvents: session.executionEvents,
+    tickSize: 0.25,
+    executionConfig: {
+      tickSize: 0.25,
+      spreadTicks: 1,
+      volatileBarThresholdTicks: 0,
+      volatileBarExtraTicks: 0,
+      restingFillMode: "touch",
+    },
+  });
+
+  assert.equal(analytics.summary.takerEntries, 1);
+  assert.equal(analytics.summary.takerExits, 1);
+  assert.equal(analytics.summary.makerEntries, 0);
+  assert.equal(analytics.summary.avgEntrySlippageTicks, 1);
+  assert.equal(analytics.summary.avgExitSlippageTicks, 0);
+  assert.equal(analytics.summary.avgOneBarMarkoutTicks, 3);
+  assert.equal(analytics.summary.avgMaeTicks, 5);
+  assert.equal(analytics.summary.avgMfeTicks, 11);
 });
 
 test("volatile bars can widen the synthetic spread", () => {

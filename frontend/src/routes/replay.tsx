@@ -62,6 +62,7 @@ import {
   normalizeRestingFillMode,
   type RestingOrder,
 } from "../services/executionModel";
+import { buildReplayExecutionAnalytics } from "../services/executionAnalytics";
 
 const field =
   "app-input w-full text-sm disabled:opacity-40";
@@ -93,6 +94,13 @@ type ReplayLaunchConfig = {
 
 function formatCurrency(value: number): string {
   return `${value >= 0 ? "+" : "-"}$${Math.abs(value).toFixed(2)}`;
+}
+
+function formatTicks(value?: number | null): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "n/a";
+  }
+  return `${value >= 0 ? "+" : ""}${value.toFixed(2)}t`;
 }
 
 function markerTimeFromIso(value: string): number {
@@ -644,6 +652,29 @@ export default function ReplayLabPage() {
       ],
       ["Resting Fill", formatRestingFillMode(config.restingFillMode)],
     ] as [string, string][];
+  });
+
+  const executionAnalytics = createMemo(() => {
+    const config = launchConfig();
+    const session = replaySession();
+    const candleList = candles();
+    if (!config || !session || !candleList) {
+      return null;
+    }
+
+    return buildReplayExecutionAnalytics({
+      candles: candleList,
+      trades: session.trades,
+      executionEvents: session.executionEvents,
+      tickSize: config.tickSize,
+      executionConfig: {
+        tickSize: config.tickSize,
+        spreadTicks: config.spreadTicks,
+        volatileBarThresholdTicks: config.volatileBarThresholdTicks,
+        volatileBarExtraTicks: config.volatileBarExtraTicks,
+        restingFillMode: config.restingFillMode,
+      },
+    });
   });
 
   const currentTimeLabel = createMemo(() => {
@@ -1525,6 +1556,72 @@ export default function ReplayLabPage() {
                       </For>
                     </div>
 
+                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                      <ReplayStatCard
+                        label="Entry Mix"
+                        value={
+                          executionAnalytics()
+                            ? `${executionAnalytics()!.summary.makerEntries} maker / ${executionAnalytics()!.summary.takerEntries} taker`
+                            : "0 / 0"
+                        }
+                        detail="How your entries got filled under the synthetic book."
+                      />
+                      <ReplayStatCard
+                        label="Exit Mix"
+                        value={
+                          executionAnalytics()
+                            ? `${executionAnalytics()!.summary.makerExits} maker / ${executionAnalytics()!.summary.takerExits} taker`
+                            : "0 / 0"
+                        }
+                        detail="Useful once you start mixing resting exits later."
+                      />
+                      <ReplayStatCard
+                        label="Avg Entry Slip"
+                        value={formatTicks(executionAnalytics()?.summary.avgEntrySlippageTicks)}
+                        tone={
+                          (executionAnalytics()?.summary.avgEntrySlippageTicks ?? 0) < 0
+                            ? "good"
+                            : (executionAnalytics()?.summary.avgEntrySlippageTicks ?? 0) > 0
+                              ? "bad"
+                              : "default"
+                        }
+                        detail="Measured versus the synthetic reference on the fill bar."
+                      />
+                      <ReplayStatCard
+                        label="Avg Exit Slip"
+                        value={formatTicks(executionAnalytics()?.summary.avgExitSlippageTicks)}
+                        tone={
+                          (executionAnalytics()?.summary.avgExitSlippageTicks ?? 0) < 0
+                            ? "good"
+                            : (executionAnalytics()?.summary.avgExitSlippageTicks ?? 0) > 0
+                              ? "bad"
+                              : "default"
+                        }
+                        detail="Negative means you beat the reference; positive means adverse."
+                      />
+                      <ReplayStatCard
+                        label="1-Bar Markout"
+                        value={formatTicks(executionAnalytics()?.summary.avgOneBarMarkoutTicks)}
+                        tone={
+                          (executionAnalytics()?.summary.avgOneBarMarkoutTicks ?? 0) > 0
+                            ? "good"
+                            : (executionAnalytics()?.summary.avgOneBarMarkoutTicks ?? 0) < 0
+                              ? "bad"
+                              : "default"
+                        }
+                        detail="Did the trade go your way one bar after entry?"
+                      />
+                      <ReplayStatCard
+                        label="Excursion"
+                        value={
+                          executionAnalytics()
+                            ? `${formatTicks(executionAnalytics()!.summary.avgMfeTicks)} / ${formatTicks(executionAnalytics()!.summary.avgMaeTicks)}`
+                            : "n/a"
+                        }
+                        detail="Avg MFE / MAE in ticks across closed replay trades."
+                      />
+                    </div>
+
                     <div class="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
                       <div class="app-panel app-panel-section">
                         <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Replay Equity Curve</p>
@@ -1564,6 +1661,75 @@ export default function ReplayLabPage() {
                           </div>
                         </div>
                       </div>
+                    </div>
+
+                    <div class="app-panel overflow-hidden">
+                      <div class="border-b border-zinc-800 p-4">
+                        <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Execution Tape</p>
+                        <p class="mt-1 text-sm text-zinc-400">
+                          Synthetic order lifecycle, fills, and ignores ({session().executionEvents.length})
+                        </p>
+                      </div>
+                      <table class="w-full text-sm">
+                        <thead class="text-xs text-zinc-400">
+                          <tr>
+                            <th class="p-3 text-left">Time</th>
+                            <th class="p-3 text-left">Action</th>
+                            <th class="p-3 text-left">Role</th>
+                            <th class="p-3 text-right">Price</th>
+                            <th class="p-3 text-right">Slip</th>
+                            <th class="p-3 text-left">Note</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <Show
+                            when={(executionAnalytics()?.tape.length ?? 0) > 0}
+                            fallback={
+                              <tr class="border-t border-zinc-800">
+                                <td class="p-4 text-zinc-500" colSpan={6}>
+                                  No execution events yet. The tape fills in once you start placing actions.
+                                </td>
+                              </tr>
+                            }
+                          >
+                            <For each={[...(executionAnalytics()?.tape ?? [])].reverse().slice(0, 14)}>
+                              {(row) => (
+                                <tr class="border-t border-zinc-800 transition-colors hover:bg-zinc-800">
+                                  <td class="p-3 font-mono text-xs text-zinc-400">{row.time}</td>
+                                  <td class="p-3 text-zinc-200">
+                                    {row.action}
+                                    <Show when={row.side}>
+                                      <span class="ml-2 text-xs uppercase tracking-[0.18em] text-zinc-500">
+                                        {row.side}
+                                      </span>
+                                    </Show>
+                                  </td>
+                                  <td class="p-3 text-zinc-400">
+                                    {row.role === "n/a" ? row.category : `${row.role} ${row.liquidity}`}
+                                  </td>
+                                  <td class="p-3 text-right font-mono text-zinc-200">
+                                    {row.price === null ? "n/a" : row.price.toFixed(2)}
+                                  </td>
+                                  <td
+                                    class={`p-3 text-right font-mono ${
+                                      row.slippageTicks === null
+                                        ? "text-zinc-500"
+                                        : row.slippageTicks < 0
+                                          ? "text-emerald-300"
+                                          : row.slippageTicks > 0
+                                            ? "text-red-300"
+                                            : "text-zinc-200"
+                                    }`}
+                                  >
+                                    {formatTicks(row.slippageTicks)}
+                                  </td>
+                                  <td class="p-3 text-zinc-400">{row.note ?? " "}</td>
+                                </tr>
+                              )}
+                            </For>
+                          </Show>
+                        </tbody>
+                      </table>
                     </div>
 
                     <div class="app-panel overflow-hidden">
