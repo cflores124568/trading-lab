@@ -952,6 +952,7 @@ export default function BacktestDetail() {
   const currentCandle = createMemo<Candle | undefined>(() => candles()?.[replayIndex()]);
   const commission = createMemo(() => result()?.run_config.commission ?? result()?.trades[0]?.commission ?? 5);
   const tickValue = createMemo(() => result()?.run_config.tick_value ?? tickValueBySymbol[result()?.symbol ?? ""] ?? 1);
+  const tickSize = createMemo(() => result()?.run_config.tick_size ?? 0.25);
   const tradeEntryIndices = createMemo(() =>
     candles() && result() ? getTradeEntryIndices(candles() ?? [], result()?.trades ?? []) : [],
   );
@@ -1102,6 +1103,8 @@ export default function BacktestDetail() {
       initialBalance: backtest.prop_firm_rules.account_size,
       commission: commission(),
       tickValue: tickValue(),
+      tickSize: tickSize(),
+      spreadTicks: 1,
       propFirmRules: backtest.prop_firm_rules,
     });
   });
@@ -1200,6 +1203,22 @@ export default function BacktestDetail() {
     }
 
     return `${session.position.side.toUpperCase()} from $${session.position.entry_price.toFixed(2)} (${formatCurrency(session.position.unrealized_pnl, { signed: true })})`;
+  });
+
+  const bidAskLabel = createMemo(() => {
+    const quote = replaySession()?.currentQuote;
+    if (!quote) {
+      return "No book";
+    }
+    return `$${quote.bid.toFixed(2)} / $${quote.ask.toFixed(2)}`;
+  });
+
+  const activeOrderLabel = createMemo(() => {
+    const order = replaySession()?.activeOrder;
+    if (!order) {
+      return "None";
+    }
+    return `${order.type.replace("_", " ").toUpperCase()} ${order.side.toUpperCase()} @ $${order.price.toFixed(2)}`;
   });
 
   const replayMetrics = createMemo(() => {
@@ -1624,7 +1643,9 @@ export default function BacktestDetail() {
                             totalBars={totalBars()}
                             currentTimeLabel={currentTimeLabel()}
                             currentPriceLabel={currentPriceLabel()}
+                            bidAskLabel={bidAskLabel()}
                             positionLabel={positionLabel()}
+                            activeOrderLabel={activeOrderLabel()}
                             canSeek
                             canStartPlayback={replayIndex() < totalBars() - 1}
                             canStepBack={replayIndex() > 0}
@@ -1635,9 +1656,12 @@ export default function BacktestDetail() {
                             canJumpNextTrade={
                               findJumpTarget(replayIndex(), tradeEntryIndices(), "next") !== null
                             }
-                            canLong
-                            canShort
-                            canExitPosition={!!replaySession()?.position}
+                            canLiftAsk
+                            canHitBid
+                            canJoinBid={!replaySession()?.position && !replaySession()?.activeOrder}
+                            canJoinAsk={!replaySession()?.position && !replaySession()?.activeOrder}
+                            canCancelOrder={!!replaySession()?.activeOrder}
+                            canFlatten={!!replaySession()?.position || !!replaySession()?.activeOrder}
                             onPlayPause={() => {
                               if (isReplayActive()) {
                                 setIsReplayActive(false);
@@ -1664,9 +1688,12 @@ export default function BacktestDetail() {
                             onStepForward={() => seekToIndex(replayIndex() + 1)}
                             onJumpPrevTrade={() => jumpToTrade("prev")}
                             onJumpNextTrade={() => jumpToTrade("next")}
-                            onLong={() => recordReplayAction("buy")}
-                            onShort={() => recordReplayAction("sell")}
-                            onExit={() => recordReplayAction("exit")}
+                            onLiftAsk={() => recordReplayAction("lift_ask")}
+                            onHitBid={() => recordReplayAction("hit_bid")}
+                            onJoinBid={() => recordReplayAction("join_bid")}
+                            onJoinAsk={() => recordReplayAction("join_ask")}
+                            onCancel={() => recordReplayAction("cancel")}
+                            onFlatten={() => recordReplayAction("flatten")}
                           />
                         </Show>
                       </div>

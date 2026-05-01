@@ -1,6 +1,25 @@
 import type { Candle, PropFirmEvaluation, PropFirmRules, Trade } from "./api";
+import {
+  createRestingOrder,
+  DEFAULT_EXECUTION_CONFIG,
+  normalizeExecutionAction,
+  restingOrderTouched,
+  syntheticQuoteForCandle,
+  type ExecutionConfig,
+  type ExecutionEvent,
+  type LegacyExecutionActionType,
+  type RestingOrder,
+  type SyntheticQuote,
+} from "./executionModel.ts";
 
-export type ReplayActionType = "buy" | "sell" | "exit";
+export type ReplayActionType =
+  | LegacyExecutionActionType
+  | "lift_ask"
+  | "hit_bid"
+  | "join_bid"
+  | "join_ask"
+  | "cancel"
+  | "flatten";
 
 export interface ReplayAction {
   id: string;
@@ -41,6 +60,9 @@ export interface ReplaySession {
   equityCurve: number[];
   propEvaluation: PropFirmEvaluation;
   position: ReplayPosition | null;
+  activeOrder: RestingOrder | null;
+  currentQuote: SyntheticQuote | null;
+  executionEvents: ExecutionEvent[];
   balance: number;
   realizedPnl: number;
   unrealizedPnl: number;
@@ -352,6 +374,8 @@ export function simulateReplaySession(args: {
   positionSize?: number;
   commission?: number;
   tickValue?: number;
+  tickSize?: number;
+  spreadTicks?: number;
   propFirmRules: PropFirmRules;
 }): ReplaySession {
   const {
@@ -362,8 +386,12 @@ export function simulateReplaySession(args: {
     positionSize = 1,
     commission = 5,
     tickValue = 1,
+    tickSize = DEFAULT_EXECUTION_CONFIG.tickSize,
+    spreadTicks = DEFAULT_EXECUTION_CONFIG.spreadTicks,
     propFirmRules,
   } = args;
+
+  const executionConfig: ExecutionConfig = { tickSize, spreadTicks };
 
   if (candles.length === 0) {
     const equityCurve = [initialBalance];
@@ -373,6 +401,9 @@ export function simulateReplaySession(args: {
       equityCurve,
       propEvaluation: evaluatePropFirm(propFirmRules, [], equityCurve, initialBalance),
       position: null,
+      activeOrder: null,
+      currentQuote: null,
+      executionEvents: [],
       balance: initialBalance,
       realizedPnl: 0,
       unrealizedPnl: 0,
@@ -388,17 +419,27 @@ export function simulateReplaySession(args: {
 
   let balance = initialBalance;
   let position: OpenReplayPosition | null = null;
+  const getPosition = (): OpenReplayPosition | null => position;
+  let activeOrder: RestingOrder | null = null;
   let tradeId = 0;
   const trades: Trade[] = [];
   const equityCurve: number[] = [];
+  const executionEvents: ExecutionEvent[] = [];
 
-  const closePosition = (candle: Candle) => {
+  const appendEvent = (event: Omit<ExecutionEvent, "id">) => {
+    executionEvents.push({
+      id: `evt_${executionEvents.length}_${event.bar_index}`,
+      ...event,
+    });
+  };
+
+  const closePosition = (candle: Candle, exitPrice: number) => {
     if (!position) return;
 
     const pnl = computePnl(
       position.side,
       position.entryPrice,
-      candle.close,
+      exitPrice,
       positionSize,
       tickValue,
       commission,
@@ -410,7 +451,7 @@ export function simulateReplaySession(args: {
       exit_time: getCandleTime(candle),
       side: position.side,
       entry_price: position.entryPrice,
-      exit_price: candle.close,
+      exit_price: exitPrice,
       pnl,
       status: "closed",
       commission,
@@ -419,17 +460,156 @@ export function simulateReplaySession(args: {
     position = null;
   };
 
+  const openPosition = (
+    side: "buy" | "sell",
+    price: number,
+    candle: Candle,
+    barIndex: number,
+  ) => {
+    position = {
+      side,
+      entryPrice: price,
+      entryTime: getCandleTime(candle),
+      entryBarIndex: barIndex,
+    };
+  };
+
   for (let i = 0; i < visibleCandles.length; i += 1) {
     const candle = visibleCandles[i];
+    const quote = syntheticQuoteForCandle(candle, executionConfig);
     const actionsAtBar = visibleActions.filter((action) => action.barIndex === i);
 
+    if (
+      activeOrder &&
+      activeOrder.status === "pending" &&
+      i > activeOrder.submitted_bar_index &&
+      restingOrderTouched(activeOrder, candle)
+    ) {
+      activeOrder = {
+        ...activeOrder,
+        status: "filled",
+        filled_at: getCandleTime(candle),
+        filled_bar_index: i,
+      };
+      openPosition(activeOrder.side, activeOrder.price, candle, i);
+      appendEvent({
+        type: "resting_filled",
+        action: activeOrder.type,
+        side: activeOrder.side,
+        price: activeOrder.price,
+        bar_index: i,
+        time: getCandleTime(candle),
+        order_id: activeOrder.id,
+      });
+      activeOrder = null;
+    }
+
     for (const action of actionsAtBar) {
-      if (action.type === "exit") {
-        closePosition(candle);
+      const actionType = normalizeExecutionAction(action.type);
+
+      if (actionType === "cancel") {
+        if (activeOrder && activeOrder.status === "pending") {
+          appendEvent({
+            type: "resting_canceled",
+            action: action.type,
+            side: activeOrder.side,
+            price: activeOrder.price,
+            bar_index: i,
+            time: getCandleTime(candle),
+            order_id: activeOrder.id,
+          });
+          activeOrder = {
+            ...activeOrder,
+            status: "canceled",
+            canceled_at: getCandleTime(candle),
+            canceled_bar_index: i,
+          };
+          activeOrder = null;
+        } else {
+          appendEvent({
+            type: "ignored",
+            action: action.type,
+            bar_index: i,
+            time: getCandleTime(candle),
+            reason: "No pending order to cancel.",
+          });
+        }
         continue;
       }
 
-      const nextSide = action.type;
+      if (actionType === "flatten") {
+        if (activeOrder && activeOrder.status === "pending") {
+          appendEvent({
+            type: "resting_canceled",
+            action: action.type,
+            side: activeOrder.side,
+            price: activeOrder.price,
+            bar_index: i,
+            time: getCandleTime(candle),
+            order_id: activeOrder.id,
+            reason: "Flatten canceled the pending order.",
+          });
+          activeOrder = null;
+        }
+
+        if (position) {
+          const exitPrice = position.side === "buy" ? quote.bid : quote.ask;
+          closePosition(candle, exitPrice);
+          appendEvent({
+            type: "flatten",
+            action: action.type,
+            price: exitPrice,
+            bar_index: i,
+            time: getCandleTime(candle),
+          });
+        }
+        continue;
+      }
+
+      if (actionType === "join_bid" || actionType === "join_ask") {
+        if (position) {
+          appendEvent({
+            type: "ignored",
+            action: action.type,
+            bar_index: i,
+            time: getCandleTime(candle),
+            reason: "Resting entries are only supported while flat in Phase 1.",
+          });
+          continue;
+        }
+        if (activeOrder && activeOrder.status === "pending") {
+          appendEvent({
+            type: "ignored",
+            action: action.type,
+            bar_index: i,
+            time: getCandleTime(candle),
+            order_id: activeOrder.id,
+            reason: "Only one active resting order is supported right now.",
+          });
+          continue;
+        }
+
+        activeOrder = createRestingOrder({
+          action: actionType,
+          id: action.id,
+          barIndex: i,
+          time: getCandleTime(candle),
+          quote,
+        });
+        appendEvent({
+          type: "resting_submitted",
+          action: action.type,
+          side: activeOrder.side,
+          price: activeOrder.price,
+          bar_index: i,
+          time: getCandleTime(candle),
+          order_id: activeOrder.id,
+        });
+        continue;
+      }
+
+      const nextSide = actionType === "lift_ask" ? "buy" : "sell";
+      const fillPrice = actionType === "lift_ask" ? quote.ask : quote.bid;
       const activePosition: OpenReplayPosition | null = position;
 
       if (activePosition && (activePosition as OpenReplayPosition).side === nextSide) {
@@ -437,21 +617,26 @@ export function simulateReplaySession(args: {
       }
 
       if (activePosition) {
-        closePosition(candle);
+        closePosition(candle, fillPrice);
       }
 
-      position = {
+      activeOrder = null;
+      openPosition(nextSide, fillPrice, candle, i);
+      appendEvent({
+        type: "taker_fill",
+        action: action.type,
         side: nextSide,
-        entryPrice: candle.close,
-        entryTime: getCandleTime(candle),
-        entryBarIndex: i,
-      };
+        price: fillPrice,
+        bar_index: i,
+        time: getCandleTime(candle),
+      });
     }
 
-    const unrealizedPnl = position
+    const markedPosition = getPosition();
+    const unrealizedPnl = markedPosition
       ? computePnl(
-          position.side,
-          position.entryPrice,
+          markedPosition.side,
+          markedPosition.entryPrice,
           candle.close,
           positionSize,
           tickValue,
@@ -463,10 +648,12 @@ export function simulateReplaySession(args: {
   }
 
   const currentCandle = visibleCandles[visibleCandles.length - 1];
-  const finalUnrealizedPnl = position
+  const currentQuote = syntheticQuoteForCandle(currentCandle, executionConfig);
+  const finalPosition = getPosition();
+  const finalUnrealizedPnl = finalPosition
     ? computePnl(
-        position.side,
-        position.entryPrice,
+        finalPosition.side,
+        finalPosition.entryPrice,
         currentCandle.close,
         positionSize,
         tickValue,
@@ -474,12 +661,12 @@ export function simulateReplaySession(args: {
       )
     : 0;
 
-  const replayPosition = position
+  const replayPosition = finalPosition
     ? {
-        side: position.side,
-        entry_price: position.entryPrice,
-        entry_time: position.entryTime,
-        entry_bar_index: position.entryBarIndex,
+        side: finalPosition.side,
+        entry_price: finalPosition.entryPrice,
+        entry_time: finalPosition.entryTime,
+        entry_bar_index: finalPosition.entryBarIndex,
         current_price: currentCandle.close,
         current_time: getCandleTime(currentCandle),
         unrealized_pnl: finalUnrealizedPnl,
@@ -493,6 +680,9 @@ export function simulateReplaySession(args: {
     equityCurve,
     propEvaluation: evaluatePropFirm(propFirmRules, trades, equityCurve, initialBalance),
     position: replayPosition,
+    activeOrder,
+    currentQuote,
+    executionEvents,
     balance,
     realizedPnl: round(balance - initialBalance),
     unrealizedPnl: finalUnrealizedPnl,

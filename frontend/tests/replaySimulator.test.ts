@@ -80,15 +80,15 @@ test("manual replay session closes and reverses positions correctly", () => {
 
   assert.equal(session.trades.length, 2);
   assert.equal(session.trades[0].side, "buy");
-  assert.equal(session.trades[0].entry_price, 101);
+  assert.equal(session.trades[0].entry_price, 101.25);
   assert.equal(session.trades[0].exit_price, 103);
-  assert.equal(session.trades[0].pnl, 15);
+  assert.equal(session.trades[0].pnl, 12.5);
   assert.equal(session.trades[1].side, "sell");
   assert.equal(session.trades[1].entry_price, 103);
-  assert.equal(session.trades[1].exit_price, 105);
-  assert.equal(session.trades[1].pnl, -25);
+  assert.equal(session.trades[1].exit_price, 105.25);
+  assert.equal(session.trades[1].pnl, -27.5);
   assert.equal(session.position, null);
-  assert.equal(session.balance, 99_990);
+  assert.equal(session.balance, 99_985);
   assert.equal(session.metrics.total_trades, 2);
 });
 
@@ -108,9 +108,114 @@ test("open positions remain mark-to-market when replay has not exited", () => {
 
   assert.equal(session.trades.length, 0);
   assert.equal(session.position?.side, "buy");
-  assert.equal(session.unrealizedPnl, 15);
-  assert.equal(session.totalPnl, 15);
-  assert.equal(session.equityCurve.at(-1), 100_015);
+  assert.equal(session.unrealizedPnl, 12.5);
+  assert.equal(session.totalPnl, 12.5);
+  assert.equal(session.equityCurve.at(-1), 100_012.5);
+});
+
+test("synthetic taker actions fill at ask and bid", () => {
+  const candles = makeCandles(3);
+  const actions: ReplayAction[] = [
+    { id: "a", barIndex: 0, type: "lift_ask", createdAt: 1 },
+    { id: "b", barIndex: 2, type: "flatten", createdAt: 2 },
+  ];
+
+  const session = simulateReplaySession({
+    candles,
+    currentIndex: 2,
+    actions,
+    initialBalance: 100_000,
+    commission: 0,
+    tickValue: 10,
+    tickSize: 0.25,
+    spreadTicks: 1,
+    propFirmRules: rules,
+  });
+
+  assert.equal(session.trades[0].entry_price, 100.25);
+  assert.equal(session.trades[0].exit_price, 102);
+  assert.equal(session.trades[0].pnl, 17.5);
+  assert.equal(session.currentQuote?.bid, 102);
+  assert.equal(session.currentQuote?.ask, 102.25);
+});
+
+test("resting buy fills only on a later bar touch", () => {
+  const candles: Candle[] = [
+    { time: 1 as Candle["time"], open: 100, high: 100.5, low: 100, close: 100, volume: 1 },
+    { time: 2 as Candle["time"], open: 100.5, high: 101, low: 100.25, close: 100.75, volume: 1 },
+    { time: 3 as Candle["time"], open: 100.75, high: 101, low: 99.75, close: 100.5, volume: 1 },
+  ];
+  const actions: ReplayAction[] = [
+    { id: "order-1", barIndex: 0, type: "join_bid", createdAt: 1 },
+  ];
+
+  const session = simulateReplaySession({
+    candles,
+    currentIndex: 2,
+    actions,
+    initialBalance: 100_000,
+    commission: 0,
+    tickValue: 10,
+    tickSize: 0.25,
+    spreadTicks: 1,
+    propFirmRules: rules,
+  });
+
+  assert.equal(session.position?.entry_price, 100);
+  assert.equal(session.position?.entry_bar_index, 2);
+  assert.equal(session.executionEvents.some((event) => event.type === "resting_filled"), true);
+});
+
+test("resting orders can be canceled before a later touch", () => {
+  const candles: Candle[] = [
+    { time: 1 as Candle["time"], open: 100, high: 100.5, low: 100, close: 100, volume: 1 },
+    { time: 2 as Candle["time"], open: 100.75, high: 101, low: 100.5, close: 100.75, volume: 1 },
+    { time: 3 as Candle["time"], open: 100.75, high: 101, low: 99.75, close: 100.5, volume: 1 },
+  ];
+  const actions: ReplayAction[] = [
+    { id: "order-1", barIndex: 0, type: "join_bid", createdAt: 1 },
+    { id: "cancel-1", barIndex: 1, type: "cancel", createdAt: 2 },
+  ];
+
+  const session = simulateReplaySession({
+    candles,
+    currentIndex: 2,
+    actions,
+    initialBalance: 100_000,
+    commission: 0,
+    tickValue: 10,
+    tickSize: 0.25,
+    spreadTicks: 1,
+    propFirmRules: rules,
+  });
+
+  assert.equal(session.position, null);
+  assert.equal(session.activeOrder, null);
+  assert.equal(session.executionEvents.some((event) => event.type === "resting_canceled"), true);
+});
+
+test("same-bar resting ambiguity chooses no fill", () => {
+  const candles: Candle[] = [
+    { time: 1 as Candle["time"], open: 100, high: 101, low: 99, close: 100, volume: 1 },
+  ];
+  const actions: ReplayAction[] = [
+    { id: "order-1", barIndex: 0, type: "join_bid", createdAt: 1 },
+  ];
+
+  const session = simulateReplaySession({
+    candles,
+    currentIndex: 0,
+    actions,
+    initialBalance: 100_000,
+    commission: 0,
+    tickValue: 10,
+    tickSize: 0.25,
+    spreadTicks: 1,
+    propFirmRules: rules,
+  });
+
+  assert.equal(session.position, null);
+  assert.equal(session.activeOrder?.status, "pending");
 });
 
 test("replay enforces minimum trading days before passing prop eval", () => {
@@ -128,7 +233,7 @@ test("replay enforces minimum trading days before passing prop eval", () => {
     actions,
     initialBalance: 100_000,
     commission: 0,
-    tickValue: 300,
+    tickValue: 400,
     propFirmRules: {
       ...rules,
       profit_target: 0.005,
@@ -169,7 +274,7 @@ test("replay passes minimum trading days after enough closed trade dates", () =>
     actions,
     initialBalance: 100_000,
     commission: 0,
-    tickValue: 300,
+    tickValue: 400,
     propFirmRules: {
       ...rules,
       profit_target: 0.009,

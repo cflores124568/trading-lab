@@ -408,7 +408,17 @@ export type PaperSessionStatus =
   | "paused"
   | "stopped"
   | "failed";
-export type PaperSessionTradeAction = "buy" | "sell" | "mark" | "exit";
+export type PaperSessionTradeAction =
+  | "buy"
+  | "sell"
+  | "mark"
+  | "exit"
+  | "lift_ask"
+  | "hit_bid"
+  | "join_bid"
+  | "join_ask"
+  | "cancel"
+  | "flatten";
 
 export interface ExperimentCreateRequest {
   name: string;
@@ -515,7 +525,11 @@ export interface PaperSessionResult {
   status: PaperSessionStatus;
   commission: number;
   tick_value: number;
+  tick_size?: number;
+  spread_ticks?: number;
   current_position: Record<string, unknown>;
+  active_order: Record<string, unknown>;
+  last_quote: Record<string, unknown>;
   trade_log: Trade[];
   equity_curve: number[];
   metrics_snapshot: Record<string, unknown>;
@@ -598,7 +612,16 @@ export interface CandidateResult {
 export interface ReplaySessionAction {
   id: string;
   bar_index: number;
-  type: "buy" | "sell" | "exit";
+  type:
+    | "buy"
+    | "sell"
+    | "exit"
+    | "lift_ask"
+    | "hit_bid"
+    | "join_bid"
+    | "join_ask"
+    | "cancel"
+    | "flatten";
   created_at: number;
 }
 
@@ -621,9 +644,13 @@ export interface ReplaySessionPayload {
   prop_firm_rules: PropFirmRules;
   commission: number;
   tick_value: number;
+  tick_size?: number;
+  spread_ticks?: number;
   current_bar_index: number;
   status: string;
   actions: ReplaySessionAction[];
+  active_order?: Record<string, unknown> | null;
+  execution_events?: Record<string, unknown>[];
   trades: Trade[];
   metrics: PerformanceMetrics;
   prop_firm_eval: PropFirmEvaluation;
@@ -903,8 +930,8 @@ export const executePaperSessionAction = async (
   paperSessionId: string,
   payload: {
     action: PaperSessionTradeAction;
-    price: number;
-    filledAt: string;
+    price?: number;
+    filledAt?: string;
     actor?: string;
     note?: string;
   },

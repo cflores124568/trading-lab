@@ -22,6 +22,7 @@ from services.paper_session_service import (
     _require_paper_session,
     _save_paper_session_any,
     _sync_candidate_paper_session,
+    advance_paper_session_bar,
     execute_paper_session_action,
 )
 from services.strategy import generate_signals
@@ -382,6 +383,12 @@ def _advance_one_bar_locked(
     bar_time = _normalize_timestamp(next_bar["time"])
     close_price = round(float(next_bar["close"]), 4)
     signal_history = _get_signal_history(session, state)
+    session = advance_paper_session_bar(
+        paper_session_id,
+        _normalize_bar(next_bar),
+        actor=actor,
+        sync_candidate=False,
+    )
     signal_history.append(_normalize_bar(next_bar))
     _set_signal_history(session["paper_session_id"], signal_history)
     signal = _compute_strategy_signal(session, signal_history)
@@ -390,8 +397,8 @@ def _advance_one_bar_locked(
     for action in actions:
         execute_paper_session_action(
             paper_session_id,
-            action=action,
-            price=close_price,
+            action=_runner_execution_action(action),
+            price=None,
             filled_at=bar_time,
             actor=actor,
             note=_runner_note_for_action(action, signal),
@@ -427,6 +434,7 @@ def _advance_one_bar_locked(
     payload = {
         "bar_time": bar_time,
         "close_price": close_price,
+        "synthetic_quote": session.get("last_quote"),
         "signal": signal,
         "signal_action": action_label,
         "executed_actions": actions,
@@ -665,6 +673,16 @@ def _runner_note_for_action(action: str, signal: int) -> str:
     if action == "exit":
         return f"Runner exited on strategy signal flip {signal:+d}."
     return "Runner marked the open position at bar close."
+
+
+def _runner_execution_action(action: str) -> str:
+    if action == "buy":
+        return "lift_ask"
+    if action == "sell":
+        return "hit_bid"
+    if action == "exit":
+        return "flatten"
+    return action
 
 
 def _build_runner_parity_check(session: dict, *, now: str) -> dict:

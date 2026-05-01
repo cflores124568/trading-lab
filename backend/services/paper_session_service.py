@@ -11,6 +11,14 @@ from services.candidate_service import (
     _save_candidate_any,
 )
 from services.metrics import calculate_metrics
+from services.execution_model import (
+    DEFAULT_SPREAD_TICKS,
+    DEFAULT_TICK_SIZE,
+    make_resting_order,
+    normalize_execution_action,
+    resting_order_touched,
+    synthetic_quote_for_bar,
+)
 from services.paper_session_repo import (
     append_paper_event as append_paper_event_db,
     get_paper_session as get_paper_session_db,
@@ -36,6 +44,14 @@ DEFAULT_TICK_VALUES = {
     "MES": 5.0,
     "GC": 10.0,
     "MGC": 1.0,
+}
+DEFAULT_TICK_SIZES = {
+    "NQ": 0.25,
+    "MNQ": 0.25,
+    "ES": 0.25,
+    "MES": 0.25,
+    "GC": 0.10,
+    "MGC": 0.10,
 }
 OPEN_ACTION_STATUSES = {
     PaperSessionStatus.READY.value,
@@ -156,7 +172,11 @@ def create_paper_session_for_candidate(
         "status": _paper_bot_to_session_status(paper_bot.get("status")),
         "commission": 5.0,
         "tick_value": _resolve_tick_value(candidate["symbol"]),
+        "tick_size": _resolve_tick_size(candidate["symbol"]),
+        "spread_ticks": DEFAULT_SPREAD_TICKS,
         "current_position": {},
+        "active_order": {},
+        "last_quote": {},
         "trade_log": [],
         "equity_curve": [float((candidate.get("prop_firm_rules") or {}).get("account_size") or 100_000)],
         "metrics_snapshot": {},
@@ -277,82 +297,205 @@ def add_paper_session_event(
     return event
 
 
+def advance_paper_session_bar(
+    paper_session_id: str,
+    bar: dict,
+    *,
+    actor: str = "paper-runner",
+    sync_candidate: bool = False,
+) -> dict:
+    """Apply one OHLCV bar to paper execution state.
+
+    This is the bridge between the fake-live runner and the Phase 1 execution
+    model. It updates the synthetic book, fills a resting order only on a later
+    bar touch, and marks any open position at the bar close so the session stays
+    useful even when no strategy action fires.
+    """
+    session = _ensure_session_defaults(_require_paper_session(paper_session_id))
+    timestamp = _normalize_timestamp(str(bar["time"]))
+    quote = _quote_for_bar(session, bar).as_dict()
+    order = dict(session.get("active_order") or {})
+    filled_order = None
+
+    if order and resting_order_touched(order, bar):
+        order["status"] = "filled"
+        order["filled_at"] = timestamp
+        order["filled_bar_index"] = (session.get("runner_state") or {}).get("bars_processed")
+        session["current_position"] = _open_position(order["side"], float(order["price"]), timestamp)
+        session["active_order"] = {}
+        filled_order = order
+
+    if _has_open_position(session):
+        position = _require_open_position(session)
+        _mark_position(position, float(bar["close"]), timestamp, session["tick_value"])
+        session["current_position"] = position
+        session["equity_curve"] = [*session.get("equity_curve", []), _marked_equity(session)]
+
+    now = _now()
+    session["last_bar_time"] = timestamp
+    session["last_quote"] = quote
+    session["last_event_at"] = now
+    session["updated_at"] = now
+    session = _ensure_session_defaults(session)
+    _save_paper_session_any(session)
+
+    if filled_order:
+        _append_paper_event_any(
+            _make_paper_event(
+                paper_session_id=paper_session_id,
+                candidate_id=session["candidate_id"],
+                event_type="order_filled",
+                actor=actor,
+                summary=f"Resting {filled_order['side']} filled at {float(filled_order['price']):.2f}.",
+                created_at=now,
+                payload={"order": filled_order, "quote": quote},
+            )
+        )
+
+    if sync_candidate:
+        candidate = _require_candidate(session["candidate_id"])
+        _sync_candidate_paper_session(candidate, paper_session_id, now, session_status=session["status"])
+    return session
+
+
 def execute_paper_session_action(
     paper_session_id: str,
     *,
     action: str,
-    price: float,
-    filled_at: str,
+    price: float | None = None,
+    filled_at: str | None = None,
     actor: str = "local-user",
     note: str | None = None,
     sync_candidate: bool = True,
 ) -> dict:
     session = _ensure_session_defaults(_require_paper_session(paper_session_id))
-    action_key = action.strip().lower()
-    timestamp = _normalize_timestamp(filled_at)
-    execution_price = round(float(price), 4)
-    if execution_price <= 0:
-        raise ValueError("Execution price must be greater than zero.")
+    raw_action = action.strip().lower()
+    action_key = normalize_execution_action(raw_action)
+    timestamp = _resolve_execution_timestamp(session, filled_at)
+    quote = _resolve_session_quote(session, price=price)
+    execution_price = _price_for_action(action_key, quote, price)
 
-    if action_key in {"buy", "sell"}:
+    if action_key in {"lift_ask", "hit_bid"}:
         if session["status"] not in OPEN_ACTION_STATUSES:
             raise ValueError("Paper session must be ready or running before you can open a position.")
-        if _has_open_position(session):
-            raise ValueError("Close or mark the current position before opening a new one.")
 
+        side = "buy" if action_key == "lift_ask" else "sell"
         previous_status = session["status"]
-        session["current_position"] = _open_position(action_key, execution_price, timestamp)
+        if _has_open_position(session):
+            position = _require_open_position(session)
+            if position.get("side") == side:
+                raise ValueError("That side is already open. Use `mark`, `flatten`, or the opposite action.")
+            trade = _close_position(session, position, execution_price, timestamp)
+            session["trade_log"] = [*(session.get("trade_log") or []), trade]
+
+        session["active_order"] = {}
+        session["current_position"] = _open_position(side, execution_price, timestamp)
         if previous_status == PaperSessionStatus.READY.value:
             session["status"] = PaperSessionStatus.RUNNING.value
 
-        summary = note or f"Opened a {action_key} paper position at {execution_price:.2f}."
+        summary = note or f"{_execution_label(action_key)} filled at {execution_price:.2f}."
         payload = {
             "action": action_key,
+            "raw_action": raw_action,
+            "quote": quote,
             "entry_price": execution_price,
             "entry_time": timestamp,
+            "side": side,
             "status_auto_started": previous_status != session["status"],
         }
         audit_summary = summary
         event_type = "position_opened"
+    elif action_key in {"join_bid", "join_ask"}:
+        if session["status"] not in OPEN_ACTION_STATUSES:
+            raise ValueError("Paper session must be ready or running before you can post an order.")
+        if _has_open_position(session):
+            raise ValueError("Resting entry orders are only supported while flat in Phase 1.")
+        if session.get("active_order"):
+            raise ValueError("Cancel the current resting order before posting another one.")
+
+        order_price = quote["bid"] if action_key == "join_bid" else quote["ask"]
+        session["active_order"] = make_resting_order(
+            order_id=str(uuid.uuid4()),
+            action=action_key,
+            price=order_price,
+            submitted_at=timestamp,
+            submitted_bar_index=(session.get("runner_state") or {}).get("bars_processed"),
+        )
+        summary = note or f"Posted {action_key.replace('_', ' ')} at {order_price:.2f}."
+        payload = {
+            "action": action_key,
+            "quote": quote,
+            "order": session["active_order"],
+        }
+        audit_summary = summary
+        event_type = "order_submitted"
+    elif action_key == "cancel":
+        order = dict(session.get("active_order") or {})
+        if not order:
+            raise ValueError("There isn't a resting order to cancel.")
+        order["status"] = "canceled"
+        order["canceled_at"] = timestamp
+        session["active_order"] = {}
+        summary = note or f"Canceled resting {order.get('side')} order at {float(order.get('price') or 0):.2f}."
+        payload = {"action": action_key, "order": order, "quote": quote}
+        audit_summary = summary
+        event_type = "order_canceled"
     elif action_key == "mark":
         if session["status"] not in POSITION_ACTION_STATUSES:
             raise ValueError("Paper session must be ready, running, or paused before you can mark a position.")
         position = _require_open_position(session)
-        _mark_position(position, execution_price, timestamp, session["tick_value"])
+        mark_price = execution_price if execution_price is not None else quote["reference"]
+        _mark_position(position, mark_price, timestamp, session["tick_value"])
         session["current_position"] = position
         session["equity_curve"] = [*session.get("equity_curve", []), _marked_equity(session)]
-        summary = note or f"Marked the open {position['side']} position at {execution_price:.2f}."
+        summary = note or f"Marked the open {position['side']} position at {mark_price:.2f}."
         payload = {
             "action": action_key,
-            "mark_price": execution_price,
+            "mark_price": mark_price,
+            "quote": quote,
             "marked_equity": _marked_equity(session),
             "unrealized_pnl": position["unrealized_pnl"],
         }
         audit_summary = summary
         event_type = "position_marked"
-    elif action_key == "exit":
+    elif action_key == "flatten":
         if session["status"] not in POSITION_ACTION_STATUSES:
             raise ValueError("Paper session must be ready, running, or paused before you can flatten a position.")
-        position = _require_open_position(session)
-        trade = _close_position(session, position, execution_price, timestamp)
-        session["trade_log"] = [*(session.get("trade_log") or []), trade]
-        session["current_position"] = {}
-        session["equity_curve"] = [*session.get("equity_curve", []), _realized_equity(session)]
-        summary = note or f"Closed the {trade['side']} paper trade at {execution_price:.2f} for {trade['pnl']:+.2f}."
-        payload = {
-            "action": action_key,
-            "trade_id": trade["trade_id"],
-            "exit_price": execution_price,
-            "pnl": trade["pnl"],
-            "realized_equity": _realized_equity(session),
-        }
+        order = dict(session.get("active_order") or {})
+        session["active_order"] = {}
+        if _has_open_position(session):
+            position = _require_open_position(session)
+            flatten_price = quote["bid"] if position.get("side") == "buy" else quote["ask"]
+            if price is not None:
+                flatten_price = round(float(price), 4)
+            trade = _close_position(session, position, flatten_price, timestamp)
+            session["trade_log"] = [*(session.get("trade_log") or []), trade]
+            session["current_position"] = {}
+            session["equity_curve"] = [*session.get("equity_curve", []), _realized_equity(session)]
+            summary = note or f"Flattened the {trade['side']} paper trade at {flatten_price:.2f} for {trade['pnl']:+.2f}."
+            payload = {
+                "action": action_key,
+                "trade_id": trade["trade_id"],
+                "exit_price": flatten_price,
+                "pnl": trade["pnl"],
+                "quote": quote,
+                "canceled_order": order or None,
+                "realized_equity": _realized_equity(session),
+            }
+            event_type = "position_closed"
+        elif order:
+            summary = note or "Flatten canceled the resting order; no position was open."
+            payload = {"action": action_key, "quote": quote, "canceled_order": order}
+            event_type = "order_canceled"
+        else:
+            raise ValueError("There isn't an open position or resting order to flatten.")
         audit_summary = summary
-        event_type = "position_closed"
     else:
         raise ValueError(f"Unsupported paper session action '{action}'.")
 
     now = _now()
     session["last_bar_time"] = timestamp
+    session["last_quote"] = quote
     session["last_event_at"] = now
     session["updated_at"] = now
     session = _ensure_session_defaults(session)
@@ -489,7 +632,11 @@ def _ensure_session_defaults(session: dict) -> dict:
     account_size = _account_size(session)
     session["commission"] = float(session.get("commission") or 5.0)
     session["tick_value"] = float(session.get("tick_value") or _resolve_tick_value(session.get("symbol")))
+    session["tick_size"] = float(session.get("tick_size") or _resolve_tick_size(session.get("symbol")))
+    session["spread_ticks"] = int(session.get("spread_ticks") or DEFAULT_SPREAD_TICKS)
     session["current_position"] = dict(session.get("current_position") or {})
+    session["active_order"] = dict(session.get("active_order") or {})
+    session["last_quote"] = dict(session.get("last_quote") or {})
     session["trade_log"] = list(session.get("trade_log") or [])
     session["equity_curve"] = [
         round(float(value), 2) for value in (session.get("equity_curve") or [account_size])
@@ -522,9 +669,12 @@ def _build_metrics_snapshot(session: dict) -> dict:
     metrics["account_size"] = round(account_size, 2)
     metrics["commission"] = round(float(session.get("commission") or 0.0), 2)
     metrics["tick_value"] = round(float(session.get("tick_value") or 0.0), 2)
+    metrics["tick_size"] = round(float(session.get("tick_size") or 0.0), 4)
+    metrics["spread_ticks"] = int(session.get("spread_ticks") or DEFAULT_SPREAD_TICKS)
     metrics["realized_equity"] = _realized_equity(session)
     metrics["marked_equity"] = _marked_equity(session)
     metrics["open_position"] = bool(current_position)
+    metrics["active_order"] = bool(session.get("active_order"))
     metrics["unrealized_pnl"] = round(float(current_position.get("unrealized_pnl") or 0.0), 2)
     metrics["last_trade_pnl"] = trades[-1]["pnl"] if trades else None
     return metrics
@@ -637,6 +787,65 @@ def _normalize_timestamp(raw: str) -> str:
         raise ValueError("Use a valid ISO timestamp for paper execution.") from exc
 
 
+def _resolve_execution_timestamp(session: dict, filled_at: str | None) -> str:
+    if filled_at:
+        return _normalize_timestamp(filled_at)
+
+    last_bar_time = session.get("last_bar_time")
+    if last_bar_time:
+        return _normalize_timestamp(str(last_bar_time))
+
+    return _now()
+
+
+def _quote_for_bar(session: dict, bar: dict) -> object:
+    return synthetic_quote_for_bar(
+        bar,
+        tick_size=float(session.get("tick_size") or DEFAULT_TICK_SIZE),
+        spread_ticks=int(session.get("spread_ticks") or DEFAULT_SPREAD_TICKS),
+    )
+
+
+def _resolve_session_quote(session: dict, *, price: float | None = None) -> dict:
+    quote = dict(session.get("last_quote") or {})
+    if quote:
+        return quote
+
+    if price is None:
+        raise ValueError("Run or step the session to build a synthetic bid/ask before executing.")
+
+    synthetic = synthetic_quote_for_bar(
+        {"close": float(price), "high": float(price), "low": float(price)},
+        tick_size=float(session.get("tick_size") or DEFAULT_TICK_SIZE),
+        spread_ticks=int(session.get("spread_ticks") or DEFAULT_SPREAD_TICKS),
+    )
+    return synthetic.as_dict()
+
+
+def _price_for_action(action: str, quote: dict, price: float | None) -> float | None:
+    if price is not None:
+        value = round(float(price), 4)
+        if value <= 0:
+            raise ValueError("Execution price must be greater than zero.")
+        return value
+
+    if action == "lift_ask":
+        return round(float(quote["ask"]), 4)
+    if action == "hit_bid":
+        return round(float(quote["bid"]), 4)
+    if action == "mark":
+        return round(float(quote["reference"]), 4)
+    return None
+
+
+def _execution_label(action: str) -> str:
+    if action == "lift_ask":
+        return "Lift ask"
+    if action == "hit_bid":
+        return "Hit bid"
+    return action.replace("_", " ").title()
+
+
 def _resolve_tick_value(symbol: str | None) -> float:
     if not symbol:
         return 1.0
@@ -651,6 +860,22 @@ def _resolve_tick_value(symbol: str | None) -> float:
         pass
 
     return float(DEFAULT_TICK_VALUES.get(symbol.upper(), 1.0))
+
+
+def _resolve_tick_size(symbol: str | None) -> float:
+    if not symbol:
+        return DEFAULT_TICK_SIZE
+
+    try:
+        from services.db import get_symbol_info
+
+        info = get_symbol_info(symbol)
+        if info and info.get("tick_size"):
+            return float(info["tick_size"])
+    except Exception:
+        pass
+
+    return float(DEFAULT_TICK_SIZES.get(symbol.upper(), DEFAULT_TICK_SIZE))
 
 
 def _session_status_to_candidate_status(session_status: str, current_status: str | None) -> str:

@@ -57,6 +57,7 @@ import {
 } from "../services/chartIndicators";
 import WorkspaceLaunchControl from "../components/workspace/WorkspaceLaunchControl";
 import type { WorkspaceLaunchIntent } from "../components/workspace/workspacePersistence";
+import type { RestingOrder } from "../services/executionModel";
 
 const field =
   "app-input w-full text-sm disabled:opacity-40";
@@ -77,6 +78,8 @@ type ReplayLaunchConfig = {
   endDate?: string;
   commission: number;
   tickValue: number;
+  tickSize: number;
+  spreadTicks: number;
   sourceBacktest?: ReplaySessionSourceBacktest | null;
   candleSource: { kind: "db" } | { kind: "backtest"; backtestId: string };
 };
@@ -160,7 +163,7 @@ function resolveReplaySymbolInfo(args: {
     symbol: args.symbol,
     full_name: `${args.symbol} saved source`,
     exchange: "Saved",
-    tick_size: 0,
+    tick_size: 0.25,
     tick_value: tickValueBySymbol[args.symbol] ?? 1,
     rows: 0,
     start_date: args.startDate ?? "",
@@ -356,6 +359,8 @@ export default function ReplayLabPage() {
         endDate: existing.end_date ?? undefined,
         commission: existing.commission,
         tickValue: existing.tick_value,
+        tickSize: existing.tick_size ?? matchedSymbol.tick_size ?? 0.25,
+        spreadTicks: existing.spread_ticks ?? 1,
         sourceBacktest,
         candleSource: sourceBacktest?.backtest_id
           ? { kind: "backtest", backtestId: sourceBacktest.backtest_id }
@@ -406,6 +411,8 @@ export default function ReplayLabPage() {
           endDate: end,
           commission,
           tickValue,
+          tickSize: source.run_config?.tick_size ?? resolvedSymbol.tick_size ?? 0.25,
+          spreadTicks: 1,
           sourceBacktest: sourceMeta,
           candleSource: { kind: "backtest", backtestId: source.backtest_id },
         }),
@@ -429,6 +436,8 @@ export default function ReplayLabPage() {
         endDate: end,
         commission,
         tickValue,
+        tickSize: source.run_config?.tick_size ?? resolvedSymbol.tick_size ?? 0.25,
+        spreadTicks: 1,
         sourceBacktest: sourceMeta,
         candleSource: { kind: "backtest", backtestId: source.backtest_id },
       });
@@ -468,7 +477,9 @@ export default function ReplayLabPage() {
     Array.from(
       new Set(
         replayActions()
-          .filter((action) => action.type === "buy" || action.type === "sell")
+          .filter((action) =>
+            ["buy", "sell", "lift_ask", "hit_bid", "join_bid", "join_ask"].includes(action.type),
+          )
           .map((action) => action.barIndex)
           .sort((a, b) => a - b),
       ),
@@ -489,6 +500,8 @@ export default function ReplayLabPage() {
       initialBalance: config.propFirmRules.account_size,
       commission: config.commission,
       tickValue: config.tickValue,
+      tickSize: config.tickSize,
+      spreadTicks: config.spreadTicks,
       propFirmRules: config.propFirmRules,
     });
   });
@@ -530,10 +543,13 @@ export default function ReplayLabPage() {
       findJumpTarget(replayIndex(), replayTradeEntryIndices(), "next") !== null,
   );
   const canPlaceEntries = createMemo(
-    () => !isReviewMode() && replayIndex() < totalBars() - 1,
+    () => !isReviewMode() && replayIndex() < totalBars() - 1 && !replaySession()?.activeOrder,
   );
   const canExitPosition = createMemo(
     () => !!replaySession()?.position && !isReviewMode(),
+  );
+  const canCancelOrder = createMemo(
+    () => !!replaySession()?.activeOrder && !isReviewMode(),
   );
   const replayStatusDetail = createMemo(() => {
     if (replayStatus() === "review") {
@@ -590,6 +606,12 @@ export default function ReplayLabPage() {
       ["Trades", String(session.metrics.total_trades)],
       ["Balance", `$${session.balance.toFixed(2)}`],
       ["Position", session.position ? session.position.side.toUpperCase() : "FLAT"],
+      [
+        "Order",
+        session.activeOrder
+          ? `${session.activeOrder.side.toUpperCase()} @ $${session.activeOrder.price.toFixed(2)}`
+          : "NONE",
+      ],
     ] as [string, string][];
   });
 
@@ -610,6 +632,22 @@ export default function ReplayLabPage() {
     }
 
     return `${session.position.side.toUpperCase()} from $${session.position.entry_price.toFixed(2)} (${formatCurrency(session.position.unrealized_pnl)})`;
+  });
+
+  const bidAskLabel = createMemo(() => {
+    const quote = replaySession()?.currentQuote;
+    if (!quote) {
+      return "No book";
+    }
+    return `$${quote.bid.toFixed(2)} / $${quote.ask.toFixed(2)}`;
+  });
+
+  const activeOrderLabel = createMemo(() => {
+    const order = replaySession()?.activeOrder as RestingOrder | null | undefined;
+    if (!order) {
+      return "None";
+    }
+    return `${order.type.replace("_", " ").toUpperCase()} ${order.side.toUpperCase()} @ $${order.price.toFixed(2)}`;
   });
 
   const activeSourceBacktest = createMemo(
@@ -722,7 +760,10 @@ export default function ReplayLabPage() {
       return;
     }
 
-    if ((type === "buy" || type === "sell") && replayIndex() >= totalBars() - 1) {
+    if (
+      ["lift_ask", "hit_bid", "join_bid", "join_ask", "buy", "sell"].includes(type) &&
+      replayIndex() >= totalBars() - 1
+    ) {
       return;
     }
 
@@ -782,6 +823,8 @@ export default function ReplayLabPage() {
         endDate: endDate() || undefined,
         commission: 5,
         tickValue: tickValueBySymbol[selectedSymbol.symbol] ?? selectedSymbol.tick_value ?? 1,
+        tickSize: selectedSymbol.tick_size || 0.25,
+        spreadTicks: 1,
         sourceBacktest: null,
         candleSource: { kind: "db" },
       }));
@@ -794,6 +837,8 @@ export default function ReplayLabPage() {
         endDate: endDate() || undefined,
         commission: 5,
         tickValue: tickValueBySymbol[selectedSymbol.symbol] ?? selectedSymbol.tick_value ?? 1,
+        tickSize: selectedSymbol.tick_size || 0.25,
+        spreadTicks: 1,
         sourceBacktest: null,
         candleSource: { kind: "db" },
       });
@@ -817,6 +862,8 @@ export default function ReplayLabPage() {
       prop_firm_rules: config.propFirmRules,
       commission: config.commission,
       tick_value: config.tickValue,
+      tick_size: config.tickSize,
+      spread_ticks: config.spreadTicks,
       current_bar_index: replayIndex(),
       status: replayStatus(),
       actions: replayActions().map((action) => ({
@@ -825,6 +872,8 @@ export default function ReplayLabPage() {
         bar_index: action.barIndex,
         created_at: action.createdAt,
       })),
+      active_order: session.activeOrder ? { ...session.activeOrder } : null,
+      execution_events: session.executionEvents.map((event) => ({ ...event })),
       trades: session.trades,
       metrics: session.metrics,
       prop_firm_eval: session.propEvaluation,
@@ -1286,16 +1335,21 @@ export default function ReplayLabPage() {
                           totalBars={totalBars()}
                           currentTimeLabel={currentTimeLabel()}
                           currentPriceLabel={currentPriceLabel()}
+                          bidAskLabel={bidAskLabel()}
                           positionLabel={positionLabel()}
+                          activeOrderLabel={activeOrderLabel()}
                           canSeek={canSeek()}
                           canStartPlayback={canStartPlayback()}
                           canStepBack={canStepBack()}
                           canStepForward={canStepForward()}
                           canJumpPrevTrade={canJumpPrevTrade()}
                           canJumpNextTrade={canJumpNextTrade()}
-                          canLong={canPlaceEntries()}
-                          canShort={canPlaceEntries()}
-                          canExitPosition={canExitPosition()}
+                          canLiftAsk={!isReviewMode()}
+                          canHitBid={!isReviewMode()}
+                          canJoinBid={canPlaceEntries()}
+                          canJoinAsk={canPlaceEntries()}
+                          canCancelOrder={canCancelOrder()}
+                          canFlatten={canExitPosition() || canCancelOrder()}
                           onPlayPause={() => {
                             if (isReplayActive()) {
                               setIsReplayActive(false);
@@ -1333,9 +1387,12 @@ export default function ReplayLabPage() {
                           }}
                           onJumpPrevTrade={() => jumpToTrade("prev")}
                           onJumpNextTrade={() => jumpToTrade("next")}
-                          onLong={() => recordReplayAction("buy")}
-                          onShort={() => recordReplayAction("sell")}
-                          onExit={() => recordReplayAction("exit")}
+                          onLiftAsk={() => recordReplayAction("lift_ask")}
+                          onHitBid={() => recordReplayAction("hit_bid")}
+                          onJoinBid={() => recordReplayAction("join_bid")}
+                          onJoinAsk={() => recordReplayAction("join_ask")}
+                          onCancel={() => recordReplayAction("cancel")}
+                          onFlatten={() => recordReplayAction("flatten")}
                         />
                       </Show>
                     </div>

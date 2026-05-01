@@ -119,9 +119,13 @@ class ReplaySessionBase(BaseModel):
     prop_firm_rules: PropFirmRules
     commission: float = Field(default=5.0, ge=0)
     tick_value: float = Field(default=1.0, gt=0)
+    tick_size: float = Field(default=0.25, gt=0)
+    spread_ticks: int = Field(default=1, ge=1)
     current_bar_index: int = Field(default=0, ge=0)
     status: str = Field(default="active")
     actions: List[ReplayAction] = Field(default_factory=list)
+    active_order: Optional[dict[str, Any]] = None
+    execution_events: List[dict[str, Any]] = Field(default_factory=list)
     trades: List[Trade] = Field(default_factory=list)
     metrics: PerformanceMetrics
     prop_firm_eval: PropFirmEvaluation
@@ -207,6 +211,12 @@ class PaperSessionTradeAction(str, Enum):
     SELL = "sell"
     MARK = "mark"
     EXIT = "exit"
+    LIFT_ASK = "lift_ask"
+    HIT_BID = "hit_bid"
+    JOIN_BID = "join_bid"
+    JOIN_ASK = "join_ask"
+    CANCEL = "cancel"
+    FLATTEN = "flatten"
 
 
 class ExperimentBase(BaseModel):
@@ -317,7 +327,11 @@ class PaperSessionBase(BaseModel):
     status: PaperSessionStatus = Field(default=PaperSessionStatus.DRAFT)
     commission: float = Field(default=5.0, ge=0)
     tick_value: float = Field(default=1.0, gt=0)
+    tick_size: float = Field(default=0.25, gt=0)
+    spread_ticks: int = Field(default=1, ge=1)
     current_position: dict[str, Any] = Field(default_factory=dict)
+    active_order: dict[str, Any] = Field(default_factory=dict)
+    last_quote: dict[str, Any] = Field(default_factory=dict)
     trade_log: List[Trade] = Field(default_factory=list)
     equity_curve: List[float] = Field(default_factory=list)
     metrics_snapshot: dict[str, Any] = Field(default_factory=dict)
@@ -341,8 +355,8 @@ class PaperSessionStatusUpdate(BaseModel):
 
 class PaperSessionExecutionRequest(BaseModel):
     action: PaperSessionTradeAction
-    price: float = Field(gt=0)
-    filled_at: str
+    price: Optional[float] = Field(default=None, gt=0)
+    filled_at: Optional[str] = None
     actor: str = Field(default="local-user")
     note: Optional[str] = None
 

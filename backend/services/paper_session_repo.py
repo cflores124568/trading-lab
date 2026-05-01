@@ -45,7 +45,11 @@ def _ensure_paper_sessions_schema(conn) -> None:
                     status           TEXT NOT NULL DEFAULT 'draft',
                     commission       DOUBLE PRECISION NOT NULL DEFAULT 5,
                     tick_value       DOUBLE PRECISION NOT NULL DEFAULT 1,
+                    tick_size        DOUBLE PRECISION NOT NULL DEFAULT 0.25,
+                    spread_ticks     INTEGER NOT NULL DEFAULT 1,
                     current_position JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    active_order     JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    last_quote       JSONB NOT NULL DEFAULT '{}'::jsonb,
                     trade_log        JSONB NOT NULL DEFAULT '[]'::jsonb,
                     equity_curve     JSONB NOT NULL DEFAULT '[]'::jsonb,
                     metrics_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -64,6 +68,18 @@ def _ensure_paper_sessions_schema(conn) -> None:
             )
             cur.execute(
                 "ALTER TABLE paper_sessions ADD COLUMN IF NOT EXISTS tick_value DOUBLE PRECISION NOT NULL DEFAULT 1"
+            )
+            cur.execute(
+                "ALTER TABLE paper_sessions ADD COLUMN IF NOT EXISTS tick_size DOUBLE PRECISION NOT NULL DEFAULT 0.25"
+            )
+            cur.execute(
+                "ALTER TABLE paper_sessions ADD COLUMN IF NOT EXISTS spread_ticks INTEGER NOT NULL DEFAULT 1"
+            )
+            cur.execute(
+                "ALTER TABLE paper_sessions ADD COLUMN IF NOT EXISTS active_order JSONB NOT NULL DEFAULT '{}'::jsonb"
+            )
+            cur.execute(
+                "ALTER TABLE paper_sessions ADD COLUMN IF NOT EXISTS last_quote JSONB NOT NULL DEFAULT '{}'::jsonb"
             )
             cur.execute(
                 "ALTER TABLE paper_sessions ADD COLUMN IF NOT EXISTS trade_log JSONB NOT NULL DEFAULT '[]'::jsonb"
@@ -111,13 +127,15 @@ def save_paper_session(session: dict) -> None:
         INSERT INTO paper_sessions (
             paper_session_id, candidate_id, paper_bot_id, name, symbol, interval,
             strategy_type, strategy_params, prop_firm_rules, guardrails, status,
-            commission, tick_value, current_position, trade_log, equity_curve,
+            commission, tick_value, tick_size, spread_ticks, current_position,
+            active_order, last_quote, trade_log, equity_curve,
             metrics_snapshot, guardrail_state, runner_state, last_bar_time,
             last_event_at, created_by, created_at, updated_at
         )
         VALUES (
             %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s,
-            %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s
+            %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
+            %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s
         )
         ON CONFLICT (paper_session_id) DO UPDATE SET
             candidate_id     = EXCLUDED.candidate_id,
@@ -132,7 +150,11 @@ def save_paper_session(session: dict) -> None:
             status           = EXCLUDED.status,
             commission       = EXCLUDED.commission,
             tick_value       = EXCLUDED.tick_value,
+            tick_size        = EXCLUDED.tick_size,
+            spread_ticks     = EXCLUDED.spread_ticks,
             current_position = EXCLUDED.current_position,
+            active_order     = EXCLUDED.active_order,
+            last_quote       = EXCLUDED.last_quote,
             trade_log        = EXCLUDED.trade_log,
             equity_curve     = EXCLUDED.equity_curve,
             metrics_snapshot = EXCLUDED.metrics_snapshot,
@@ -163,7 +185,11 @@ def save_paper_session(session: dict) -> None:
                     session["status"],
                     float(session.get("commission") or 5.0),
                     float(session.get("tick_value") or 1.0),
+                    float(session.get("tick_size") or 0.25),
+                    int(session.get("spread_ticks") or 1),
                     json.dumps(session.get("current_position") or {}),
+                    json.dumps(session.get("active_order") or {}),
+                    json.dumps(session.get("last_quote") or {}),
                     json.dumps(session.get("trade_log") or []),
                     json.dumps(session.get("equity_curve") or []),
                     json.dumps(session.get("metrics_snapshot") or {}),
@@ -282,7 +308,11 @@ def _row_to_session(row) -> dict:
         "status": row["status"],
         "commission": float(row.get("commission") or 5.0),
         "tick_value": float(row.get("tick_value") or 1.0),
+        "tick_size": float(row.get("tick_size") or 0.25),
+        "spread_ticks": int(row.get("spread_ticks") or 1),
         "current_position": _maybe_json(row["current_position"]) or {},
+        "active_order": _maybe_json(row.get("active_order")) or {},
+        "last_quote": _maybe_json(row.get("last_quote")) or {},
         "trade_log": _maybe_json(row.get("trade_log")) or [],
         "equity_curve": _maybe_json(row.get("equity_curve")) or [],
         "metrics_snapshot": _maybe_json(row["metrics_snapshot"]) or {},

@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   ArrowRight,
+  Ban,
   CircleDot,
   DoorOpen,
   Gauge,
@@ -23,16 +24,21 @@ interface Props {
   totalBars: number;
   currentTimeLabel: string;
   currentPriceLabel: string;
+  bidAskLabel: string;
   positionLabel: string;
+  activeOrderLabel: string;
   canSeek: boolean;
   canStartPlayback: boolean;
   canStepBack: boolean;
   canStepForward: boolean;
   canJumpPrevTrade: boolean;
   canJumpNextTrade: boolean;
-  canLong: boolean;
-  canShort: boolean;
-  canExitPosition: boolean;
+  canLiftAsk: boolean;
+  canHitBid: boolean;
+  canJoinBid: boolean;
+  canJoinAsk: boolean;
+  canCancelOrder: boolean;
+  canFlatten: boolean;
   onPlayPause: () => void;
   onSpeedChange: (speed: number) => void;
   onSeek: (progress: number) => void;
@@ -41,9 +47,12 @@ interface Props {
   onStepForward: () => void;
   onJumpPrevTrade: () => void;
   onJumpNextTrade: () => void;
-  onLong: () => void;
-  onShort: () => void;
-  onExit: () => void;
+  onLiftAsk: () => void;
+  onHitBid: () => void;
+  onJoinBid: () => void;
+  onJoinAsk: () => void;
+  onCancel: () => void;
+  onFlatten: () => void;
 }
 
 const speeds = [1, 2, 5, 8, 12, 20];
@@ -96,6 +105,12 @@ export default function ReplayControls(props: Props) {
                 {props.currentPriceLabel}
               </p>
             </div>
+            <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-xs text-zinc-500">
+              <p>Book</p>
+              <p class="mt-1 font-mono text-sm font-semibold text-zinc-100">
+                {props.bidAskLabel}
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -140,6 +155,10 @@ export default function ReplayControls(props: Props) {
             <div class="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3 text-xs text-zinc-500">
               <p>Position</p>
               <p class="mt-1 font-mono text-sm text-zinc-200">{props.positionLabel}</p>
+            </div>
+            <div class="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3 text-xs text-zinc-500 md:col-span-2">
+              <p>Resting Order</p>
+              <p class="mt-1 font-mono text-sm text-zinc-200">{props.activeOrderLabel}</p>
             </div>
           </div>
         </div>
@@ -253,32 +272,56 @@ export default function ReplayControls(props: Props) {
         <div class="rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4">
           <div class="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-zinc-500">
             <TrendingUp size={16} />
-            Manual Actions
+            Execution Actions
           </div>
           <div class="mt-4 flex flex-wrap gap-2">
             <button
-              onClick={props.onLong}
-              disabled={!props.canLong}
-              class={actionButton(props.canLong, "green")}
+              onClick={props.onLiftAsk}
+              disabled={!props.canLiftAsk}
+              class={actionButton(props.canLiftAsk, "green")}
             >
               <TrendingUp size={16} />
-              Long
+              Lift Ask
             </button>
             <button
-              onClick={props.onShort}
-              disabled={!props.canShort}
-              class={actionButton(props.canShort, "rose")}
+              onClick={props.onHitBid}
+              disabled={!props.canHitBid}
+              class={actionButton(props.canHitBid, "rose")}
             >
               <TrendingDown size={16} />
-              Short
+              Hit Bid
             </button>
             <button
-              onClick={props.onExit}
-              disabled={!props.canExitPosition}
-              class={ghostButton(props.canExitPosition)}
+              onClick={props.onJoinBid}
+              disabled={!props.canJoinBid}
+              class={ghostButton(props.canJoinBid)}
+            >
+              <CircleDot size={16} />
+              Join Bid
+            </button>
+            <button
+              onClick={props.onJoinAsk}
+              disabled={!props.canJoinAsk}
+              class={ghostButton(props.canJoinAsk)}
+            >
+              <CircleDot size={16} />
+              Join Ask
+            </button>
+            <button
+              onClick={props.onCancel}
+              disabled={!props.canCancelOrder}
+              class={ghostButton(props.canCancelOrder)}
+            >
+              <Ban size={16} />
+              Cancel
+            </button>
+            <button
+              onClick={props.onFlatten}
+              disabled={!props.canFlatten}
+              class={ghostButton(props.canFlatten)}
             >
               <DoorOpen size={16} />
-              Exit
+              Flatten
             </button>
           </div>
         </div>

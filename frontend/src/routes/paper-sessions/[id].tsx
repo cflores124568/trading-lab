@@ -89,12 +89,6 @@ function stringFromUnknown(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
-function nowLocalInputValue(): string {
-  const now = new Date();
-  const adjusted = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
-  return adjusted.toISOString().slice(0, 16);
-}
-
 function localInputToIso(value: string): string {
   if (!value.trim()) {
     return new Date().toISOString();
@@ -147,6 +141,24 @@ function formatJson(value: Record<string, unknown>): string {
   }
 
   return JSON.stringify(value, null, 2);
+}
+
+function quoteLabel(quote: Record<string, unknown>): string {
+  const bid = numberFromUnknown(quote.bid);
+  const ask = numberFromUnknown(quote.ask);
+  if (bid === null || ask === null) {
+    return "Run or step the session to build a synthetic book.";
+  }
+  return `Bid ${bid.toFixed(4)} / Ask ${ask.toFixed(4)}`;
+}
+
+function orderLabel(order: Record<string, unknown>): string {
+  const side = stringFromUnknown(order.side);
+  const price = numberFromUnknown(order.price);
+  if (!side || price === null) {
+    return "No resting order.";
+  }
+  return `${side.toUpperCase()} @ ${price.toFixed(4)}`;
 }
 
 function runnerModeTone(mode?: string | null): string {
@@ -317,9 +329,6 @@ export default function PaperSessionDetailPage() {
   const [error, setError] = createSignal<string | null>(null);
   const [eventType, setEventType] = createSignal("operator_note");
   const [eventSummary, setEventSummary] = createSignal("");
-  const [executionAction, setExecutionAction] = createSignal<PaperSessionTradeAction>("buy");
-  const [executionPrice, setExecutionPrice] = createSignal("");
-  const [executionTime, setExecutionTime] = createSignal(nowLocalInputValue());
   const [executionNote, setExecutionNote] = createSignal("");
   const [runnerStartDate, setRunnerStartDate] = createSignal("");
   const [runnerEndDate, setRunnerEndDate] = createSignal("");
@@ -331,7 +340,10 @@ export default function PaperSessionDetailPage() {
     session() ? statusActions(session()!.status) : [],
   );
   const currentPosition = createMemo(() => (session()?.current_position ?? {}) as Record<string, unknown>);
+  const activeOrder = createMemo(() => (session()?.active_order ?? {}) as Record<string, unknown>);
+  const lastQuote = createMemo(() => (session()?.last_quote ?? {}) as Record<string, unknown>);
   const hasOpenPosition = createMemo(() => Boolean(stringFromUnknown(currentPosition().entry_time)));
+  const hasActiveOrder = createMemo(() => Boolean(stringFromUnknown(activeOrder().id)));
   const metricsSnapshot = createMemo(
     () => (session()?.metrics_snapshot ?? {}) as Record<string, unknown>,
   );
@@ -392,29 +404,14 @@ export default function PaperSessionDetailPage() {
     });
   };
 
-  const handleExecution = async () => {
-    const price = Number(executionPrice().trim());
-    if (!Number.isFinite(price) || price <= 0) {
-      setError("Use a real fill price first.");
-      return;
-    }
-
+  const handleExecution = async (action: PaperSessionTradeAction) => {
     await runSessionAction("execute", async () => {
       const nextSession = await executePaperSessionAction(paperSessionId(), {
-        action: executionAction(),
-        price,
-        filledAt: localInputToIso(executionTime()),
+        action,
         note: executionNote().trim() || undefined,
       });
       mutateSession(() => nextSession);
       setExecutionNote("");
-      setExecutionPrice("");
-      setExecutionTime(nowLocalInputValue());
-      if (executionAction() === "exit") {
-        setExecutionAction("buy");
-      } else if (executionAction() === "buy" || executionAction() === "sell") {
-        setExecutionAction("mark");
-      }
       await Promise.all([refetchSession(), refetchEvents()]);
     });
   };
@@ -745,30 +742,25 @@ export default function PaperSessionDetailPage() {
                     </div>
                   </div>
 
-                  <div class="grid gap-3 md:grid-cols-[180px_160px_1fr]">
-                    <select
-                      value={executionAction()}
-                      onChange={(event) => setExecutionAction(event.currentTarget.value as PaperSessionTradeAction)}
-                      class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
-                    >
-                      <option value="buy">Buy / Long</option>
-                      <option value="sell">Sell / Short</option>
-                      <option value="mark">Mark Position</option>
-                      <option value="exit">Exit Position</option>
-                    </select>
-                    <input
-                      value={executionPrice()}
-                      onInput={(event) => setExecutionPrice(event.currentTarget.value)}
-                      placeholder="Fill price"
-                      inputmode="decimal"
-                      class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
-                    />
-                    <input
-                      type="datetime-local"
-                      value={executionTime()}
-                      onInput={(event) => setExecutionTime(event.currentTarget.value)}
-                      class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
-                    />
+                  <div class="grid gap-3 md:grid-cols-3">
+                    <div class="app-subpanel px-4 py-4">
+                      <p class="app-kicker">Synthetic Book</p>
+                      <p class="mt-2 text-sm font-semibold text-zinc-100">
+                        {quoteLabel(lastQuote())}
+                      </p>
+                    </div>
+                    <div class="app-subpanel px-4 py-4">
+                      <p class="app-kicker">Resting Order</p>
+                      <p class="mt-2 text-sm font-semibold text-zinc-100">
+                        {orderLabel(activeOrder())}
+                      </p>
+                    </div>
+                    <div class="app-subpanel px-4 py-4">
+                      <p class="app-kicker">Model</p>
+                      <p class="mt-2 text-sm font-semibold text-zinc-100">
+                        {formatNumber(numberFromUnknown(entry().tick_size), 4)} tick / {formatNumber(numberFromUnknown(entry().spread_ticks), 0)} spread
+                      </p>
+                    </div>
                   </div>
 
                   <textarea
@@ -783,14 +775,54 @@ export default function PaperSessionDetailPage() {
                     <button
                       type="button"
                       disabled={busyAction() === "execute"}
-                      onClick={handleExecution}
-                      class="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+                      onClick={() => handleExecution("lift_ask")}
+                      class="rounded-xl bg-emerald-400 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-300 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
                     >
-                      {busyAction() === "execute" ? "Submitting..." : "Submit Action"}
+                      Lift Ask
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyAction() === "execute"}
+                      onClick={() => handleExecution("hit_bid")}
+                      class="rounded-xl bg-rose-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-rose-400 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+                    >
+                      Hit Bid
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyAction() === "execute" || hasOpenPosition() || hasActiveOrder()}
+                      onClick={() => handleExecution("join_bid")}
+                      class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                    >
+                      Join Bid
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyAction() === "execute" || hasOpenPosition() || hasActiveOrder()}
+                      onClick={() => handleExecution("join_ask")}
+                      class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                    >
+                      Join Ask
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyAction() === "execute" || !hasActiveOrder()}
+                      onClick={() => handleExecution("cancel")}
+                      class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyAction() === "execute" || (!hasOpenPosition() && !hasActiveOrder())}
+                      onClick={() => handleExecution("flatten")}
+                      class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                    >
+                      Flatten
                     </button>
                     <Show when={hasOpenPosition()}>
                       <span class="rounded-full border border-zinc-700 px-3 py-2 text-xs text-zinc-400">
-                        Position is open, so `mark` and `exit` are the useful next clicks.
+                        Position is open, so `flatten` uses the synthetic opposite side.
                       </span>
                     </Show>
                   </div>
