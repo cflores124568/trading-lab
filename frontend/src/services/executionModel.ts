@@ -11,6 +11,7 @@ export type ExecutionActionType =
 export type LegacyExecutionActionType = "buy" | "sell" | "exit";
 
 export type ExecutionSide = "buy" | "sell";
+export type RestingFillMode = "touch" | "penetrate" | "touch_plus_1_bar";
 
 export type RestingOrderStatus = "pending" | "filled" | "canceled";
 
@@ -19,6 +20,10 @@ export interface SyntheticQuote {
   ask: number;
   reference: number;
   spread_ticks: number;
+  base_spread_ticks: number;
+  volatility_spread_ticks: number;
+  bar_range_ticks: number;
+  is_volatile: boolean;
   tick_size: number;
 }
 
@@ -34,6 +39,8 @@ export interface RestingOrder {
   filled_bar_index?: number;
   canceled_at?: string;
   canceled_bar_index?: number;
+  first_touch_at?: string;
+  first_touch_bar_index?: number;
 }
 
 export interface ExecutionEvent {
@@ -51,11 +58,56 @@ export interface ExecutionEvent {
 export interface ExecutionConfig {
   tickSize: number;
   spreadTicks: number;
+  volatileBarThresholdTicks: number;
+  volatileBarExtraTicks: number;
+  restingFillMode: RestingFillMode;
 }
 
 export const DEFAULT_EXECUTION_CONFIG: ExecutionConfig = {
   tickSize: 0.25,
   spreadTicks: 1,
+  volatileBarThresholdTicks: 0,
+  volatileBarExtraTicks: 0,
+  restingFillMode: "touch",
+};
+
+const SYMBOL_EXECUTION_DEFAULTS: Record<string, Omit<ExecutionConfig, "tickSize">> = {
+  ES: {
+    spreadTicks: 1,
+    volatileBarThresholdTicks: 8,
+    volatileBarExtraTicks: 1,
+    restingFillMode: "touch",
+  },
+  MES: {
+    spreadTicks: 1,
+    volatileBarThresholdTicks: 8,
+    volatileBarExtraTicks: 1,
+    restingFillMode: "touch",
+  },
+  NQ: {
+    spreadTicks: 2,
+    volatileBarThresholdTicks: 12,
+    volatileBarExtraTicks: 1,
+    restingFillMode: "touch",
+  },
+  MNQ: {
+    spreadTicks: 2,
+    volatileBarThresholdTicks: 12,
+    volatileBarExtraTicks: 1,
+    restingFillMode: "touch",
+  },
+  GC: {
+    spreadTicks: 2,
+    volatileBarThresholdTicks: 10,
+    volatileBarExtraTicks: 1,
+    restingFillMode: "touch",
+  },
+  MGC: {
+    spreadTicks: 2,
+    volatileBarThresholdTicks: 10,
+    volatileBarExtraTicks: 1,
+    restingFillMode: "touch",
+  },
 };
 
 export function normalizeExecutionAction(
@@ -72,6 +124,29 @@ export function roundToTick(price: number, tickSize: number): number {
   return roundPrice(Math.round(price / safeTick) * safeTick);
 }
 
+export function normalizeSymbolRoot(symbol?: string | null): string {
+  if (!symbol) return "";
+  const match = symbol.trim().toUpperCase().match(/^[A-Z]+/);
+  return match?.[0] ?? "";
+}
+
+export function defaultExecutionConfigForSymbol(symbol?: string | null): Omit<ExecutionConfig, "tickSize"> {
+  const root = normalizeSymbolRoot(symbol);
+  return SYMBOL_EXECUTION_DEFAULTS[root] ?? {
+    spreadTicks: DEFAULT_EXECUTION_CONFIG.spreadTicks,
+    volatileBarThresholdTicks: DEFAULT_EXECUTION_CONFIG.volatileBarThresholdTicks,
+    volatileBarExtraTicks: DEFAULT_EXECUTION_CONFIG.volatileBarExtraTicks,
+    restingFillMode: DEFAULT_EXECUTION_CONFIG.restingFillMode,
+  };
+}
+
+export function normalizeRestingFillMode(mode?: string | null): RestingFillMode {
+  if (mode === "penetrate" || mode === "touch_plus_1_bar") {
+    return mode;
+  }
+  return "touch";
+}
+
 export function syntheticQuoteForCandle(
   candle: Candle,
   config: Partial<ExecutionConfig> = {},
@@ -79,7 +154,21 @@ export function syntheticQuoteForCandle(
   const tickSize = config.tickSize && config.tickSize > 0
     ? config.tickSize
     : DEFAULT_EXECUTION_CONFIG.tickSize;
-  const spreadTicks = Math.max(1, Math.round(config.spreadTicks ?? DEFAULT_EXECUTION_CONFIG.spreadTicks));
+  const baseSpreadTicks = Math.max(1, Math.round(config.spreadTicks ?? DEFAULT_EXECUTION_CONFIG.spreadTicks));
+  const volatileBarThresholdTicks = Math.max(
+    0,
+    Math.round(config.volatileBarThresholdTicks ?? DEFAULT_EXECUTION_CONFIG.volatileBarThresholdTicks),
+  );
+  const volatileBarExtraTicks = Math.max(
+    0,
+    Math.round(config.volatileBarExtraTicks ?? DEFAULT_EXECUTION_CONFIG.volatileBarExtraTicks),
+  );
+  const barRangeTicks = Math.max(0, Math.round((candle.high - candle.low) / tickSize));
+  const isVolatile =
+    volatileBarThresholdTicks > 0 &&
+    volatileBarExtraTicks > 0 &&
+    barRangeTicks >= volatileBarThresholdTicks;
+  const spreadTicks = baseSpreadTicks + (isVolatile ? volatileBarExtraTicks : 0);
   const reference = roundToTick(candle.close, tickSize);
   const bid = roundPrice(reference - Math.floor(spreadTicks / 2) * tickSize);
   const ask = roundPrice(bid + spreadTicks * tickSize);
@@ -89,6 +178,10 @@ export function syntheticQuoteForCandle(
     ask,
     reference,
     spread_ticks: spreadTicks,
+    base_spread_ticks: baseSpreadTicks,
+    volatility_spread_ticks: isVolatile ? volatileBarExtraTicks : 0,
+    bar_range_ticks: barRangeTicks,
+    is_volatile: isVolatile,
     tick_size: tickSize,
   };
 }
@@ -99,6 +192,57 @@ export function restingOrderTouched(order: RestingOrder, candle: Candle): boolea
     return candle.low <= order.price;
   }
   return candle.high >= order.price;
+}
+
+export function restingOrderPenetrated(order: RestingOrder, candle: Candle): boolean {
+  if (order.status !== "pending") return false;
+  if (order.side === "buy") {
+    return candle.low < order.price;
+  }
+  return candle.high > order.price;
+}
+
+export function restingOrderFillUpdate(args: {
+  order: RestingOrder;
+  candle: Candle;
+  fillMode?: RestingFillMode;
+  barIndex?: number;
+  time?: string;
+}): { shouldFill: boolean; order: RestingOrder } {
+  const fillMode = normalizeRestingFillMode(args.fillMode);
+  const nextOrder = { ...args.order };
+
+  if (fillMode === "penetrate") {
+    return { shouldFill: restingOrderPenetrated(nextOrder, args.candle), order: nextOrder };
+  }
+
+  const touched = restingOrderTouched(nextOrder, args.candle);
+  if (fillMode === "touch") {
+    return { shouldFill: touched, order: nextOrder };
+  }
+
+  if (!touched) {
+    return { shouldFill: false, order: nextOrder };
+  }
+
+  if (nextOrder.first_touch_bar_index === undefined) {
+    if (typeof args.barIndex === "number") {
+      nextOrder.first_touch_bar_index = args.barIndex;
+    }
+    if (args.time) {
+      nextOrder.first_touch_at = args.time;
+    }
+    return { shouldFill: false, order: nextOrder };
+  }
+
+  if (
+    typeof args.barIndex === "number" &&
+    args.barIndex <= nextOrder.first_touch_bar_index
+  ) {
+    return { shouldFill: false, order: nextOrder };
+  }
+
+  return { shouldFill: true, order: nextOrder };
 }
 
 export function actionFillPrice(action: ExecutionActionType, quote: SyntheticQuote): number | null {

@@ -3,11 +3,13 @@ import {
   createRestingOrder,
   DEFAULT_EXECUTION_CONFIG,
   normalizeExecutionAction,
-  restingOrderTouched,
+  normalizeRestingFillMode,
+  restingOrderFillUpdate,
   syntheticQuoteForCandle,
   type ExecutionConfig,
   type ExecutionEvent,
   type LegacyExecutionActionType,
+  type RestingFillMode,
   type RestingOrder,
   type SyntheticQuote,
 } from "./executionModel.ts";
@@ -376,6 +378,9 @@ export function simulateReplaySession(args: {
   tickValue?: number;
   tickSize?: number;
   spreadTicks?: number;
+  volatileBarThresholdTicks?: number;
+  volatileBarExtraTicks?: number;
+  restingFillMode?: RestingFillMode;
   propFirmRules: PropFirmRules;
 }): ReplaySession {
   const {
@@ -388,10 +393,19 @@ export function simulateReplaySession(args: {
     tickValue = 1,
     tickSize = DEFAULT_EXECUTION_CONFIG.tickSize,
     spreadTicks = DEFAULT_EXECUTION_CONFIG.spreadTicks,
+    volatileBarThresholdTicks = DEFAULT_EXECUTION_CONFIG.volatileBarThresholdTicks,
+    volatileBarExtraTicks = DEFAULT_EXECUTION_CONFIG.volatileBarExtraTicks,
+    restingFillMode = DEFAULT_EXECUTION_CONFIG.restingFillMode,
     propFirmRules,
   } = args;
 
-  const executionConfig: ExecutionConfig = { tickSize, spreadTicks };
+  const executionConfig: ExecutionConfig = {
+    tickSize,
+    spreadTicks,
+    volatileBarThresholdTicks,
+    volatileBarExtraTicks,
+    restingFillMode,
+  };
 
   if (candles.length === 0) {
     const equityCurve = [initialBalance];
@@ -482,26 +496,37 @@ export function simulateReplaySession(args: {
     if (
       activeOrder &&
       activeOrder.status === "pending" &&
-      i > activeOrder.submitted_bar_index &&
-      restingOrderTouched(activeOrder, candle)
+      i > activeOrder.submitted_bar_index
     ) {
-      activeOrder = {
-        ...activeOrder,
-        status: "filled",
-        filled_at: getCandleTime(candle),
-        filled_bar_index: i,
-      };
-      openPosition(activeOrder.side, activeOrder.price, candle, i);
-      appendEvent({
-        type: "resting_filled",
-        action: activeOrder.type,
-        side: activeOrder.side,
-        price: activeOrder.price,
-        bar_index: i,
+      const fillUpdate = restingOrderFillUpdate({
+        order: activeOrder,
+        candle,
+        fillMode: normalizeRestingFillMode(executionConfig.restingFillMode),
+        barIndex: i,
         time: getCandleTime(candle),
-        order_id: activeOrder.id,
       });
-      activeOrder = null;
+
+      if (fillUpdate.shouldFill) {
+        activeOrder = {
+          ...fillUpdate.order,
+          status: "filled",
+          filled_at: getCandleTime(candle),
+          filled_bar_index: i,
+        };
+        openPosition(activeOrder.side, activeOrder.price, candle, i);
+        appendEvent({
+          type: "resting_filled",
+          action: activeOrder.type,
+          side: activeOrder.side,
+          price: activeOrder.price,
+          bar_index: i,
+          time: getCandleTime(candle),
+          order_id: activeOrder.id,
+        });
+        activeOrder = null;
+      } else {
+        activeOrder = fillUpdate.order;
+      }
     }
 
     for (const action of actionsAtBar) {

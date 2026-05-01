@@ -47,6 +47,9 @@ def _ensure_paper_sessions_schema(conn) -> None:
                     tick_value       DOUBLE PRECISION NOT NULL DEFAULT 1,
                     tick_size        DOUBLE PRECISION NOT NULL DEFAULT 0.25,
                     spread_ticks     INTEGER NOT NULL DEFAULT 1,
+                    volatile_bar_threshold_ticks INTEGER NOT NULL DEFAULT 0,
+                    volatile_bar_extra_ticks     INTEGER NOT NULL DEFAULT 0,
+                    resting_fill_mode TEXT NOT NULL DEFAULT 'touch',
                     current_position JSONB NOT NULL DEFAULT '{}'::jsonb,
                     active_order     JSONB NOT NULL DEFAULT '{}'::jsonb,
                     last_quote       JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -74,6 +77,15 @@ def _ensure_paper_sessions_schema(conn) -> None:
             )
             cur.execute(
                 "ALTER TABLE paper_sessions ADD COLUMN IF NOT EXISTS spread_ticks INTEGER NOT NULL DEFAULT 1"
+            )
+            cur.execute(
+                "ALTER TABLE paper_sessions ADD COLUMN IF NOT EXISTS volatile_bar_threshold_ticks INTEGER NOT NULL DEFAULT 0"
+            )
+            cur.execute(
+                "ALTER TABLE paper_sessions ADD COLUMN IF NOT EXISTS volatile_bar_extra_ticks INTEGER NOT NULL DEFAULT 0"
+            )
+            cur.execute(
+                "ALTER TABLE paper_sessions ADD COLUMN IF NOT EXISTS resting_fill_mode TEXT NOT NULL DEFAULT 'touch'"
             )
             cur.execute(
                 "ALTER TABLE paper_sessions ADD COLUMN IF NOT EXISTS active_order JSONB NOT NULL DEFAULT '{}'::jsonb"
@@ -127,14 +139,15 @@ def save_paper_session(session: dict) -> None:
         INSERT INTO paper_sessions (
             paper_session_id, candidate_id, paper_bot_id, name, symbol, interval,
             strategy_type, strategy_params, prop_firm_rules, guardrails, status,
-            commission, tick_value, tick_size, spread_ticks, current_position,
-            active_order, last_quote, trade_log, equity_curve,
+            commission, tick_value, tick_size, spread_ticks,
+            volatile_bar_threshold_ticks, volatile_bar_extra_ticks, resting_fill_mode,
+            current_position, active_order, last_quote, trade_log, equity_curve,
             metrics_snapshot, guardrail_state, runner_state, last_bar_time,
             last_event_at, created_by, created_at, updated_at
         )
         VALUES (
             %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s,
-            %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
+            %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
             %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s
         )
         ON CONFLICT (paper_session_id) DO UPDATE SET
@@ -152,6 +165,9 @@ def save_paper_session(session: dict) -> None:
             tick_value       = EXCLUDED.tick_value,
             tick_size        = EXCLUDED.tick_size,
             spread_ticks     = EXCLUDED.spread_ticks,
+            volatile_bar_threshold_ticks = EXCLUDED.volatile_bar_threshold_ticks,
+            volatile_bar_extra_ticks     = EXCLUDED.volatile_bar_extra_ticks,
+            resting_fill_mode = EXCLUDED.resting_fill_mode,
             current_position = EXCLUDED.current_position,
             active_order     = EXCLUDED.active_order,
             last_quote       = EXCLUDED.last_quote,
@@ -187,6 +203,9 @@ def save_paper_session(session: dict) -> None:
                     float(session.get("tick_value") or 1.0),
                     float(session.get("tick_size") or 0.25),
                     int(session.get("spread_ticks") or 1),
+                    int(session.get("volatile_bar_threshold_ticks") or 0),
+                    int(session.get("volatile_bar_extra_ticks") or 0),
+                    session.get("resting_fill_mode") or "touch",
                     json.dumps(session.get("current_position") or {}),
                     json.dumps(session.get("active_order") or {}),
                     json.dumps(session.get("last_quote") or {}),
@@ -310,6 +329,9 @@ def _row_to_session(row) -> dict:
         "tick_value": float(row.get("tick_value") or 1.0),
         "tick_size": float(row.get("tick_size") or 0.25),
         "spread_ticks": int(row.get("spread_ticks") or 1),
+        "volatile_bar_threshold_ticks": int(row.get("volatile_bar_threshold_ticks") or 0),
+        "volatile_bar_extra_ticks": int(row.get("volatile_bar_extra_ticks") or 0),
+        "resting_fill_mode": row.get("resting_fill_mode") or "touch",
         "current_position": _maybe_json(row["current_position"]) or {},
         "active_order": _maybe_json(row.get("active_order")) or {},
         "last_quote": _maybe_json(row.get("last_quote")) or {},

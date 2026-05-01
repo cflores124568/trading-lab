@@ -12,11 +12,16 @@ from services.candidate_service import (
 )
 from services.metrics import calculate_metrics
 from services.execution_model import (
+    DEFAULT_RESTING_FILL_MODE,
     DEFAULT_SPREAD_TICKS,
     DEFAULT_TICK_SIZE,
+    DEFAULT_VOLATILE_BAR_EXTRA_TICKS,
+    DEFAULT_VOLATILE_BAR_THRESHOLD_TICKS,
+    default_execution_config_for_symbol,
     make_resting_order,
     normalize_execution_action,
-    resting_order_touched,
+    normalize_resting_fill_mode,
+    resting_order_fill_update,
     synthetic_quote_for_bar,
 )
 from services.paper_session_repo import (
@@ -158,6 +163,7 @@ def create_paper_session_for_candidate(
         return existing
 
     now = _now()
+    execution_defaults = default_execution_config_for_symbol(candidate["symbol"])
     session = {
         "paper_session_id": str(uuid.uuid4()),
         "candidate_id": candidate["candidate_id"],
@@ -173,7 +179,10 @@ def create_paper_session_for_candidate(
         "commission": 5.0,
         "tick_value": _resolve_tick_value(candidate["symbol"]),
         "tick_size": _resolve_tick_size(candidate["symbol"]),
-        "spread_ticks": DEFAULT_SPREAD_TICKS,
+        "spread_ticks": execution_defaults["spread_ticks"],
+        "volatile_bar_threshold_ticks": execution_defaults["volatile_bar_threshold_ticks"],
+        "volatile_bar_extra_ticks": execution_defaults["volatile_bar_extra_ticks"],
+        "resting_fill_mode": DEFAULT_RESTING_FILL_MODE,
         "current_position": {},
         "active_order": {},
         "last_quote": {},
@@ -317,13 +326,23 @@ def advance_paper_session_bar(
     order = dict(session.get("active_order") or {})
     filled_order = None
 
-    if order and resting_order_touched(order, bar):
-        order["status"] = "filled"
-        order["filled_at"] = timestamp
-        order["filled_bar_index"] = (session.get("runner_state") or {}).get("bars_processed")
-        session["current_position"] = _open_position(order["side"], float(order["price"]), timestamp)
-        session["active_order"] = {}
-        filled_order = order
+    if order:
+        should_fill, updated_order = resting_order_fill_update(
+            order,
+            bar,
+            fill_mode=str(session.get("resting_fill_mode") or DEFAULT_RESTING_FILL_MODE),
+            bar_index=(session.get("runner_state") or {}).get("bars_processed"),
+            timestamp=timestamp,
+        )
+        if should_fill:
+            updated_order["status"] = "filled"
+            updated_order["filled_at"] = timestamp
+            updated_order["filled_bar_index"] = (session.get("runner_state") or {}).get("bars_processed")
+            session["current_position"] = _open_position(updated_order["side"], float(updated_order["price"]), timestamp)
+            session["active_order"] = {}
+            filled_order = updated_order
+        else:
+            session["active_order"] = updated_order
 
     if _has_open_position(session):
         position = _require_open_position(session)
@@ -634,6 +653,9 @@ def _ensure_session_defaults(session: dict) -> dict:
     session["tick_value"] = float(session.get("tick_value") or _resolve_tick_value(session.get("symbol")))
     session["tick_size"] = float(session.get("tick_size") or _resolve_tick_size(session.get("symbol")))
     session["spread_ticks"] = int(session.get("spread_ticks") or DEFAULT_SPREAD_TICKS)
+    session["volatile_bar_threshold_ticks"] = int(session.get("volatile_bar_threshold_ticks") or DEFAULT_VOLATILE_BAR_THRESHOLD_TICKS)
+    session["volatile_bar_extra_ticks"] = int(session.get("volatile_bar_extra_ticks") or DEFAULT_VOLATILE_BAR_EXTRA_TICKS)
+    session["resting_fill_mode"] = normalize_resting_fill_mode(session.get("resting_fill_mode"))
     session["current_position"] = dict(session.get("current_position") or {})
     session["active_order"] = dict(session.get("active_order") or {})
     session["last_quote"] = dict(session.get("last_quote") or {})
@@ -671,6 +693,13 @@ def _build_metrics_snapshot(session: dict) -> dict:
     metrics["tick_value"] = round(float(session.get("tick_value") or 0.0), 2)
     metrics["tick_size"] = round(float(session.get("tick_size") or 0.0), 4)
     metrics["spread_ticks"] = int(session.get("spread_ticks") or DEFAULT_SPREAD_TICKS)
+    metrics["volatile_bar_threshold_ticks"] = int(
+        session.get("volatile_bar_threshold_ticks") or DEFAULT_VOLATILE_BAR_THRESHOLD_TICKS
+    )
+    metrics["volatile_bar_extra_ticks"] = int(
+        session.get("volatile_bar_extra_ticks") or DEFAULT_VOLATILE_BAR_EXTRA_TICKS
+    )
+    metrics["resting_fill_mode"] = normalize_resting_fill_mode(session.get("resting_fill_mode"))
     metrics["realized_equity"] = _realized_equity(session)
     metrics["marked_equity"] = _marked_equity(session)
     metrics["open_position"] = bool(current_position)
@@ -803,6 +832,12 @@ def _quote_for_bar(session: dict, bar: dict) -> object:
         bar,
         tick_size=float(session.get("tick_size") or DEFAULT_TICK_SIZE),
         spread_ticks=int(session.get("spread_ticks") or DEFAULT_SPREAD_TICKS),
+        volatile_bar_threshold_ticks=int(
+            session.get("volatile_bar_threshold_ticks") or DEFAULT_VOLATILE_BAR_THRESHOLD_TICKS
+        ),
+        volatile_bar_extra_ticks=int(
+            session.get("volatile_bar_extra_ticks") or DEFAULT_VOLATILE_BAR_EXTRA_TICKS
+        ),
     )
 
 
@@ -818,6 +853,12 @@ def _resolve_session_quote(session: dict, *, price: float | None = None) -> dict
         {"close": float(price), "high": float(price), "low": float(price)},
         tick_size=float(session.get("tick_size") or DEFAULT_TICK_SIZE),
         spread_ticks=int(session.get("spread_ticks") or DEFAULT_SPREAD_TICKS),
+        volatile_bar_threshold_ticks=int(
+            session.get("volatile_bar_threshold_ticks") or DEFAULT_VOLATILE_BAR_THRESHOLD_TICKS
+        ),
+        volatile_bar_extra_ticks=int(
+            session.get("volatile_bar_extra_ticks") or DEFAULT_VOLATILE_BAR_EXTRA_TICKS
+        ),
     )
     return synthetic.as_dict()
 

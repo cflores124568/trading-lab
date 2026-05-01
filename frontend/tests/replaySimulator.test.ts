@@ -139,6 +139,34 @@ test("synthetic taker actions fill at ask and bid", () => {
   assert.equal(session.currentQuote?.ask, 102.25);
 });
 
+test("volatile bars can widen the synthetic spread", () => {
+  const candles: Candle[] = [
+    { time: 1 as Candle["time"], open: 100, high: 102.25, low: 99.75, close: 100.75, volume: 1 },
+  ];
+
+  const session = simulateReplaySession({
+    candles,
+    currentIndex: 0,
+    actions: [],
+    initialBalance: 100_000,
+    commission: 0,
+    tickValue: 10,
+    tickSize: 0.25,
+    spreadTicks: 1,
+    volatileBarThresholdTicks: 8,
+    volatileBarExtraTicks: 2,
+    propFirmRules: rules,
+  });
+
+  assert.equal(session.currentQuote?.base_spread_ticks, 1);
+  assert.equal(session.currentQuote?.bar_range_ticks, 10);
+  assert.equal(session.currentQuote?.volatility_spread_ticks, 2);
+  assert.equal(session.currentQuote?.spread_ticks, 3);
+  assert.equal(session.currentQuote?.is_volatile, true);
+  assert.equal(session.currentQuote?.bid, 100.5);
+  assert.equal(session.currentQuote?.ask, 101.25);
+});
+
 test("resting buy fills only on a later bar touch", () => {
   const candles: Candle[] = [
     { time: 1 as Candle["time"], open: 100, high: 100.5, low: 100, close: 100, volume: 1 },
@@ -164,6 +192,75 @@ test("resting buy fills only on a later bar touch", () => {
   assert.equal(session.position?.entry_price, 100);
   assert.equal(session.position?.entry_bar_index, 2);
   assert.equal(session.executionEvents.some((event) => event.type === "resting_filled"), true);
+});
+
+test("penetrate mode ignores an exact touch and waits for a trade-through", () => {
+  const candles: Candle[] = [
+    { time: 1 as Candle["time"], open: 100, high: 100.5, low: 100, close: 100, volume: 1 },
+    { time: 2 as Candle["time"], open: 100.25, high: 100.75, low: 100, close: 100.5, volume: 1 },
+    { time: 3 as Candle["time"], open: 100.5, high: 100.75, low: 99.75, close: 100.25, volume: 1 },
+  ];
+  const actions: ReplayAction[] = [
+    { id: "order-1", barIndex: 0, type: "join_bid", createdAt: 1 },
+  ];
+
+  const session = simulateReplaySession({
+    candles,
+    currentIndex: 2,
+    actions,
+    initialBalance: 100_000,
+    commission: 0,
+    tickValue: 10,
+    tickSize: 0.25,
+    spreadTicks: 1,
+    restingFillMode: "penetrate",
+    propFirmRules: rules,
+  });
+
+  assert.equal(session.position?.entry_bar_index, 2);
+  assert.equal(session.position?.entry_price, 100);
+});
+
+test("touch-plus-1-bar arms on first touch and fills on a later touched bar", () => {
+  const candles: Candle[] = [
+    { time: 1 as Candle["time"], open: 100, high: 100.5, low: 100, close: 100, volume: 1 },
+    { time: 2 as Candle["time"], open: 100.25, high: 100.75, low: 100, close: 100.5, volume: 1 },
+    { time: 3 as Candle["time"], open: 100.5, high: 100.75, low: 100.25, close: 100.5, volume: 1 },
+    { time: 4 as Candle["time"], open: 100.5, high: 100.75, low: 99.75, close: 100.25, volume: 1 },
+  ];
+  const actions: ReplayAction[] = [
+    { id: "order-1", barIndex: 0, type: "join_bid", createdAt: 1 },
+  ];
+
+  const armedSession = simulateReplaySession({
+    candles,
+    currentIndex: 1,
+    actions,
+    initialBalance: 100_000,
+    commission: 0,
+    tickValue: 10,
+    tickSize: 0.25,
+    spreadTicks: 1,
+    restingFillMode: "touch_plus_1_bar",
+    propFirmRules: rules,
+  });
+  assert.equal(armedSession.position, null);
+  assert.equal(armedSession.activeOrder?.first_touch_bar_index, 1);
+
+  const filledSession = simulateReplaySession({
+    candles,
+    currentIndex: 3,
+    actions,
+    initialBalance: 100_000,
+    commission: 0,
+    tickValue: 10,
+    tickSize: 0.25,
+    spreadTicks: 1,
+    restingFillMode: "touch_plus_1_bar",
+    propFirmRules: rules,
+  });
+  assert.equal(filledSession.position?.entry_bar_index, 3);
+  assert.equal(filledSession.position?.entry_price, 100);
 });
 
 test("resting orders can be canceled before a later touch", () => {

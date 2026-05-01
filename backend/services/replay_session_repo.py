@@ -32,6 +32,9 @@ def _ensure_replay_sessions_schema(conn) -> None:
                     tick_value        DOUBLE PRECISION NOT NULL,
                     tick_size         DOUBLE PRECISION NOT NULL DEFAULT 0.25,
                     spread_ticks      INTEGER NOT NULL DEFAULT 1,
+                    volatile_bar_threshold_ticks INTEGER NOT NULL DEFAULT 0,
+                    volatile_bar_extra_ticks     INTEGER NOT NULL DEFAULT 0,
+                    resting_fill_mode TEXT NOT NULL DEFAULT 'touch',
                     current_bar_index INTEGER NOT NULL DEFAULT 0,
                     status            TEXT NOT NULL DEFAULT 'active',
                     actions           JSONB NOT NULL,
@@ -52,6 +55,15 @@ def _ensure_replay_sessions_schema(conn) -> None:
             )
             cur.execute(
                 "ALTER TABLE replay_sessions ADD COLUMN IF NOT EXISTS spread_ticks INTEGER NOT NULL DEFAULT 1"
+            )
+            cur.execute(
+                "ALTER TABLE replay_sessions ADD COLUMN IF NOT EXISTS volatile_bar_threshold_ticks INTEGER NOT NULL DEFAULT 0"
+            )
+            cur.execute(
+                "ALTER TABLE replay_sessions ADD COLUMN IF NOT EXISTS volatile_bar_extra_ticks INTEGER NOT NULL DEFAULT 0"
+            )
+            cur.execute(
+                "ALTER TABLE replay_sessions ADD COLUMN IF NOT EXISTS resting_fill_mode TEXT NOT NULL DEFAULT 'touch'"
             )
             cur.execute("ALTER TABLE replay_sessions ADD COLUMN IF NOT EXISTS active_order JSONB")
             cur.execute(
@@ -74,13 +86,14 @@ def save_replay_session(result: dict) -> None:
         INSERT INTO replay_sessions (
             replay_session_id, name, symbol, interval, start_date, end_date,
             source_backtest, prop_firm_rules, commission, tick_value,
-            tick_size, spread_ticks, current_bar_index, status, actions,
+            tick_size, spread_ticks, volatile_bar_threshold_ticks,
+            volatile_bar_extra_ticks, resting_fill_mode, current_bar_index, status, actions,
             active_order, execution_events, trades, metrics, prop_firm_eval,
             equity_curve, created_at, updated_at
         )
         VALUES (
             %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s,
-            %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
+            %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
             %s::jsonb, %s::jsonb, %s, %s
         )
         ON CONFLICT (replay_session_id) DO UPDATE SET
@@ -95,6 +108,9 @@ def save_replay_session(result: dict) -> None:
             tick_value        = EXCLUDED.tick_value,
             tick_size         = EXCLUDED.tick_size,
             spread_ticks      = EXCLUDED.spread_ticks,
+            volatile_bar_threshold_ticks = EXCLUDED.volatile_bar_threshold_ticks,
+            volatile_bar_extra_ticks     = EXCLUDED.volatile_bar_extra_ticks,
+            resting_fill_mode = EXCLUDED.resting_fill_mode,
             current_bar_index = EXCLUDED.current_bar_index,
             status            = EXCLUDED.status,
             actions           = EXCLUDED.actions,
@@ -125,6 +141,9 @@ def save_replay_session(result: dict) -> None:
                     result["tick_value"],
                     result.get("tick_size", 0.25),
                     result.get("spread_ticks", 1),
+                    result.get("volatile_bar_threshold_ticks", 0),
+                    result.get("volatile_bar_extra_ticks", 0),
+                    result.get("resting_fill_mode", "touch"),
                     result["current_bar_index"],
                     result["status"],
                     json.dumps(result["actions"]),
@@ -180,6 +199,9 @@ def _row_to_result(row) -> dict:
         "tick_value": float(row["tick_value"]),
         "tick_size": float(row.get("tick_size") or 0.25),
         "spread_ticks": int(row.get("spread_ticks") or 1),
+        "volatile_bar_threshold_ticks": int(row.get("volatile_bar_threshold_ticks") or 0),
+        "volatile_bar_extra_ticks": int(row.get("volatile_bar_extra_ticks") or 0),
+        "resting_fill_mode": row.get("resting_fill_mode") or "touch",
         "current_bar_index": int(row["current_bar_index"]),
         "status": row["status"],
         "actions": _maybe_json(row["actions"]),
