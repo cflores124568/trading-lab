@@ -42,6 +42,7 @@ import {
   simulateReplaySession,
   type ReplayAction,
 } from "../../services/replaySimulator";
+import { defaultExecutionConfigForSymbol } from "../../services/executionModel";
 import {
   estimateFirstPayout,
   evaluatePropFirmRules,
@@ -1096,6 +1097,8 @@ export default function BacktestDetail() {
       return null;
     }
 
+    const executionDefaults = defaultExecutionConfigForSymbol(backtest.symbol);
+
     return simulateReplaySession({
       candles: candleList,
       currentIndex: replayIndex(),
@@ -1104,7 +1107,10 @@ export default function BacktestDetail() {
       commission: commission(),
       tickValue: tickValue(),
       tickSize: tickSize(),
-      spreadTicks: 1,
+      spreadTicks: executionDefaults.spreadTicks,
+      volatileBarThresholdTicks: executionDefaults.volatileBarThresholdTicks,
+      volatileBarExtraTicks: executionDefaults.volatileBarExtraTicks,
+      restingFillMode: executionDefaults.restingFillMode,
       propFirmRules: backtest.prop_firm_rules,
     });
   });

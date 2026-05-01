@@ -57,7 +57,11 @@ import {
 } from "../services/chartIndicators";
 import WorkspaceLaunchControl from "../components/workspace/WorkspaceLaunchControl";
 import type { WorkspaceLaunchIntent } from "../components/workspace/workspacePersistence";
-import type { RestingOrder } from "../services/executionModel";
+import {
+  defaultExecutionConfigForSymbol,
+  normalizeRestingFillMode,
+  type RestingOrder,
+} from "../services/executionModel";
 
 const field =
   "app-input w-full text-sm disabled:opacity-40";
@@ -80,6 +84,9 @@ type ReplayLaunchConfig = {
   tickValue: number;
   tickSize: number;
   spreadTicks: number;
+  volatileBarThresholdTicks: number;
+  volatileBarExtraTicks: number;
+  restingFillMode: "touch" | "penetrate" | "touch_plus_1_bar";
   sourceBacktest?: ReplaySessionSourceBacktest | null;
   candleSource: { kind: "db" } | { kind: "backtest"; backtestId: string };
 };
@@ -135,6 +142,12 @@ function defaultSessionName(config: ReplayLaunchConfig): string {
     ? ` vs ${config.sourceBacktest.backtest_id.slice(0, 8)}`
     : "";
   return `${config.symbol.symbol} ${config.interval.label} replay${sourceLabel} (${range})`;
+}
+
+function formatRestingFillMode(mode: string | undefined): string {
+  if (mode === "penetrate") return "penetrate";
+  if (mode === "touch_plus_1_bar") return "touch + 1 bar";
+  return "touch";
 }
 
 function buildSourceBacktest(backtest: BacktestResult): ReplaySessionSourceBacktest {
@@ -328,6 +341,7 @@ export default function ReplayLabPage() {
     });
     const resolvedInterval = findInterval(existing.interval);
     const sourceBacktest = existing.source_backtest;
+    const executionDefaults = defaultExecutionConfigForSymbol(existing.symbol);
 
     hydratedSessionId = existing.replay_session_id;
     batch(() => {
@@ -360,7 +374,12 @@ export default function ReplayLabPage() {
         commission: existing.commission,
         tickValue: existing.tick_value,
         tickSize: existing.tick_size ?? matchedSymbol.tick_size ?? 0.25,
-        spreadTicks: existing.spread_ticks ?? 1,
+        spreadTicks: existing.spread_ticks ?? executionDefaults.spreadTicks,
+        volatileBarThresholdTicks:
+          existing.volatile_bar_threshold_ticks ?? 0,
+        volatileBarExtraTicks:
+          existing.volatile_bar_extra_ticks ?? 0,
+        restingFillMode: normalizeRestingFillMode(existing.resting_fill_mode),
         sourceBacktest,
         candleSource: sourceBacktest?.backtest_id
           ? { kind: "backtest", backtestId: sourceBacktest.backtest_id }
@@ -397,6 +416,7 @@ export default function ReplayLabPage() {
     const commission = source.trades[0]?.commission ?? 5;
     const tickValue =
       tickValueBySymbol[replaySymbol] ?? resolvedSymbol.tick_value ?? 1;
+    const executionDefaults = defaultExecutionConfigForSymbol(replaySymbol);
 
     batch(() => {
       setSessionId(null);
@@ -412,7 +432,10 @@ export default function ReplayLabPage() {
           commission,
           tickValue,
           tickSize: source.run_config?.tick_size ?? resolvedSymbol.tick_size ?? 0.25,
-          spreadTicks: 1,
+          spreadTicks: executionDefaults.spreadTicks,
+          volatileBarThresholdTicks: executionDefaults.volatileBarThresholdTicks,
+          volatileBarExtraTicks: executionDefaults.volatileBarExtraTicks,
+          restingFillMode: executionDefaults.restingFillMode,
           sourceBacktest: sourceMeta,
           candleSource: { kind: "backtest", backtestId: source.backtest_id },
         }),
@@ -437,7 +460,10 @@ export default function ReplayLabPage() {
         commission,
         tickValue,
         tickSize: source.run_config?.tick_size ?? resolvedSymbol.tick_size ?? 0.25,
-        spreadTicks: 1,
+        spreadTicks: executionDefaults.spreadTicks,
+        volatileBarThresholdTicks: executionDefaults.volatileBarThresholdTicks,
+        volatileBarExtraTicks: executionDefaults.volatileBarExtraTicks,
+        restingFillMode: executionDefaults.restingFillMode,
         sourceBacktest: sourceMeta,
         candleSource: { kind: "backtest", backtestId: source.backtest_id },
       });
@@ -502,6 +528,9 @@ export default function ReplayLabPage() {
       tickValue: config.tickValue,
       tickSize: config.tickSize,
       spreadTicks: config.spreadTicks,
+      volatileBarThresholdTicks: config.volatileBarThresholdTicks,
+      volatileBarExtraTicks: config.volatileBarExtraTicks,
+      restingFillMode: config.restingFillMode,
       propFirmRules: config.propFirmRules,
     });
   });
@@ -594,8 +623,9 @@ export default function ReplayLabPage() {
   });
 
   const replayMetrics = createMemo(() => {
+    const config = launchConfig();
     const session = replaySession();
-    if (!session) {
+    if (!session || !config) {
       return [];
     }
 
@@ -612,6 +642,7 @@ export default function ReplayLabPage() {
           ? `${session.activeOrder.side.toUpperCase()} @ $${session.activeOrder.price.toFixed(2)}`
           : "NONE",
       ],
+      ["Resting Fill", formatRestingFillMode(config.restingFillMode)],
     ] as [string, string][];
   });
 
@@ -639,7 +670,8 @@ export default function ReplayLabPage() {
     if (!quote) {
       return "No book";
     }
-    return `$${quote.bid.toFixed(2)} / $${quote.ask.toFixed(2)}`;
+    const volatilityTag = quote.is_volatile ? " volatile" : "";
+    return `$${quote.bid.toFixed(2)} / $${quote.ask.toFixed(2)} (${quote.spread_ticks}-tick${volatilityTag})`;
   });
 
   const activeOrderLabel = createMemo(() => {
@@ -647,7 +679,8 @@ export default function ReplayLabPage() {
     if (!order) {
       return "None";
     }
-    return `${order.type.replace("_", " ").toUpperCase()} ${order.side.toUpperCase()} @ $${order.price.toFixed(2)}`;
+    const armed = order.first_touch_bar_index !== undefined ? " [armed]" : "";
+    return `${order.type.replace("_", " ").toUpperCase()} ${order.side.toUpperCase()} @ $${order.price.toFixed(2)}${armed}`;
   });
 
   const activeSourceBacktest = createMemo(
@@ -809,6 +842,7 @@ export default function ReplayLabPage() {
     setBannerError(null);
     setBannerNotice(null);
     batch(() => {
+      const executionDefaults = defaultExecutionConfigForSymbol(selectedSymbol.symbol);
       setIsReplayActive(false);
       setIsReviewMode(false);
       setSpeed(8);
@@ -824,7 +858,10 @@ export default function ReplayLabPage() {
         commission: 5,
         tickValue: tickValueBySymbol[selectedSymbol.symbol] ?? selectedSymbol.tick_value ?? 1,
         tickSize: selectedSymbol.tick_size || 0.25,
-        spreadTicks: 1,
+        spreadTicks: executionDefaults.spreadTicks,
+        volatileBarThresholdTicks: executionDefaults.volatileBarThresholdTicks,
+        volatileBarExtraTicks: executionDefaults.volatileBarExtraTicks,
+        restingFillMode: executionDefaults.restingFillMode,
         sourceBacktest: null,
         candleSource: { kind: "db" },
       }));
@@ -838,7 +875,10 @@ export default function ReplayLabPage() {
         commission: 5,
         tickValue: tickValueBySymbol[selectedSymbol.symbol] ?? selectedSymbol.tick_value ?? 1,
         tickSize: selectedSymbol.tick_size || 0.25,
-        spreadTicks: 1,
+        spreadTicks: executionDefaults.spreadTicks,
+        volatileBarThresholdTicks: executionDefaults.volatileBarThresholdTicks,
+        volatileBarExtraTicks: executionDefaults.volatileBarExtraTicks,
+        restingFillMode: executionDefaults.restingFillMode,
         sourceBacktest: null,
         candleSource: { kind: "db" },
       });
@@ -864,6 +904,9 @@ export default function ReplayLabPage() {
       tick_value: config.tickValue,
       tick_size: config.tickSize,
       spread_ticks: config.spreadTicks,
+      volatile_bar_threshold_ticks: config.volatileBarThresholdTicks,
+      volatile_bar_extra_ticks: config.volatileBarExtraTicks,
+      resting_fill_mode: config.restingFillMode,
       current_bar_index: replayIndex(),
       status: replayStatus(),
       actions: replayActions().map((action) => ({

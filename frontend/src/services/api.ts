@@ -527,6 +527,9 @@ export interface PaperSessionResult {
   tick_value: number;
   tick_size?: number;
   spread_ticks?: number;
+  volatile_bar_threshold_ticks?: number;
+  volatile_bar_extra_ticks?: number;
+  resting_fill_mode?: "touch" | "penetrate" | "touch_plus_1_bar";
   current_position: Record<string, unknown>;
   active_order: Record<string, unknown>;
   last_quote: Record<string, unknown>;
@@ -646,6 +649,9 @@ export interface ReplaySessionPayload {
   tick_value: number;
   tick_size?: number;
   spread_ticks?: number;
+  volatile_bar_threshold_ticks?: number;
+  volatile_bar_extra_ticks?: number;
+  resting_fill_mode?: "touch" | "penetrate" | "touch_plus_1_bar";
   current_bar_index: number;
   status: string;
   actions: ReplaySessionAction[];

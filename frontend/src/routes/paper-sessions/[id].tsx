@@ -152,13 +152,24 @@ function quoteLabel(quote: Record<string, unknown>): string {
   return `Bid ${bid.toFixed(4)} / Ask ${ask.toFixed(4)}`;
 }
 
+function formatRestingFillMode(mode?: string | null): string {
+  if (mode === "penetrate") {
+    return "penetrate";
+  }
+  if (mode === "touch_plus_1_bar") {
+    return "touch + 1 bar";
+  }
+  return "touch";
+}
+
 function orderLabel(order: Record<string, unknown>): string {
   const side = stringFromUnknown(order.side);
   const price = numberFromUnknown(order.price);
   if (!side || price === null) {
     return "No resting order.";
   }
-  return `${side.toUpperCase()} @ ${price.toFixed(4)}`;
+  const armed = numberFromUnknown(order.first_touch_bar_index) !== null ? " [armed]" : "";
+  return `${side.toUpperCase()} @ ${price.toFixed(4)}${armed}`;
 }
 
 function runnerModeTone(mode?: string | null): string {
@@ -758,7 +769,7 @@ export default function PaperSessionDetailPage() {
                     <div class="app-subpanel px-4 py-4">
                       <p class="app-kicker">Model</p>
                       <p class="mt-2 text-sm font-semibold text-zinc-100">
-                        {formatNumber(numberFromUnknown(entry().tick_size), 4)} tick / {formatNumber(numberFromUnknown(entry().spread_ticks), 0)} spread
+                        {formatNumber(numberFromUnknown(entry().tick_size), 4)} tick / {formatNumber(numberFromUnknown(entry().spread_ticks), 0)} base spread / {formatNumber(numberFromUnknown(lastQuote().spread_ticks) ?? numberFromUnknown(entry().spread_ticks), 0)} live / {formatRestingFillMode(stringFromUnknown(entry().resting_fill_mode))}
                       </p>
                     </div>
                   </div>
