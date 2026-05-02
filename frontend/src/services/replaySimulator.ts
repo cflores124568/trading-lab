@@ -20,6 +20,7 @@ export type ReplayActionType =
   | "hit_bid"
   | "join_bid"
   | "join_ask"
+  | "rest_exit"
   | "cancel"
   | "flatten";
 
@@ -513,7 +514,11 @@ export function simulateReplaySession(args: {
           filled_at: getCandleTime(candle),
           filled_bar_index: i,
         };
-        openPosition(activeOrder.side, activeOrder.price, candle, i);
+        if (activeOrder.intent === "exit") {
+          closePosition(candle, activeOrder.price);
+        } else {
+          openPosition(activeOrder.side, activeOrder.price, candle, i);
+        }
         appendEvent({
           type: "resting_filled",
           action: activeOrder.type,
@@ -620,6 +625,53 @@ export function simulateReplaySession(args: {
           barIndex: i,
           time: getCandleTime(candle),
           quote,
+        });
+        appendEvent({
+          type: "resting_submitted",
+          action: action.type,
+          side: activeOrder.side,
+          price: activeOrder.price,
+          bar_index: i,
+          time: getCandleTime(candle),
+          order_id: activeOrder.id,
+        });
+        continue;
+      }
+
+      if (actionType === "rest_exit") {
+        const activePosition = position;
+        if (!activePosition) {
+          appendEvent({
+            type: "ignored",
+            action: action.type,
+            bar_index: i,
+            time: getCandleTime(candle),
+            reason: "Resting exits need an open position first.",
+          });
+          continue;
+        }
+        if (activeOrder && activeOrder.status === "pending") {
+          appendEvent({
+            type: "ignored",
+            action: action.type,
+            bar_index: i,
+            time: getCandleTime(candle),
+            order_id: activeOrder.id,
+            reason: "Only one active resting order is supported right now.",
+          });
+          continue;
+        }
+
+        const exitPosition = activePosition as OpenReplayPosition;
+        const exitSide = exitPosition.side === "buy" ? "sell" : "buy";
+        activeOrder = createRestingOrder({
+          action: actionType,
+          id: action.id,
+          barIndex: i,
+          time: getCandleTime(candle),
+          quote,
+          intent: "exit",
+          side: exitSide,
         });
         appendEvent({
           type: "resting_submitted",

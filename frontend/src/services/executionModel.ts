@@ -5,6 +5,7 @@ export type ExecutionActionType =
   | "hit_bid"
   | "join_bid"
   | "join_ask"
+  | "rest_exit"
   | "cancel"
   | "flatten";
 
@@ -12,6 +13,7 @@ export type LegacyExecutionActionType = "buy" | "sell" | "exit";
 
 export type ExecutionSide = "buy" | "sell";
 export type RestingFillMode = "touch" | "penetrate" | "touch_plus_1_bar";
+export type RestingOrderIntent = "entry" | "exit";
 
 export type RestingOrderStatus = "pending" | "filled" | "canceled";
 
@@ -29,11 +31,12 @@ export interface SyntheticQuote {
 
 export interface RestingOrder {
   id: string;
+  intent: RestingOrderIntent;
   side: ExecutionSide;
   price: number;
   submitted_at: string;
   submitted_bar_index: number;
-  type: "join_bid" | "join_ask";
+  type: "join_bid" | "join_ask" | "rest_exit";
   status: RestingOrderStatus;
   filled_at?: string;
   filled_bar_index?: number;
@@ -256,16 +259,21 @@ export function actionFillPrice(action: ExecutionActionType, quote: SyntheticQuo
 }
 
 export function createRestingOrder(args: {
-  action: "join_bid" | "join_ask";
+  action: "join_bid" | "join_ask" | "rest_exit";
   id: string;
   barIndex: number;
   time: string;
   quote: SyntheticQuote;
+  intent?: RestingOrderIntent;
+  side?: ExecutionSide;
 }): RestingOrder {
+  const resolvedSide = args.side ?? (args.action === "join_bid" ? "buy" : "sell");
+
   return {
     id: args.id,
-    side: args.action === "join_bid" ? "buy" : "sell",
-    price: args.action === "join_bid" ? args.quote.bid : args.quote.ask,
+    intent: args.intent === "exit" ? "exit" : "entry",
+    side: resolvedSide,
+    price: resolvedSide === "buy" ? args.quote.bid : args.quote.ask,
     submitted_at: args.time,
     submitted_bar_index: args.barIndex,
     type: args.action,

@@ -335,6 +335,56 @@ test("resting orders can be canceled before a later touch", () => {
   assert.equal(session.executionEvents.some((event) => event.type === "resting_canceled"), true);
 });
 
+test("resting exits close the open replay trade as maker fills", () => {
+  const candles: Candle[] = [
+    { time: 1 as Candle["time"], open: 100, high: 100.5, low: 99.75, close: 100, volume: 1 },
+    { time: 2 as Candle["time"], open: 100.5, high: 101.5, low: 100.25, close: 101, volume: 1 },
+    { time: 3 as Candle["time"], open: 101, high: 101.5, low: 100.75, close: 101.25, volume: 1 },
+  ];
+  const actions: ReplayAction[] = [
+    { id: "buy-1", barIndex: 0, type: "lift_ask", createdAt: 1 },
+    { id: "exit-1", barIndex: 1, type: "rest_exit", createdAt: 2 },
+  ];
+
+  const session = simulateReplaySession({
+    candles,
+    currentIndex: 2,
+    actions,
+    initialBalance: 100_000,
+    commission: 0,
+    tickValue: 10,
+    tickSize: 0.25,
+    spreadTicks: 1,
+    propFirmRules: rules,
+  });
+
+  assert.equal(session.position, null);
+  assert.equal(session.activeOrder, null);
+  assert.equal(session.trades.length, 1);
+  assert.equal(session.trades[0].side, "buy");
+  assert.equal(session.trades[0].entry_price, 100.25);
+  assert.equal(session.trades[0].exit_price, 101.25);
+  assert.equal(session.executionEvents.some((event) => event.type === "resting_filled" && event.action === "rest_exit"), true);
+
+  const analytics = buildReplayExecutionAnalytics({
+    candles,
+    trades: session.trades,
+    executionEvents: session.executionEvents,
+    tickSize: 0.25,
+    executionConfig: {
+      tickSize: 0.25,
+      spreadTicks: 1,
+      volatileBarThresholdTicks: 0,
+      volatileBarExtraTicks: 0,
+      restingFillMode: "touch",
+    },
+  });
+
+  assert.equal(analytics.summary.takerEntries, 1);
+  assert.equal(analytics.summary.makerExits, 1);
+  assert.equal(analytics.summary.takerExits, 0);
+});
+
 test("same-bar resting ambiguity chooses no fill", () => {
   const candles: Candle[] = [
     { time: 1 as Candle["time"], open: 100, high: 101, low: 99, close: 100, volume: 1 },

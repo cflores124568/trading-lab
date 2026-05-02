@@ -121,6 +121,19 @@ function normalizeReplayActionLabel(event: ExecutionEvent): string {
   return normalizeExecutionAction(event.action).replace(/_/g, " ");
 }
 
+function replayEventRole(event: ExecutionEvent): FillRole | "n/a" {
+  if (event.type === "flatten") {
+    return "exit";
+  }
+  if (event.type === "resting_filled") {
+    return normalizeExecutionAction(event.action) === "rest_exit" ? "exit" : "entry";
+  }
+  if (event.type === "taker_fill") {
+    return "entry";
+  }
+  return "n/a";
+}
+
 function findReplayReferencePrice(
   event: ExecutionEvent,
   candles: Candle[],
@@ -327,18 +340,11 @@ function buildReplayTapeRows(args: {
       liquidity && event.side && event.price !== undefined
         ? directionalSlippageTicks(event.side, event.price, referencePrice, tickSize)
         : null;
-    const role: FillRole | "n/a" =
-      event.type === "resting_filled" || event.type === "taker_fill" || event.type === "flatten"
-        ? event.type === "flatten"
-          ? "exit"
-          : "entry"
-        : "n/a";
-
     return {
       id: event.id,
       time: event.time,
       category: liquidity ? "fill" : event.type.includes("resting") ? "order" : "system",
-      role,
+      role: replayEventRole(event),
       liquidity: liquidity ?? "n/a",
       action: normalizeReplayActionLabel(event),
       side: event.side ?? null,
@@ -486,6 +492,10 @@ function actionLabelFromEvent(event: PaperEventResult): string {
   if (rawAction) {
     return rawAction.replace(/_/g, " ");
   }
+  const orderType = stringFromUnknown(paperPayloadRecord(payload.order).type);
+  if (orderType) {
+    return orderType.replace(/_/g, " ");
+  }
   return event.event_type.replace(/_/g, " ");
 }
 
@@ -498,6 +508,9 @@ function paperEntryFillFromEvent(event: PaperEventResult, tickSize: number): Pap
 
   if (event.event_type === "order_filled") {
     const order = paperPayloadRecord(payload.order);
+    if (stringFromUnknown(order.intent) === "exit") {
+      return [];
+    }
     const quote = paperPayloadRecord(payload.quote);
     const side = stringFromUnknown(order.side) as ExecutionSide | null;
     const price = numberFromUnknown(order.price);
@@ -558,6 +571,37 @@ function paperExitFillFromEvent(
   const quote = paperPayloadRecord(payload.quote);
   const referencePrice = numberFromUnknown(quote.reference);
   const tradeId = numberFromUnknown(payload.trade_id);
+
+  if (event.event_type === "order_filled") {
+    const order = paperPayloadRecord(payload.order);
+    if (stringFromUnknown(order.intent) !== "exit") {
+      return [];
+    }
+
+    const closedTrade = paperPayloadRecord(payload.closed_trade);
+    const closedTradeId = numberFromUnknown(closedTrade.trade_id);
+    const price = numberFromUnknown(order.price) ?? numberFromUnknown(closedTrade.exit_price);
+    const trade = closedTradeId !== null ? tradesById.get(closedTradeId) ?? null : null;
+    if (price === null || !trade) {
+      return [];
+    }
+    const side = executionSideForExit(trade.side);
+    return [
+      {
+        id: `${event.paper_event_id}:exit`,
+        eventType: event.event_type,
+        role: "exit",
+        liquidity: "maker",
+        side,
+        price,
+        time: stringFromUnknown(order.filled_at) ?? trade.exit_time,
+        barIndex: numberFromUnknown(order.filled_bar_index),
+        referencePrice,
+        slippageTicks: directionalSlippageTicks(side, price, referencePrice, tickSize),
+        tradeId: closedTradeId ?? undefined,
+      },
+    ];
+  }
 
   if (event.event_type === "position_closed") {
     const price = numberFromUnknown(payload.exit_price);
@@ -644,17 +688,20 @@ function buildPaperTapeRows(args: {
       event.event_type === "position_opened" && closedTradeSide && closedTradeExitPrice !== null
         ? `${event.summary} Closed ${closedTradeSide} at ${closedTradeExitPrice.toFixed(2)} on the flip.`
         : event.summary;
+    const orderIntent = stringFromUnknown(paperPayloadRecord(payload.order).intent);
+    const role: FillRole | "n/a" =
+      event.event_type === "position_closed" ||
+      (event.event_type === "order_filled" && orderIntent === "exit")
+        ? "exit"
+        : event.event_type === "position_opened" || event.event_type === "order_filled"
+          ? "entry"
+          : "n/a";
 
     return {
       id: event.paper_event_id,
       time: event.created_at,
       category: liquidity ? "fill" : event.event_type.includes("order") ? "order" : "system",
-      role:
-        event.event_type === "position_opened" || event.event_type === "order_filled"
-          ? "entry"
-          : event.event_type === "position_closed"
-            ? "exit"
-            : "n/a",
+      role,
       liquidity: liquidity ?? "n/a",
       action: actionLabelFromEvent(event),
       side: signedSide ?? null,
