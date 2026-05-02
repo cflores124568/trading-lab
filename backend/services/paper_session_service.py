@@ -325,6 +325,7 @@ def advance_paper_session_bar(
     quote = _quote_for_bar(session, bar).as_dict()
     order = dict(session.get("active_order") or {})
     filled_order = None
+    closed_trade = None
 
     if order:
         should_fill, updated_order = resting_order_fill_update(
@@ -338,7 +339,14 @@ def advance_paper_session_bar(
             updated_order["status"] = "filled"
             updated_order["filled_at"] = timestamp
             updated_order["filled_bar_index"] = (session.get("runner_state") or {}).get("bars_processed")
-            session["current_position"] = _open_position(updated_order["side"], float(updated_order["price"]), timestamp)
+            if _resting_order_intent(updated_order) == "exit":
+                position = _require_open_position(session)
+                closed_trade = _close_position(session, position, float(updated_order["price"]), timestamp)
+                session["trade_log"] = [*(session.get("trade_log") or []), closed_trade]
+                session["current_position"] = {}
+                session["equity_curve"] = [*session.get("equity_curve", []), _realized_equity(session)]
+            else:
+                session["current_position"] = _open_position(updated_order["side"], float(updated_order["price"]), timestamp)
             session["active_order"] = {}
             filled_order = updated_order
         else:
@@ -365,9 +373,9 @@ def advance_paper_session_bar(
                 candidate_id=session["candidate_id"],
                 event_type="order_filled",
                 actor=actor,
-                summary=f"Resting {filled_order['side']} filled at {float(filled_order['price']):.2f}.",
+                summary=_resting_fill_summary(filled_order, closed_trade),
                 created_at=now,
-                payload={"order": filled_order, "quote": quote},
+                payload={"order": filled_order, "quote": quote, "closed_trade": closed_trade},
             )
         )
 
@@ -450,6 +458,33 @@ def execute_paper_session_action(
         }
         audit_summary = summary
         event_type = "order_submitted"
+    elif action_key == "rest_exit":
+        if session["status"] not in POSITION_ACTION_STATUSES:
+            raise ValueError("Paper session must be ready, running, or paused before you can post a resting exit.")
+        position = _require_open_position(session)
+        if session.get("active_order"):
+            raise ValueError("Cancel the current resting order before posting another one.")
+
+        order_side = "sell" if position.get("side") == "buy" else "buy"
+        order_price = quote["ask"] if order_side == "sell" else quote["bid"]
+        session["active_order"] = make_resting_order(
+            order_id=str(uuid.uuid4()),
+            action=action_key,
+            price=order_price,
+            submitted_at=timestamp,
+            submitted_bar_index=(session.get("runner_state") or {}).get("bars_processed"),
+            intent="exit",
+            side=order_side,
+        )
+        summary = note or f"Posted resting exit for the {position['side']} trade at {order_price:.2f}."
+        payload = {
+            "action": action_key,
+            "quote": quote,
+            "order": session["active_order"],
+            "position_side": position["side"],
+        }
+        audit_summary = summary
+        event_type = "order_submitted"
     elif action_key == "cancel":
         order = dict(session.get("active_order") or {})
         if not order:
@@ -457,7 +492,7 @@ def execute_paper_session_action(
         order["status"] = "canceled"
         order["canceled_at"] = timestamp
         session["active_order"] = {}
-        summary = note or f"Canceled resting {order.get('side')} order at {float(order.get('price') or 0):.2f}."
+        summary = note or _resting_cancel_summary(order)
         payload = {"action": action_key, "order": order, "quote": quote}
         audit_summary = summary
         event_type = "order_canceled"
@@ -576,6 +611,32 @@ def _default_session_name(candidate: dict) -> str:
     return f"{candidate['symbol']} {candidate['interval']} paper session"
 
 
+def _resting_order_intent(order: dict | None) -> str:
+    candidate = str((order or {}).get("intent") or "").strip().lower()
+    if candidate == "exit":
+        return "exit"
+    if str((order or {}).get("type") or "").strip().lower() == "rest_exit":
+        return "exit"
+    return "entry"
+
+
+def _resting_fill_summary(order: dict, closed_trade: dict | None) -> str:
+    price = float(order.get("price") or 0.0)
+    if _resting_order_intent(order) == "exit" and closed_trade:
+        return (
+            f"Resting exit filled at {price:.2f} and closed the "
+            f"{closed_trade['side']} trade for {float(closed_trade['pnl']):+.2f}."
+        )
+    return f"Resting {order['side']} entry filled at {price:.2f}."
+
+
+def _resting_cancel_summary(order: dict) -> str:
+    price = float(order.get("price") or 0.0)
+    if _resting_order_intent(order) == "exit":
+        return f"Canceled resting exit {order.get('side')} order at {price:.2f}."
+    return f"Canceled resting {order.get('side')} entry order at {price:.2f}."
+
+
 def _paper_bot_to_session_status(paper_bot_status: str | None) -> str:
     if paper_bot_status == "ready":
         return PaperSessionStatus.READY.value
@@ -660,6 +721,8 @@ def _ensure_session_defaults(session: dict) -> dict:
     session["resting_fill_mode"] = normalize_resting_fill_mode(session.get("resting_fill_mode"))
     session["current_position"] = dict(session.get("current_position") or {})
     session["active_order"] = dict(session.get("active_order") or {})
+    if session["active_order"]:
+        session["active_order"]["intent"] = _resting_order_intent(session["active_order"])
     session["last_quote"] = dict(session.get("last_quote") or {})
     session["trade_log"] = list(session.get("trade_log") or [])
     session["equity_curve"] = [

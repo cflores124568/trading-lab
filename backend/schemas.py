@@ -218,6 +218,7 @@ class PaperSessionTradeAction(str, Enum):
     HIT_BID = "hit_bid"
     JOIN_BID = "join_bid"
     JOIN_ASK = "join_ask"
+    REST_EXIT = "rest_exit"
     CANCEL = "cancel"
     FLATTEN = "flatten"
 

@@ -245,11 +245,17 @@ def make_resting_order(
     price: float,
     submitted_at: str,
     submitted_bar_index: int | None = None,
+    intent: str = "entry",
+    side: str | None = None,
 ) -> dict[str, Any]:
-    side = "buy" if action == "join_bid" else "sell"
+    resolved_side = side
+    if resolved_side not in {"buy", "sell"}:
+        resolved_side = "buy" if action == "join_bid" else "sell"
+
     return {
         "id": order_id,
-        "side": side,
+        "intent": "exit" if intent == "exit" else "entry",
+        "side": resolved_side,
         "price": round(float(price), 10),
         "submitted_at": submitted_at,
         "submitted_bar_index": submitted_bar_index,
