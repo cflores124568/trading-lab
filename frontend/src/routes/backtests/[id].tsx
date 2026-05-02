@@ -1224,7 +1224,9 @@ export default function BacktestDetail() {
     if (!order) {
       return "None";
     }
-    return `${order.type.replace("_", " ").toUpperCase()} ${order.side.toUpperCase()} @ $${order.price.toFixed(2)}`;
+    const intent = order.intent === "exit" ? "EXIT" : "ENTRY";
+    const armed = order.first_touch_bar_index !== undefined ? " [armed]" : "";
+    return `${intent} ${order.side.toUpperCase()} @ $${order.price.toFixed(2)}${armed}`;
   });
 
   const replayMetrics = createMemo(() => {
@@ -1666,6 +1668,7 @@ export default function BacktestDetail() {
                             canHitBid
                             canJoinBid={!replaySession()?.position && !replaySession()?.activeOrder}
                             canJoinAsk={!replaySession()?.position && !replaySession()?.activeOrder}
+                            canRestExit={!!replaySession()?.position && !replaySession()?.activeOrder}
                             canCancelOrder={!!replaySession()?.activeOrder}
                             canFlatten={!!replaySession()?.position || !!replaySession()?.activeOrder}
                             onPlayPause={() => {
@@ -1698,6 +1701,7 @@ export default function BacktestDetail() {
                             onHitBid={() => recordReplayAction("hit_bid")}
                             onJoinBid={() => recordReplayAction("join_bid")}
                             onJoinAsk={() => recordReplayAction("join_ask")}
+                            onRestExit={() => recordReplayAction("rest_exit")}
                             onCancel={() => recordReplayAction("cancel")}
                             onFlatten={() => recordReplayAction("flatten")}
                           />

@@ -580,7 +580,18 @@ export default function ReplayLabPage() {
       findJumpTarget(replayIndex(), replayTradeEntryIndices(), "next") !== null,
   );
   const canPlaceEntries = createMemo(
-    () => !isReviewMode() && replayIndex() < totalBars() - 1 && !replaySession()?.activeOrder,
+    () =>
+      !isReviewMode() &&
+      replayIndex() < totalBars() - 1 &&
+      !replaySession()?.position &&
+      !replaySession()?.activeOrder,
+  );
+  const canRestExit = createMemo(
+    () =>
+      !isReviewMode() &&
+      replayIndex() < totalBars() - 1 &&
+      !!replaySession()?.position &&
+      !replaySession()?.activeOrder,
   );
   const canExitPosition = createMemo(
     () => !!replaySession()?.position && !isReviewMode(),
@@ -647,7 +658,7 @@ export default function ReplayLabPage() {
       [
         "Order",
         session.activeOrder
-          ? `${session.activeOrder.side.toUpperCase()} @ $${session.activeOrder.price.toFixed(2)}`
+          ? `${session.activeOrder.intent === "exit" ? "EXIT" : "ENTRY"} ${session.activeOrder.side.toUpperCase()} @ $${session.activeOrder.price.toFixed(2)}`
           : "NONE",
       ],
       ["Resting Fill", formatRestingFillMode(config.restingFillMode)],
@@ -711,7 +722,8 @@ export default function ReplayLabPage() {
       return "None";
     }
     const armed = order.first_touch_bar_index !== undefined ? " [armed]" : "";
-    return `${order.type.replace("_", " ").toUpperCase()} ${order.side.toUpperCase()} @ $${order.price.toFixed(2)}${armed}`;
+    const intent = order.intent === "exit" ? "EXIT" : "ENTRY";
+    return `${intent} ${order.side.toUpperCase()} @ $${order.price.toFixed(2)}${armed}`;
   });
 
   const activeSourceBacktest = createMemo(
@@ -825,7 +837,7 @@ export default function ReplayLabPage() {
     }
 
     if (
-      ["lift_ask", "hit_bid", "join_bid", "join_ask", "buy", "sell"].includes(type) &&
+      ["lift_ask", "hit_bid", "join_bid", "join_ask", "rest_exit", "buy", "sell"].includes(type) &&
       replayIndex() >= totalBars() - 1
     ) {
       return;
@@ -1422,6 +1434,7 @@ export default function ReplayLabPage() {
                           canHitBid={!isReviewMode()}
                           canJoinBid={canPlaceEntries()}
                           canJoinAsk={canPlaceEntries()}
+                          canRestExit={canRestExit()}
                           canCancelOrder={canCancelOrder()}
                           canFlatten={canExitPosition() || canCancelOrder()}
                           onPlayPause={() => {
@@ -1465,6 +1478,7 @@ export default function ReplayLabPage() {
                           onHitBid={() => recordReplayAction("hit_bid")}
                           onJoinBid={() => recordReplayAction("join_bid")}
                           onJoinAsk={() => recordReplayAction("join_ask")}
+                          onRestExit={() => recordReplayAction("rest_exit")}
                           onCancel={() => recordReplayAction("cancel")}
                           onFlatten={() => recordReplayAction("flatten")}
                         />

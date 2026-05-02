@@ -37,6 +37,7 @@ interface Props {
   canHitBid: boolean;
   canJoinBid: boolean;
   canJoinAsk: boolean;
+  canRestExit: boolean;
   canCancelOrder: boolean;
   canFlatten: boolean;
   onPlayPause: () => void;
@@ -51,6 +52,7 @@ interface Props {
   onHitBid: () => void;
   onJoinBid: () => void;
   onJoinAsk: () => void;
+  onRestExit: () => void;
   onCancel: () => void;
   onFlatten: () => void;
 }
@@ -306,6 +308,14 @@ export default function ReplayControls(props: Props) {
             >
               <CircleDot size={16} />
               Join Ask
+            </button>
+            <button
+              onClick={props.onRestExit}
+              disabled={!props.canRestExit}
+              class={ghostButton(props.canRestExit)}
+            >
+              <CircleDot size={16} />
+              Rest Exit
             </button>
             <button
               onClick={props.onCancel}

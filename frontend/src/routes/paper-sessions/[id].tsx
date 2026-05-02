@@ -178,7 +178,8 @@ function orderLabel(order: Record<string, unknown>): string {
     return "No resting order.";
   }
   const armed = numberFromUnknown(order.first_touch_bar_index) !== null ? " [armed]" : "";
-  return `${side.toUpperCase()} @ ${price.toFixed(4)}${armed}`;
+  const intent = stringFromUnknown(order.intent) === "exit" ? "EXIT" : "ENTRY";
+  return `${intent} ${side.toUpperCase()} @ ${price.toFixed(4)}${armed}`;
 }
 
 function runnerModeTone(mode?: string | null): string {
@@ -812,7 +813,7 @@ export default function PaperSessionDetailPage() {
                           ? `${executionAnalytics()!.summary.makerExits} maker / ${executionAnalytics()!.summary.takerExits} taker`
                           : "0 / 0"}
                       </p>
-                      <p class="mt-1 text-xs text-zinc-500">Mostly taker for now until resting exits land.</p>
+                      <p class="mt-1 text-xs text-zinc-500">Resting exits now count as maker closes too.</p>
                     </div>
                     <div class="app-subpanel px-4 py-4">
                       <p class="app-kicker">Avg Entry Slip</p>
@@ -900,6 +901,14 @@ export default function PaperSessionDetailPage() {
                       class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
                     >
                       Join Ask
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyAction() === "execute" || !hasOpenPosition() || hasActiveOrder()}
+                      onClick={() => handleExecution("rest_exit")}
+                      class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                    >
+                      Rest Exit
                     </button>
                     <button
                       type="button"
