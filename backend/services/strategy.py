@@ -80,7 +80,7 @@ def _rsi_signals(df: pd.DataFrame, params: dict) -> pd.DataFrame:
     Buy  when RSI crosses BELOW oversold threshold (reversal long).
     Sell when RSI crosses ABOVE overbought threshold (reversal short).
     """
-    period      = params.get("period", 14)
+    period      = params.get("rsi_period", params.get("period", 14))
     overbought  = params.get("overbought", 70)
     oversold    = params.get("oversold", 30)
     rsi_col     = f"rsi_{period}"
