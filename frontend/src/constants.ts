@@ -117,22 +117,33 @@ export const STRATEGIES = [
 
 export type StrategyValue = typeof STRATEGIES[number]["value"];
 
+const SHARED_RESEARCH_PARAMS = [
+  { key: "trend_ema_period", label: "Trend EMA (0 off)", default: 0 },
+  { key: "min_atr_percent", label: "Min ATR % (0 off)", default: 0 },
+  { key: "vwap_bias", label: "VWAP bias (0/1)", default: 0 },
+  { key: "cooldown_bars", label: "Cooldown bars", default: 0 },
+] as const;
+
 export const STRATEGY_PARAMS: Record<StrategyValue, { key: string; label: string; default: number }[]> = {
   ma_crossover:    [
     { key: "fast_period", label: "Fast period", default: 9  },
     { key: "slow_period", label: "Slow period", default: 21 },
+    ...SHARED_RESEARCH_PARAMS,
   ],
   ema_crossover:   [
     { key: "fast_period", label: "Fast period", default: 9  },
     { key: "slow_period", label: "Slow period", default: 21 },
+    ...SHARED_RESEARCH_PARAMS,
   ],
   rsi_overbought:  [
     { key: "rsi_period", label: "RSI period", default: 14 },
     { key: "overbought", label: "Overbought", default: 70 },
     { key: "oversold", label: "Oversold", default: 30 },
+    ...SHARED_RESEARCH_PARAMS,
   ],
   bollinger_bands: [
     { key: "bb_period", label: "BB period", default: 20 },
     { key: "std_dev", label: "Std deviation", default: 2  },
+    ...SHARED_RESEARCH_PARAMS,
   ],
 };
