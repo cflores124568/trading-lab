@@ -466,8 +466,16 @@ def _candidate_values(key: str, base_value: Any) -> list[Any]:
 
     if key in {"fast_period", "slow_period", "rsi_period", "bb_period", "atr_period"}:
         return _unique_numbers([max(2, round(value - 2)), max(2, round(value)), max(2, round(value + 2))], integer=True)
+    if key == "trend_ema_period":
+        return _unique_numbers([max(0, round(value - 10)), max(0, round(value)), max(0, round(value + 10))], integer=True)
+    if key == "cooldown_bars":
+        return _unique_numbers([max(0, round(value - 1)), max(0, round(value)), max(0, round(value + 1))], integer=True)
     if key == "std_dev":
         return _unique_numbers([max(0.5, value - 0.5), value, min(5.0, value + 0.5)], integer=False)
+    if key == "min_atr_percent":
+        return _unique_numbers([max(0.0, value - 0.1), value, value + 0.1], integer=False)
+    if key == "vwap_bias":
+        return _unique_numbers([0, 1], integer=True)
     if key == "overbought":
         return _unique_numbers([max(55, value - 5), value, min(95, value + 5)], integer=True)
     if key == "oversold":
@@ -480,12 +488,24 @@ def _candidate_is_valid(strategy_type: str, params: dict[str, Any]) -> bool:
     if strategy_type in {"ma_crossover", "ema_crossover"}:
         fast = int(params.get("fast_period", 0))
         slow = int(params.get("slow_period", 0))
-        return fast >= 2 and slow > fast
+        if not (fast >= 2 and slow > fast):
+            return False
 
     if strategy_type == "rsi_overbought":
         overbought = float(params.get("overbought", 70))
         oversold = float(params.get("oversold", 30))
-        return oversold < overbought
+        if oversold >= overbought:
+            return False
+
+    trend_ema_period = int(float(params.get("trend_ema_period", 0) or 0))
+    cooldown_bars = int(float(params.get("cooldown_bars", 0) or 0))
+    min_atr_percent = float(params.get("min_atr_percent", 0.0) or 0.0)
+    vwap_bias = int(float(params.get("vwap_bias", 0) or 0))
+
+    if trend_ema_period < 0 or cooldown_bars < 0 or min_atr_percent < 0:
+        return False
+    if vwap_bias not in {0, 1}:
+        return False
 
     return True
 

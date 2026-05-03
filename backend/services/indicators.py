@@ -145,6 +145,21 @@ def add_ema(df: pd.DataFrame, fast: int=9, slow: int=21) -> pd.DataFrame:
     df[f"ema_{slow}"] = _ema(closes, slow)
     return df
 
+
+def add_ema_period(df: pd.DataFrame, period: int) -> pd.DataFrame:
+    if "close" not in df.columns:
+        raise KeyError("DataFrame must contain a 'close' column")
+    if period <= 0:
+        return df
+
+    column = f"ema_{period}"
+    if column in df.columns:
+        return df
+
+    closes = df["close"].to_numpy(dtype=np.float64)
+    df[column] = _ema(closes, period)
+    return df
+
 #Additional indicators
 def add_rsi(df: pd.DataFrame, period: int=14) -> pd.DataFrame:
     if "close" not in df.columns:
@@ -201,6 +216,7 @@ def add_all_indicators(df: pd.DataFrame, params: dict, strategy_type=None) -> pd
     bb_period: int = params.get("bb_period", 20)
     bb_std: float = params.get("std_dev", 2.0)
     atr_period: int = params.get("atr_period", 14)
+    trend_ema_period: int = int(params.get("trend_ema_period", 0) or 0)
 
     # Compute only what the strategy needs, with VWAP and ATR always set
     #Regardless of naked /cluttered chart, every trader can benefit from these 2 indicators 
@@ -215,6 +231,9 @@ def add_all_indicators(df: pd.DataFrame, params: dict, strategy_type=None) -> pd
 
     if strategy_type in (None, StrategyType.BOLLINGER_BANDS):
         df = add_bollinger_bands(df, period=bb_period, std_dev=bb_std)
+
+    if trend_ema_period > 0:
+        df = add_ema_period(df, trend_ema_period)
 
     df = add_atr(df, period=atr_period)
     df = df.groupby(df.index.date, group_keys=False).apply(add_vwap)
