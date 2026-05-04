@@ -186,6 +186,7 @@ def create_paper_session_for_candidate(
         "resting_fill_mode": DEFAULT_RESTING_FILL_MODE,
         "current_position": {},
         "active_order": {},
+        "active_orders": [],
         "last_quote": {},
         "trade_log": [],
         "equity_curve": [float((candidate.get("prop_firm_rules") or {}).get("account_size") or 100_000)],
@@ -324,34 +325,62 @@ def advance_paper_session_bar(
     session = _ensure_session_defaults(_require_paper_session(paper_session_id))
     timestamp = _normalize_timestamp(str(bar["time"]))
     quote = _quote_for_bar(session, bar).as_dict()
-    order = dict(session.get("active_order") or {})
+    orders = _session_active_orders(session)
     filled_order = None
     closed_trade = None
+    canceled_orders: list[dict] = []
 
-    if order:
-        should_fill, updated_order = resting_order_fill_update(
-            order,
-            bar,
-            fill_mode=str(session.get("resting_fill_mode") or DEFAULT_RESTING_FILL_MODE),
-            bar_index=(session.get("runner_state") or {}).get("bars_processed"),
-            timestamp=timestamp,
-        )
-        if should_fill:
-            updated_order["status"] = "filled"
-            updated_order["filled_at"] = timestamp
-            updated_order["filled_bar_index"] = (session.get("runner_state") or {}).get("bars_processed")
-            if _resting_order_intent(updated_order) == "exit":
+    if orders:
+        fill_candidates: list[dict] = []
+        updated_orders: list[dict] = []
+        current_bar_index = (session.get("runner_state") or {}).get("bars_processed")
+
+        for order in orders:
+            should_fill, updated_order = resting_order_fill_update(
+                order,
+                bar,
+                fill_mode=str(session.get("resting_fill_mode") or DEFAULT_RESTING_FILL_MODE),
+                bar_index=current_bar_index,
+                timestamp=timestamp,
+            )
+            updated_orders.append(updated_order)
+            if should_fill:
+                fill_candidates.append(updated_order)
+
+        if fill_candidates:
+            filled_order = _pick_fill_candidate(fill_candidates)
+            filled_order["status"] = "filled"
+            filled_order["filled_at"] = timestamp
+            filled_order["filled_bar_index"] = current_bar_index
+
+            if _resting_order_intent(filled_order) == "exit":
                 position = _require_open_position(session)
-                closed_trade = _close_position(session, position, float(updated_order["price"]), timestamp)
+                closed_trade = _close_position(session, position, float(filled_order["price"]), timestamp)
                 session["trade_log"] = [*(session.get("trade_log") or []), closed_trade]
                 session["current_position"] = {}
                 session["equity_curve"] = [*session.get("equity_curve", []), _realized_equity(session)]
             else:
-                session["current_position"] = _open_position(updated_order["side"], float(updated_order["price"]), timestamp)
-            session["active_order"] = {}
-            filled_order = updated_order
+                session["current_position"] = _open_position(filled_order["side"], float(filled_order["price"]), timestamp)
+
+            next_orders: list[dict] = []
+            for order in updated_orders:
+                if str(order.get("id")) == str(filled_order.get("id")):
+                    continue
+                if _same_bracket_group(order, filled_order):
+                    canceled_orders.append(
+                        _cancel_order(
+                            order,
+                            timestamp=timestamp,
+                            bar_index=current_bar_index,
+                            reason="oco_sibling_filled",
+                        )
+                    )
+                    continue
+                next_orders.append(order)
+
+            _set_session_active_orders(session, next_orders)
         else:
-            session["active_order"] = updated_order
+            _set_session_active_orders(session, updated_orders)
 
     if _has_open_position(session):
         position = _require_open_position(session)
@@ -374,9 +403,32 @@ def advance_paper_session_bar(
                 candidate_id=session["candidate_id"],
                 event_type="order_filled",
                 actor=actor,
-                summary=_resting_fill_summary(filled_order, closed_trade),
+                summary=_resting_fill_summary(filled_order, closed_trade, canceled_orders),
                 created_at=now,
-                payload={"order": filled_order, "quote": quote, "closed_trade": closed_trade},
+                payload={
+                    "order": filled_order,
+                    "quote": quote,
+                    "closed_trade": closed_trade,
+                    "canceled_sibling_orders": canceled_orders,
+                },
+            )
+        )
+    for canceled_order in canceled_orders:
+        _append_paper_event_any(
+            _make_paper_event(
+                paper_session_id=paper_session_id,
+                candidate_id=session["candidate_id"],
+                event_type="order_canceled",
+                actor=actor,
+                summary=_resting_cancel_summary(canceled_order, reason="oco_sibling_filled"),
+                created_at=now,
+                payload={
+                    "action": "cancel",
+                    "order": canceled_order,
+                    "quote": quote,
+                    "reason": "oco_sibling_filled",
+                    "filled_order_id": filled_order.get("id") if filled_order else None,
+                },
             )
         )
 
@@ -391,6 +443,8 @@ def execute_paper_session_action(
     *,
     action: str,
     price: float | None = None,
+    stop_price: float | None = None,
+    target_price: float | None = None,
     filled_at: str | None = None,
     actor: str = "local-user",
     note: str | None = None,
@@ -402,6 +456,7 @@ def execute_paper_session_action(
     timestamp = _resolve_execution_timestamp(session, filled_at)
     quote = _resolve_session_quote(session, price=price)
     execution_price = _price_for_action(action_key, quote, price)
+    active_orders = _session_active_orders(session)
 
     if action_key in {"lift_ask", "hit_bid"}:
         if session["status"] not in OPEN_ACTION_STATUSES:
@@ -417,7 +472,7 @@ def execute_paper_session_action(
             closed_trade = _close_position(session, position, execution_price, timestamp)
             session["trade_log"] = [*(session.get("trade_log") or []), closed_trade]
 
-        session["active_order"] = {}
+        _set_session_active_orders(session, [])
         session["current_position"] = _open_position(side, execution_price, timestamp)
         if previous_status == PaperSessionStatus.READY.value:
             session["status"] = PaperSessionStatus.RUNNING.value
@@ -440,22 +495,23 @@ def execute_paper_session_action(
             raise ValueError("Paper session must be ready or running before you can post an order.")
         if _has_open_position(session):
             raise ValueError("Resting entry orders are only supported while flat in Phase 1.")
-        if session.get("active_order"):
+        if active_orders:
             raise ValueError("Cancel the current resting order before posting another one.")
 
         order_price = quote["bid"] if action_key == "join_bid" else quote["ask"]
-        session["active_order"] = make_resting_order(
+        order = make_resting_order(
             order_id=str(uuid.uuid4()),
             action=action_key,
             price=order_price,
             submitted_at=timestamp,
             submitted_bar_index=(session.get("runner_state") or {}).get("bars_processed"),
         )
+        _set_session_active_orders(session, [order])
         summary = note or f"Posted {action_key.replace('_', ' ')} at {order_price:.2f}."
         payload = {
             "action": action_key,
             "quote": quote,
-            "order": session["active_order"],
+            "order": order,
         }
         audit_summary = summary
         event_type = "order_submitted"
@@ -463,12 +519,12 @@ def execute_paper_session_action(
         if session["status"] not in POSITION_ACTION_STATUSES:
             raise ValueError("Paper session must be ready, running, or paused before you can post a resting exit.")
         position = _require_open_position(session)
-        if session.get("active_order"):
+        if active_orders:
             raise ValueError("Cancel the current resting order before posting another one.")
 
         order_side = "sell" if position.get("side") == "buy" else "buy"
         order_price = quote["ask"] if order_side == "sell" else quote["bid"]
-        session["active_order"] = make_resting_order(
+        order = make_resting_order(
             order_id=str(uuid.uuid4()),
             action=action_key,
             price=order_price,
@@ -477,30 +533,76 @@ def execute_paper_session_action(
             intent="exit",
             side=order_side,
         )
+        _set_session_active_orders(session, [order])
         summary = note or f"Posted resting exit for the {position['side']} trade at {order_price:.2f}."
         payload = {
             "action": action_key,
             "quote": quote,
-            "order": session["active_order"],
+            "order": order,
             "position_side": position["side"],
         }
         audit_summary = summary
         event_type = "order_submitted"
+    elif action_key == "attach_bracket":
+        if session["status"] not in POSITION_ACTION_STATUSES:
+            raise ValueError("Paper session must be ready, running, or paused before you can attach a bracket.")
+        position = _require_open_position(session)
+        if active_orders:
+            raise ValueError("Cancel the current resting order before attaching a bracket.")
+        if stop_price is None or target_price is None:
+            raise ValueError("Bracket exits need both `stop_price` and `target_price`.")
+
+        stop_value = round(float(stop_price), 4)
+        target_value = round(float(target_price), 4)
+        _validate_bracket_prices(position, quote, stop_value, target_value)
+        bracket_orders = _make_bracket_exit_orders(
+            position=position,
+            stop_price=stop_value,
+            target_price=target_value,
+            submitted_at=timestamp,
+            submitted_bar_index=(session.get("runner_state") or {}).get("bars_processed"),
+        )
+        _set_session_active_orders(session, bracket_orders)
+        summary = note or _bracket_summary(position["side"], stop_value, target_value)
+        payload = {
+            "action": action_key,
+            "quote": quote,
+            "orders": bracket_orders,
+            "position_side": position["side"],
+            "stop_price": stop_value,
+            "target_price": target_value,
+            "bracket_id": bracket_orders[0].get("bracket_id"),
+        }
+        audit_summary = summary
+        event_type = "order_submitted"
     elif action_key == "cancel":
-        order = dict(session.get("active_order") or {})
-        if not order:
+        if not active_orders:
             raise ValueError("There isn't a resting order to cancel.")
-        order["status"] = "canceled"
-        order["canceled_at"] = timestamp
-        session["active_order"] = {}
-        summary = note or _resting_cancel_summary(order)
-        payload = {"action": action_key, "order": order, "quote": quote}
+        canceled = [
+            _cancel_order(
+                order,
+                timestamp=timestamp,
+                bar_index=(session.get("runner_state") or {}).get("bars_processed"),
+                reason="user_cancel",
+            )
+            for order in active_orders
+        ]
+        _set_session_active_orders(session, [])
+        summary = note or _cancel_many_summary(canceled)
+        payload = {
+            "action": action_key,
+            "order": canceled[0],
+            "orders": canceled,
+            "quote": quote,
+        }
         audit_summary = summary
         event_type = "order_canceled"
     elif action_key == "replace":
-        order = dict(session.get("active_order") or {})
-        if not order:
+        if not active_orders:
             raise ValueError("There isn't a resting order to replace.")
+        if len(active_orders) != 1:
+            raise ValueError("Replace only supports one live order right now. Cancel the bracket and post a new one.")
+        order = dict(active_orders[0])
 
         replacement_price = execution_price
         if replacement_price is None:
@@ -513,7 +615,7 @@ def execute_paper_session_action(
             submitted_at=timestamp,
             submitted_bar_index=(session.get("runner_state") or {}).get("bars_processed"),
         )
-        session["active_order"] = child_order
+        _set_session_active_orders(session, [child_order])
         summary = note or _resting_replace_summary(replaced_order, child_order)
         payload = {
             "action": action_key,
@@ -544,8 +646,16 @@ def execute_paper_session_action(
     elif action_key == "flatten":
         if session["status"] not in POSITION_ACTION_STATUSES:
             raise ValueError("Paper session must be ready, running, or paused before you can flatten a position.")
-        order = dict(session.get("active_order") or {})
-        session["active_order"] = {}
+        canceled_orders = [
+            _cancel_order(
+                order,
+                timestamp=timestamp,
+                bar_index=(session.get("runner_state") or {}).get("bars_processed"),
+                reason="flatten",
+            )
+            for order in active_orders
+        ]
+        _set_session_active_orders(session, [])
         if _has_open_position(session):
             position = _require_open_position(session)
             flatten_price = quote["bid"] if position.get("side") == "buy" else quote["ask"]
@@ -562,13 +672,19 @@ def execute_paper_session_action(
                 "exit_price": flatten_price,
                 "pnl": trade["pnl"],
                 "quote": quote,
-                "canceled_order": order or None,
+                "canceled_order": canceled_orders[0] if canceled_orders else None,
+                "canceled_orders": canceled_orders,
                 "realized_equity": _realized_equity(session),
             }
             event_type = "position_closed"
-        elif order:
+        elif canceled_orders:
             summary = note or "Flatten canceled the resting order; no position was open."
-            payload = {"action": action_key, "quote": quote, "canceled_order": order}
+            payload = {
+                "action": action_key,
+                "quote": quote,
+                "canceled_order": canceled_orders[0],
+                "canceled_orders": canceled_orders,
+            }
             event_type = "order_canceled"
         else:
             raise ValueError("There isn't an open position or resting order to flatten.")
@@ -638,6 +754,29 @@ def _default_session_name(candidate: dict) -> str:
     return f"{candidate['symbol']} {candidate['interval']} paper session"
 
 
+def _session_active_orders(session: dict) -> list[dict]:
+    orders = session.get("active_orders")
+    if isinstance(orders, list) and orders:
+        return [dict(order) for order in orders if isinstance(order, dict) and order]
+
+    order = dict(session.get("active_order") or {})
+    return [order] if order else []
+
+
+def _set_session_active_orders(session: dict, orders: list[dict]) -> dict:
+    normalized = []
+    for order in orders:
+        if not order:
+            continue
+        next_order = dict(order)
+        next_order["intent"] = _resting_order_intent(next_order)
+        normalized.append(next_order)
+
+    session["active_orders"] = normalized
+    session["active_order"] = dict(normalized[0]) if normalized else {}
+    return session
+
+
 def _resting_order_intent(order: dict | None) -> str:
     candidate = str((order or {}).get("intent") or "").strip().lower()
     if candidate == "exit":
@@ -647,21 +786,168 @@ def _resting_order_intent(order: dict | None) -> str:
     return "entry"
 
 
-def _resting_fill_summary(order: dict, closed_trade: dict | None) -> str:
+def _resting_order_role(order: dict | None) -> str:
+    candidate = str((order or {}).get("bracket_role") or "").strip().lower()
+    if candidate in {"stop", "target"}:
+        return candidate
+    return "single"
+
+
+def _resting_fill_summary(order: dict, closed_trade: dict | None, canceled_orders: list[dict] | None = None) -> str:
     price = float(order.get("price") or 0.0)
+    canceled_orders = canceled_orders or []
+    sibling_note = " OCO sibling canceled." if canceled_orders else ""
     if _resting_order_intent(order) == "exit" and closed_trade:
+        role = _resting_order_role(order)
+        label = "Resting exit"
+        if role == "target":
+            label = "Bracket target"
+        elif role == "stop":
+            label = "Bracket stop"
         return (
-            f"Resting exit filled at {price:.2f} and closed the "
-            f"{closed_trade['side']} trade for {float(closed_trade['pnl']):+.2f}."
+            f"{label} filled at {price:.2f} and closed the "
+            f"{closed_trade['side']} trade for {float(closed_trade['pnl']):+.2f}.{sibling_note}"
         )
     return f"Resting {order['side']} entry filled at {price:.2f}."
 
 
-def _resting_cancel_summary(order: dict) -> str:
+def _resting_cancel_summary(order: dict, *, reason: str | None = None) -> str:
     price = float(order.get("price") or 0.0)
     if _resting_order_intent(order) == "exit":
-        return f"Canceled resting exit {order.get('side')} order at {price:.2f}."
+        role = _resting_order_role(order)
+        if role == "target":
+            base = f"Canceled bracket target {order.get('side')} order at {price:.2f}."
+        elif role == "stop":
+            base = f"Canceled bracket stop {order.get('side')} order at {price:.2f}."
+        else:
+            base = f"Canceled resting exit {order.get('side')} order at {price:.2f}."
+        if reason == "oco_sibling_filled":
+            return base[:-1] + " because its sibling filled first."
+        if reason == "flatten":
+            return base[:-1] + " while flattening."
+        return base
     return f"Canceled resting {order.get('side')} entry order at {price:.2f}."
+
+
+def _cancel_many_summary(orders: list[dict]) -> str:
+    if len(orders) == 1:
+        return _resting_cancel_summary(orders[0])
+    return f"Canceled {len(orders)} live resting orders."
+
+
+def _bracket_summary(position_side: str, stop_price: float, target_price: float) -> str:
+    return (
+        f"Attached a {position_side} bracket with stop {stop_price:.2f} "
+        f"and target {target_price:.2f}."
+    )
+
+
+def _same_bracket_group(left: dict | None, right: dict | None) -> bool:
+    left_group = str((left or {}).get("bracket_id") or "").strip()
+    right_group = str((right or {}).get("bracket_id") or "").strip()
+    return bool(left_group and right_group and left_group == right_group)
+
+
+def _resting_order_priority(order: dict) -> int:
+    role = _resting_order_role(order)
+    if role == "stop":
+        return 0
+    if role == "target":
+        return 1
+    return 2
+
+
+def _pick_fill_candidate(orders: list[dict]) -> dict:
+    return min(
+        (dict(order) for order in orders),
+        key=lambda order: (
+            _resting_order_priority(order),
+            float(order.get("price") or 0.0),
+            str(order.get("id") or ""),
+        ),
+    )
+
+
+def _cancel_order(
+    order: dict,
+    *,
+    timestamp: str,
+    bar_index: int | None,
+    reason: str | None = None,
+) -> dict:
+    canceled = dict(order)
+    canceled["status"] = "canceled"
+    canceled["canceled_at"] = timestamp
+    canceled["canceled_bar_index"] = bar_index
+    if reason:
+        canceled["cancel_reason"] = reason
+    return canceled
+
+
+def _validate_bracket_prices(position: dict, quote: dict, stop_price: float, target_price: float) -> None:
+    reference = float(quote.get("reference") or position.get("mark_price") or position["entry_price"])
+    side = str(position.get("side") or "").strip().lower()
+
+    if side == "buy":
+        if stop_price >= reference:
+            raise ValueError("Long brackets need the stop below the current reference price.")
+        if target_price <= reference:
+            raise ValueError("Long brackets need the target above the current reference price.")
+    else:
+        if stop_price <= reference:
+            raise ValueError("Short brackets need the stop above the current reference price.")
+        if target_price >= reference:
+            raise ValueError("Short brackets need the target below the current reference price.")
+
+
+def _make_bracket_exit_orders(
+    *,
+    position: dict,
+    stop_price: float,
+    target_price: float,
+    submitted_at: str,
+    submitted_bar_index: int | None,
+) -> list[dict]:
+    """Build the two OCO exit legs for one open trade.
+
+    I keep both legs as explicit resting exits so the paper and replay layers
+    can show the real lifecycle instead of pretending the bracket is magical
+    hidden state. One fills, the sibling gets canceled.
+    """
+    exit_side = "sell" if position.get("side") == "buy" else "buy"
+    bracket_id = str(uuid.uuid4())
+    stop_id = str(uuid.uuid4())
+    target_id = str(uuid.uuid4())
+
+    stop_order = make_resting_order(
+        order_id=stop_id,
+        action="bracket_stop",
+        price=stop_price,
+        submitted_at=submitted_at,
+        submitted_bar_index=submitted_bar_index,
+        intent="exit",
+        side=exit_side,
+    )
+    stop_order["reduce_only"] = True
+    stop_order["bracket_id"] = bracket_id
+    stop_order["bracket_role"] = "stop"
+    stop_order["sibling_order_id"] = target_id
+
+    target_order = make_resting_order(
+        order_id=target_id,
+        action="bracket_target",
+        price=target_price,
+        submitted_at=submitted_at,
+        submitted_bar_index=submitted_bar_index,
+        intent="exit",
+        side=exit_side,
+    )
+    target_order["reduce_only"] = True
+    target_order["bracket_id"] = bracket_id
+    target_order["bracket_role"] = "target"
+    target_order["sibling_order_id"] = stop_id
+
+    return [target_order, stop_order]
 
 
 def _resting_replace_summary(order: dict, child_order: dict) -> str:
@@ -761,9 +1047,10 @@ def _ensure_session_defaults(session: dict) -> dict:
     session["volatile_bar_extra_ticks"] = int(session.get("volatile_bar_extra_ticks") or DEFAULT_VOLATILE_BAR_EXTRA_TICKS)
     session["resting_fill_mode"] = normalize_resting_fill_mode(session.get("resting_fill_mode"))
     session["current_position"] = dict(session.get("current_position") or {})
-    session["active_order"] = dict(session.get("active_order") or {})
-    if session["active_order"]:
-        session["active_order"]["intent"] = _resting_order_intent(session["active_order"])
+    _set_session_active_orders(
+        session,
+        _session_active_orders(session),
+    )
     session["last_quote"] = dict(session.get("last_quote") or {})
     session["trade_log"] = list(session.get("trade_log") or [])
     session["equity_curve"] = [
@@ -809,7 +1096,8 @@ def _build_metrics_snapshot(session: dict) -> dict:
     metrics["realized_equity"] = _realized_equity(session)
     metrics["marked_equity"] = _marked_equity(session)
     metrics["open_position"] = bool(current_position)
-    metrics["active_order"] = bool(session.get("active_order"))
+    metrics["active_order"] = bool(_session_active_orders(session))
+    metrics["active_order_count"] = len(_session_active_orders(session))
     metrics["unrealized_pnl"] = round(float(current_position.get("unrealized_pnl") or 0.0), 2)
     metrics["last_trade_pnl"] = trades[-1]["pnl"] if trades else None
     return metrics

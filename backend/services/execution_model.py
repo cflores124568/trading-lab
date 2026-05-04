@@ -179,6 +179,15 @@ def resting_order_touched(order: dict[str, Any], bar: dict[str, Any]) -> bool:
         return False
 
     price = float(order["price"])
+    role = str(order.get("bracket_role") or "").strip().lower()
+    if role == "target":
+        if order.get("side") == "buy":
+            return float(bar["low"]) <= price
+        return float(bar["high"]) >= price
+    if role == "stop":
+        if order.get("side") == "buy":
+            return float(bar["high"]) >= price
+        return float(bar["low"]) <= price
     if order.get("side") == "buy":
         return float(bar["low"]) <= price
     return float(bar["high"]) >= price
@@ -192,6 +201,15 @@ def resting_order_penetrated(
         return False
 
     price = float(order["price"])
+    role = str(order.get("bracket_role") or "").strip().lower()
+    if role == "target":
+        if order.get("side") == "buy":
+            return float(bar["low"]) < price
+        return float(bar["high"]) > price
+    if role == "stop":
+        if order.get("side") == "buy":
+            return float(bar["high"]) > price
+        return float(bar["low"]) < price
     if order.get("side") == "buy":
         return float(bar["low"]) < price
     return float(bar["high"]) > price

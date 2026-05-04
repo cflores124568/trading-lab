@@ -6,6 +6,7 @@ export type ExecutionActionType =
   | "join_bid"
   | "join_ask"
   | "rest_exit"
+  | "attach_bracket"
   | "replace"
   | "cancel"
   | "flatten";
@@ -15,6 +16,7 @@ export type LegacyExecutionActionType = "buy" | "sell" | "exit";
 export type ExecutionSide = "buy" | "sell";
 export type RestingFillMode = "touch" | "penetrate" | "touch_plus_1_bar";
 export type RestingOrderIntent = "entry" | "exit";
+export type RestingOrderRole = "stop" | "target";
 
 export type RestingOrderStatus = "pending" | "filled" | "canceled" | "replaced";
 
@@ -37,12 +39,17 @@ export interface RestingOrder {
   price: number;
   submitted_at: string;
   submitted_bar_index: number;
-  type: "join_bid" | "join_ask" | "rest_exit";
+  type: "join_bid" | "join_ask" | "rest_exit" | "bracket_stop" | "bracket_target";
   status: RestingOrderStatus;
+  reduce_only?: boolean;
+  bracket_id?: string;
+  bracket_role?: RestingOrderRole;
+  sibling_order_id?: string;
   filled_at?: string;
   filled_bar_index?: number;
   canceled_at?: string;
   canceled_bar_index?: number;
+  cancel_reason?: string;
   replaced_at?: string;
   replaced_bar_index?: number;
   replaced_by_order_id?: string;
@@ -63,7 +70,7 @@ export interface ExecutionEvent {
     | "resting_replaced"
     | "flatten"
     | "ignored";
-  action: ExecutionActionType | LegacyExecutionActionType;
+  action: ExecutionActionType | LegacyExecutionActionType | "bracket_target" | "bracket_stop";
   side?: ExecutionSide;
   price?: number;
   bar_index: number;
@@ -129,8 +136,8 @@ const SYMBOL_EXECUTION_DEFAULTS: Record<string, Omit<ExecutionConfig, "tickSize"
 };
 
 export function normalizeExecutionAction(
-  action: ExecutionActionType | LegacyExecutionActionType,
-): ExecutionActionType {
+  action: ExecutionActionType | LegacyExecutionActionType | "bracket_target" | "bracket_stop" | string,
+): ExecutionActionType | "bracket_target" | "bracket_stop" | string {
   if (action === "buy") return "lift_ask";
   if (action === "sell") return "hit_bid";
   if (action === "exit") return "flatten";
@@ -206,6 +213,12 @@ export function syntheticQuoteForCandle(
 
 export function restingOrderTouched(order: RestingOrder, candle: Candle): boolean {
   if (order.status !== "pending") return false;
+  if (order.bracket_role === "target") {
+    return order.side === "buy" ? candle.low <= order.price : candle.high >= order.price;
+  }
+  if (order.bracket_role === "stop") {
+    return order.side === "buy" ? candle.high >= order.price : candle.low <= order.price;
+  }
   if (order.side === "buy") {
     return candle.low <= order.price;
   }
@@ -214,6 +227,12 @@ export function restingOrderTouched(order: RestingOrder, candle: Candle): boolea
 
 export function restingOrderPenetrated(order: RestingOrder, candle: Candle): boolean {
   if (order.status !== "pending") return false;
+  if (order.bracket_role === "target") {
+    return order.side === "buy" ? candle.low < order.price : candle.high > order.price;
+  }
+  if (order.bracket_role === "stop") {
+    return order.side === "buy" ? candle.high > order.price : candle.low < order.price;
+  }
   if (order.side === "buy") {
     return candle.low < order.price;
   }
@@ -281,6 +300,7 @@ export function createRestingOrder(args: {
   quote: SyntheticQuote;
   intent?: RestingOrderIntent;
   side?: ExecutionSide;
+  price?: number;
 }): RestingOrder {
   const resolvedSide = args.side ?? (args.action === "join_bid" ? "buy" : "sell");
 
@@ -288,12 +308,67 @@ export function createRestingOrder(args: {
     id: args.id,
     intent: args.intent === "exit" ? "exit" : "entry",
     side: resolvedSide,
-    price: resolvedSide === "buy" ? args.quote.bid : args.quote.ask,
+    price: args.price ?? (resolvedSide === "buy" ? args.quote.bid : args.quote.ask),
     submitted_at: args.time,
     submitted_bar_index: args.barIndex,
     type: args.action,
     status: "pending",
   };
+}
+
+export function createBracketExitOrders(args: {
+  bracketId: string;
+  positionSide: ExecutionSide;
+  barIndex: number;
+  time: string;
+  stopPrice: number;
+  targetPrice: number;
+}): RestingOrder[] {
+  const exitSide: ExecutionSide = args.positionSide === "buy" ? "sell" : "buy";
+  const stopId = `${args.bracketId}_stop`;
+  const targetId = `${args.bracketId}_target`;
+
+  const targetOrder: RestingOrder = {
+    id: targetId,
+    intent: "exit",
+    side: exitSide,
+    price: args.targetPrice,
+    submitted_at: args.time,
+    submitted_bar_index: args.barIndex,
+    type: "bracket_target",
+    status: "pending",
+    reduce_only: true,
+    bracket_id: args.bracketId,
+    bracket_role: "target",
+    sibling_order_id: stopId,
+  };
+
+  const stopOrder: RestingOrder = {
+    id: stopId,
+    intent: "exit",
+    side: exitSide,
+    price: args.stopPrice,
+    submitted_at: args.time,
+    submitted_bar_index: args.barIndex,
+    type: "bracket_stop",
+    status: "pending",
+    reduce_only: true,
+    bracket_id: args.bracketId,
+    bracket_role: "stop",
+    sibling_order_id: targetId,
+  };
+
+  return [targetOrder, stopOrder];
+}
+
+export function sameBracketGroup(left: RestingOrder | null | undefined, right: RestingOrder | null | undefined): boolean {
+  return Boolean(left?.bracket_id && right?.bracket_id && left.bracket_id === right.bracket_id);
+}
+
+export function restingOrderPriority(order: RestingOrder): number {
+  if (order.bracket_role === "stop") return 0;
+  if (order.bracket_role === "target") return 1;
+  return 2;
 }
 
 export function replaceRestingOrder(args: {

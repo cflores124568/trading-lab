@@ -1,11 +1,14 @@
 import type { Candle, PropFirmEvaluation, PropFirmRules, Trade } from "./api";
 import {
+  createBracketExitOrders,
   createRestingOrder,
   DEFAULT_EXECUTION_CONFIG,
   normalizeExecutionAction,
   normalizeRestingFillMode,
   replaceRestingOrder,
+  restingOrderPriority,
   restingOrderFillUpdate,
+  sameBracketGroup,
   syntheticQuoteForCandle,
   type ExecutionConfig,
   type ExecutionEvent,
@@ -22,6 +25,7 @@ export type ReplayActionType =
   | "join_bid"
   | "join_ask"
   | "rest_exit"
+  | "attach_bracket"
   | "replace"
   | "cancel"
   | "flatten";
@@ -31,6 +35,9 @@ export interface ReplayAction {
   barIndex: number;
   type: ReplayActionType;
   createdAt: number;
+  price?: number;
+  stopPrice?: number;
+  targetPrice?: number;
 }
 
 export interface ReplayMetrics {
@@ -66,6 +73,7 @@ export interface ReplaySession {
   propEvaluation: PropFirmEvaluation;
   position: ReplayPosition | null;
   activeOrder: RestingOrder | null;
+  activeOrders: RestingOrder[];
   currentQuote: SyntheticQuote | null;
   executionEvents: ExecutionEvent[];
   balance: number;
@@ -419,6 +427,7 @@ export function simulateReplaySession(args: {
       propEvaluation: evaluatePropFirm(propFirmRules, [], equityCurve, initialBalance),
       position: null,
       activeOrder: null,
+      activeOrders: [],
       currentQuote: null,
       executionEvents: [],
       balance: initialBalance,
@@ -437,7 +446,7 @@ export function simulateReplaySession(args: {
   let balance = initialBalance;
   let position: OpenReplayPosition | null = null;
   const getPosition = (): OpenReplayPosition | null => position;
-  let activeOrder: RestingOrder | null = null;
+  let activeOrders: RestingOrder[] = [];
   let tradeId = 0;
   const trades: Trade[] = [];
   const equityCurve: number[] = [];
@@ -491,48 +500,96 @@ export function simulateReplaySession(args: {
     };
   };
 
+  const primaryActiveOrder = (): RestingOrder | null => activeOrders[0] ?? null;
+  const hasPendingOrders = (): boolean => activeOrders.some((order) => order.status === "pending");
+  const clearActiveOrders = (): void => {
+    activeOrders = [];
+  };
+
   for (let i = 0; i < visibleCandles.length; i += 1) {
     const candle = visibleCandles[i];
     const quote = syntheticQuoteForCandle(candle, executionConfig);
     const actionsAtBar = visibleActions.filter((action) => action.barIndex === i);
 
-    if (
-      activeOrder &&
-      activeOrder.status === "pending" &&
-      i > activeOrder.submitted_bar_index
-    ) {
-      const fillUpdate = restingOrderFillUpdate({
-        order: activeOrder,
-        candle,
-        fillMode: normalizeRestingFillMode(executionConfig.restingFillMode),
-        barIndex: i,
-        time: getCandleTime(candle),
+    const pendingOrders = activeOrders.filter(
+      (order) => order.status === "pending" && i > order.submitted_bar_index,
+    );
+    if (pendingOrders.length > 0) {
+      const updatedOrders = activeOrders.map((order) => {
+        if (order.status !== "pending" || i <= order.submitted_bar_index) {
+          return order;
+        }
+        return restingOrderFillUpdate({
+          order,
+          candle,
+          fillMode: normalizeRestingFillMode(executionConfig.restingFillMode),
+          barIndex: i,
+          time: getCandleTime(candle),
+        }).order;
+      });
+      const fillCandidates = updatedOrders.filter((_order, index) => {
+        const original = activeOrders[index];
+        if (original.status !== "pending" || i <= original.submitted_bar_index) {
+          return false;
+        }
+        return restingOrderFillUpdate({
+          order: original,
+          candle,
+          fillMode: normalizeRestingFillMode(executionConfig.restingFillMode),
+          barIndex: i,
+          time: getCandleTime(candle),
+        }).shouldFill;
       });
 
-      if (fillUpdate.shouldFill) {
-        activeOrder = {
-          ...fillUpdate.order,
+      if (fillCandidates.length > 0) {
+        const filledOrder = [...fillCandidates].sort((left, right) => {
+          const priorityDiff = restingOrderPriority(left) - restingOrderPriority(right);
+          if (priorityDiff !== 0) return priorityDiff;
+          return left.id.localeCompare(right.id);
+        })[0];
+        const completedOrder: RestingOrder = {
+          ...filledOrder,
           status: "filled",
           filled_at: getCandleTime(candle),
           filled_bar_index: i,
         };
-        if (activeOrder.intent === "exit") {
-          closePosition(candle, activeOrder.price);
+
+        if (completedOrder.intent === "exit") {
+          closePosition(candle, completedOrder.price);
         } else {
-          openPosition(activeOrder.side, activeOrder.price, candle, i);
+          openPosition(completedOrder.side, completedOrder.price, candle, i);
         }
         appendEvent({
           type: "resting_filled",
-          action: activeOrder.type,
-          side: activeOrder.side,
-          price: activeOrder.price,
+          action: completedOrder.type,
+          side: completedOrder.side,
+          price: completedOrder.price,
           bar_index: i,
           time: getCandleTime(candle),
-          order_id: activeOrder.id,
+          order_id: completedOrder.id,
         });
-        activeOrder = null;
+
+        activeOrders = updatedOrders.flatMap((order) => {
+          if (order.id === completedOrder.id) {
+            return [];
+          }
+          if (sameBracketGroup(order, completedOrder)) {
+            appendEvent({
+              type: "resting_canceled",
+              action: order.type,
+              side: order.side,
+              price: order.price,
+              bar_index: i,
+              time: getCandleTime(candle),
+              order_id: order.id,
+              reason: "OCO sibling filled first.",
+            });
+            return [];
+          }
+          return [order];
+        });
       } else {
-        activeOrder = fillUpdate.order;
+        activeOrders = updatedOrders;
       }
     }
 
@@ -540,23 +597,19 @@ export function simulateReplaySession(args: {
       const actionType = normalizeExecutionAction(action.type);
 
       if (actionType === "cancel") {
-        if (activeOrder && activeOrder.status === "pending") {
-          appendEvent({
-            type: "resting_canceled",
-            action: action.type,
-            side: activeOrder.side,
-            price: activeOrder.price,
-            bar_index: i,
-            time: getCandleTime(candle),
-            order_id: activeOrder.id,
-          });
-          activeOrder = {
-            ...activeOrder,
-            status: "canceled",
-            canceled_at: getCandleTime(candle),
-            canceled_bar_index: i,
-          };
-          activeOrder = null;
+        if (hasPendingOrders()) {
+          for (const order of activeOrders.filter((candidate) => candidate.status === "pending")) {
+            appendEvent({
+              type: "resting_canceled",
+              action: action.type,
+              side: order.side,
+              price: order.price,
+              bar_index: i,
+              time: getCandleTime(candle),
+              order_id: order.id,
+            });
+          }
+          clearActiveOrders();
         } else {
           appendEvent({
             type: "ignored",
@@ -570,10 +623,11 @@ export function simulateReplaySession(args: {
       }
 
       if (actionType === "replace") {
-        if (activeOrder && activeOrder.status === "pending") {
-          const nextPrice = activeOrder.side === "buy" ? quote.bid : quote.ask;
+        const currentOrder = primaryActiveOrder();
+        if (currentOrder && currentOrder.status === "pending" && activeOrders.length === 1) {
+          const nextPrice = currentOrder.side === "buy" ? quote.bid : quote.ask;
           const replacement = replaceRestingOrder({
-            order: activeOrder,
+            order: currentOrder,
             newId: action.id,
             price: nextPrice,
             barIndex: i,
@@ -589,32 +643,36 @@ export function simulateReplaySession(args: {
             order_id: replacement.nextOrder.id,
             replaced_order_id: replacement.replacedOrder.id,
           });
-          activeOrder = replacement.nextOrder;
+          activeOrders = [replacement.nextOrder];
         } else {
           appendEvent({
             type: "ignored",
             action: action.type,
             bar_index: i,
             time: getCandleTime(candle),
-            reason: "No pending order to replace.",
+            reason: hasPendingOrders()
+              ? "Replace only supports one live order right now."
+              : "No pending order to replace.",
           });
         }
         continue;
       }
 
       if (actionType === "flatten") {
-        if (activeOrder && activeOrder.status === "pending") {
-          appendEvent({
-            type: "resting_canceled",
-            action: action.type,
-            side: activeOrder.side,
-            price: activeOrder.price,
-            bar_index: i,
-            time: getCandleTime(candle),
-            order_id: activeOrder.id,
-            reason: "Flatten canceled the pending order.",
-          });
-          activeOrder = null;
+        if (hasPendingOrders()) {
+          for (const order of activeOrders.filter((candidate) => candidate.status === "pending")) {
+            appendEvent({
+              type: "resting_canceled",
+              action: action.type,
+              side: order.side,
+              price: order.price,
+              bar_index: i,
+              time: getCandleTime(candle),
+              order_id: order.id,
+              reason: "Flatten canceled the pending order.",
+            });
+          }
+          clearActiveOrders();
         }
 
         if (position) {
@@ -642,33 +700,34 @@ export function simulateReplaySession(args: {
           });
           continue;
         }
-        if (activeOrder && activeOrder.status === "pending") {
+        if (hasPendingOrders()) {
           appendEvent({
             type: "ignored",
             action: action.type,
             bar_index: i,
             time: getCandleTime(candle),
-            order_id: activeOrder.id,
+            order_id: primaryActiveOrder()?.id,
             reason: "Only one active resting order is supported right now.",
           });
           continue;
         }
 
-        activeOrder = createRestingOrder({
+        const nextOrder = createRestingOrder({
           action: actionType,
           id: action.id,
           barIndex: i,
           time: getCandleTime(candle),
           quote,
         });
+        activeOrders = [nextOrder];
         appendEvent({
           type: "resting_submitted",
           action: action.type,
-          side: activeOrder.side,
-          price: activeOrder.price,
+          side: nextOrder.side,
+          price: nextOrder.price,
           bar_index: i,
           time: getCandleTime(candle),
-          order_id: activeOrder.id,
+          order_id: nextOrder.id,
         });
         continue;
       }
@@ -685,13 +744,13 @@ export function simulateReplaySession(args: {
           });
           continue;
         }
-        if (activeOrder && activeOrder.status === "pending") {
+        if (hasPendingOrders()) {
           appendEvent({
             type: "ignored",
             action: action.type,
             bar_index: i,
             time: getCandleTime(candle),
-            order_id: activeOrder.id,
+            order_id: primaryActiveOrder()?.id,
             reason: "Only one active resting order is supported right now.",
           });
           continue;
@@ -699,7 +758,7 @@ export function simulateReplaySession(args: {
 
         const exitPosition = activePosition as OpenReplayPosition;
         const exitSide = exitPosition.side === "buy" ? "sell" : "buy";
-        activeOrder = createRestingOrder({
+        const nextOrder = createRestingOrder({
           action: actionType,
           id: action.id,
           barIndex: i,
@@ -708,15 +767,74 @@ export function simulateReplaySession(args: {
           intent: "exit",
           side: exitSide,
         });
+        activeOrders = [nextOrder];
         appendEvent({
           type: "resting_submitted",
           action: action.type,
-          side: activeOrder.side,
-          price: activeOrder.price,
+          side: nextOrder.side,
+          price: nextOrder.price,
           bar_index: i,
           time: getCandleTime(candle),
-          order_id: activeOrder.id,
+          order_id: nextOrder.id,
         });
+        continue;
+      }
+
+      if (actionType === "attach_bracket") {
+        const activePosition = position;
+        if (!activePosition) {
+          appendEvent({
+            type: "ignored",
+            action: action.type,
+            bar_index: i,
+            time: getCandleTime(candle),
+            reason: "Bracket exits need an open position first.",
+          });
+          continue;
+        }
+        if (hasPendingOrders()) {
+          appendEvent({
+            type: "ignored",
+            action: action.type,
+            bar_index: i,
+            time: getCandleTime(candle),
+            order_id: primaryActiveOrder()?.id,
+            reason: "Cancel the current resting order before attaching a bracket.",
+          });
+          continue;
+        }
+        if (action.stopPrice === undefined || action.targetPrice === undefined) {
+          appendEvent({
+            type: "ignored",
+            action: action.type,
+            bar_index: i,
+            time: getCandleTime(candle),
+            reason: "Bracket actions need both stop and target prices.",
+          });
+          continue;
+        }
+
+        const bracketPosition = activePosition as OpenReplayPosition;
+        const bracketOrders = createBracketExitOrders({
+          bracketId: action.id,
+          positionSide: bracketPosition.side,
+          barIndex: i,
+          time: getCandleTime(candle),
+          stopPrice: action.stopPrice,
+          targetPrice: action.targetPrice,
+        });
+        activeOrders = bracketOrders;
+        for (const order of bracketOrders) {
+          appendEvent({
+            type: "resting_submitted",
+            action: action.type,
+            side: order.side,
+            price: order.price,
+            bar_index: i,
+            time: getCandleTime(candle),
+            order_id: order.id,
+          });
+        }
         continue;
       }
 
@@ -732,7 +850,7 @@ export function simulateReplaySession(args: {
         closePosition(candle, fillPrice);
       }
 
-      activeOrder = null;
+      clearActiveOrders();
       openPosition(nextSide, fillPrice, candle, i);
       appendEvent({
         type: "taker_fill",
@@ -792,7 +910,8 @@ export function simulateReplaySession(args: {
     equityCurve,
     propEvaluation: evaluatePropFirm(propFirmRules, trades, equityCurve, initialBalance),
     position: replayPosition,
-    activeOrder,
+    activeOrder: primaryActiveOrder(),
+    activeOrders,
     currentQuote,
     executionEvents,
     balance,

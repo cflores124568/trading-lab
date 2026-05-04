@@ -428,6 +428,114 @@ test("resting exits close the open replay trade as maker fills", () => {
   assert.equal(analytics.summary.takerExits, 0);
 });
 
+test("bracket targets close the replay trade and cancel the sibling stop", () => {
+  const candles: Candle[] = [
+    { time: 1 as Candle["time"], open: 100, high: 100.5, low: 99.75, close: 100, volume: 1 },
+    { time: 2 as Candle["time"], open: 100.5, high: 100.75, low: 100.25, close: 100.5, volume: 1 },
+    { time: 3 as Candle["time"], open: 100.5, high: 102.5, low: 100.25, close: 102, volume: 1 },
+  ];
+  const actions: ReplayAction[] = [
+    { id: "buy-1", barIndex: 0, type: "lift_ask", createdAt: 1 },
+    { id: "bracket-1", barIndex: 1, type: "attach_bracket", createdAt: 2, stopPrice: 99.75, targetPrice: 102 },
+  ];
+
+  const session = simulateReplaySession({
+    candles,
+    currentIndex: 2,
+    actions,
+    initialBalance: 100_000,
+    commission: 0,
+    tickValue: 10,
+    tickSize: 0.25,
+    spreadTicks: 1,
+    propFirmRules: rules,
+  });
+
+  assert.equal(session.position, null);
+  assert.equal(session.activeOrders.length, 0);
+  assert.equal(session.trades.length, 1);
+  assert.equal(session.trades[0].exit_price, 102);
+  assert.equal(
+    session.executionEvents.some(
+      (event) => event.type === "resting_filled" && event.action === "bracket_target",
+    ),
+    true,
+  );
+  assert.equal(
+    session.executionEvents.some(
+      (event) => event.type === "resting_canceled" && event.order_id === "bracket-1_stop",
+    ),
+    true,
+  );
+});
+
+test("bracket stops close the replay trade when price breaks the stop", () => {
+  const candles: Candle[] = [
+    { time: 1 as Candle["time"], open: 100, high: 100.5, low: 99.75, close: 100, volume: 1 },
+    { time: 2 as Candle["time"], open: 100.5, high: 100.75, low: 100.25, close: 100.5, volume: 1 },
+    { time: 3 as Candle["time"], open: 100.5, high: 100.75, low: 99.5, close: 99.75, volume: 1 },
+  ];
+  const actions: ReplayAction[] = [
+    { id: "buy-1", barIndex: 0, type: "lift_ask", createdAt: 1 },
+    { id: "bracket-1", barIndex: 1, type: "attach_bracket", createdAt: 2, stopPrice: 99.75, targetPrice: 102 },
+  ];
+
+  const session = simulateReplaySession({
+    candles,
+    currentIndex: 2,
+    actions,
+    initialBalance: 100_000,
+    commission: 0,
+    tickValue: 10,
+    tickSize: 0.25,
+    spreadTicks: 1,
+    propFirmRules: rules,
+  });
+
+  assert.equal(session.position, null);
+  assert.equal(session.trades.length, 1);
+  assert.equal(session.trades[0].exit_price, 99.75);
+  assert.equal(
+    session.executionEvents.some(
+      (event) => event.type === "resting_filled" && event.action === "bracket_stop",
+    ),
+    true,
+  );
+});
+
+test("same-bar bracket ambiguity chooses the stop first", () => {
+  const candles: Candle[] = [
+    { time: 1 as Candle["time"], open: 100, high: 100.5, low: 99.75, close: 100, volume: 1 },
+    { time: 2 as Candle["time"], open: 100.5, high: 100.75, low: 100.25, close: 100.5, volume: 1 },
+    { time: 3 as Candle["time"], open: 100.5, high: 102.5, low: 99.5, close: 101, volume: 1 },
+  ];
+  const actions: ReplayAction[] = [
+    { id: "buy-1", barIndex: 0, type: "lift_ask", createdAt: 1 },
+    { id: "bracket-1", barIndex: 1, type: "attach_bracket", createdAt: 2, stopPrice: 99.75, targetPrice: 102 },
+  ];
+
+  const session = simulateReplaySession({
+    candles,
+    currentIndex: 2,
+    actions,
+    initialBalance: 100_000,
+    commission: 0,
+    tickValue: 10,
+    tickSize: 0.25,
+    spreadTicks: 1,
+    propFirmRules: rules,
+  });
+
+  assert.equal(session.trades.length, 1);
+  assert.equal(session.trades[0].exit_price, 99.75);
+  assert.equal(
+    session.executionEvents.some(
+      (event) => event.type === "resting_filled" && event.action === "bracket_stop",
+    ),
+    true,
+  );
+});
+
 test("same-bar resting ambiguity chooses no fill", () => {
   const candles: Candle[] = [
     { time: 1 as Candle["time"], open: 100, high: 101, low: 99, close: 100, volume: 1 },
