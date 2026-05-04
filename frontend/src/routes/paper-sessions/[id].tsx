@@ -180,7 +180,15 @@ function orderLabel(order: Record<string, unknown>): string {
   const armed = numberFromUnknown(order.first_touch_bar_index) !== null ? " [armed]" : "";
   const replaceCount = numberFromUnknown(order.replace_count);
   const replaceTag = replaceCount && replaceCount > 0 ? ` [replace ${replaceCount}]` : "";
-  const intent = stringFromUnknown(order.intent) === "exit" ? "EXIT" : "ENTRY";
+  const role = stringFromUnknown(order.bracket_role);
+  const intent =
+    role === "target"
+      ? "TARGET"
+      : role === "stop"
+        ? "STOP"
+        : stringFromUnknown(order.intent) === "exit"
+          ? "EXIT"
+          : "ENTRY";
   return `${intent} ${side.toUpperCase()} @ ${price.toFixed(4)}${armed}${replaceTag}`;
 }
 
@@ -353,6 +361,8 @@ export default function PaperSessionDetailPage() {
   const [eventType, setEventType] = createSignal("operator_note");
   const [eventSummary, setEventSummary] = createSignal("");
   const [executionNote, setExecutionNote] = createSignal("");
+  const [bracketStopPrice, setBracketStopPrice] = createSignal("");
+  const [bracketTargetPrice, setBracketTargetPrice] = createSignal("");
   const [runnerStartDate, setRunnerStartDate] = createSignal("");
   const [runnerEndDate, setRunnerEndDate] = createSignal("");
   const [runnerPollInterval, setRunnerPollInterval] = createSignal("750");
@@ -364,9 +374,18 @@ export default function PaperSessionDetailPage() {
   );
   const currentPosition = createMemo(() => (session()?.current_position ?? {}) as Record<string, unknown>);
   const activeOrder = createMemo(() => (session()?.active_order ?? {}) as Record<string, unknown>);
+  const activeOrders = createMemo(
+    () =>
+      ((session()?.active_orders?.length
+        ? session()?.active_orders
+        : stringFromUnknown(activeOrder().id)
+          ? [activeOrder()]
+          : []) ?? []) as Record<string, unknown>[],
+  );
   const lastQuote = createMemo(() => (session()?.last_quote ?? {}) as Record<string, unknown>);
   const hasOpenPosition = createMemo(() => Boolean(stringFromUnknown(currentPosition().entry_time)));
-  const hasActiveOrder = createMemo(() => Boolean(stringFromUnknown(activeOrder().id)));
+  const hasActiveOrder = createMemo(() => activeOrders().length > 0);
+  const hasSingleActiveOrder = createMemo(() => activeOrders().length === 1);
   const metricsSnapshot = createMemo(
     () => (session()?.metrics_snapshot ?? {}) as Record<string, unknown>,
   );
@@ -439,15 +458,42 @@ export default function PaperSessionDetailPage() {
     });
   };
 
-  const handleExecution = async (action: PaperSessionTradeAction) => {
+  const handleExecution = async (
+    action: PaperSessionTradeAction,
+    extra: { stopPrice?: number; targetPrice?: number } = {},
+  ) => {
     await runSessionAction("execute", async () => {
       const nextSession = await executePaperSessionAction(paperSessionId(), {
         action,
+        stopPrice: extra.stopPrice,
+        targetPrice: extra.targetPrice,
         note: executionNote().trim() || undefined,
       });
       mutateSession(() => nextSession);
       setExecutionNote("");
+      if (action === "attach_bracket") {
+        setBracketStopPrice("");
+        setBracketTargetPrice("");
+      }
       await Promise.all([refetchSession(), refetchEvents()]);
+    });
+  };
+
+  const handleAttachBracket = async () => {
+    const stopPrice = Number(bracketStopPrice().trim());
+    const targetPrice = Number(bracketTargetPrice().trim());
+    if (!Number.isFinite(stopPrice) || stopPrice <= 0) {
+      setError("Bracket stop needs a real price.");
+      return;
+    }
+    if (!Number.isFinite(targetPrice) || targetPrice <= 0) {
+      setError("Bracket target needs a real price.");
+      return;
+    }
+
+    await handleExecution("attach_bracket", {
+      stopPrice: Number(stopPrice.toFixed(4)),
+      targetPrice: Number(targetPrice.toFixed(4)),
     });
   };
 
@@ -785,10 +831,21 @@ export default function PaperSessionDetailPage() {
                       </p>
                     </div>
                     <div class="app-subpanel px-4 py-4">
-                      <p class="app-kicker">Resting Order</p>
-                      <p class="mt-2 text-sm font-semibold text-zinc-100">
-                        {orderLabel(activeOrder())}
-                      </p>
+                      <p class="app-kicker">Resting Orders</p>
+                      <div class="mt-2 space-y-2">
+                        <Show
+                          when={activeOrders().length > 0}
+                          fallback={<p class="text-sm font-semibold text-zinc-100">No resting order.</p>}
+                        >
+                          <For each={activeOrders()}>
+                            {(order) => (
+                              <p class="rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-sm font-semibold text-zinc-100">
+                                {orderLabel(order)}
+                              </p>
+                            )}
+                          </For>
+                        </Show>
+                      </div>
                     </div>
                     <div class="app-subpanel px-4 py-4">
                       <p class="app-kicker">Model</p>
@@ -871,6 +928,33 @@ export default function PaperSessionDetailPage() {
                     class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
                   />
 
+                  <div class="grid gap-3 md:grid-cols-[1fr_1fr_180px]">
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={bracketStopPrice()}
+                      onInput={(event) => setBracketStopPrice(event.currentTarget.value)}
+                      placeholder="Bracket stop"
+                      class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                    />
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={bracketTargetPrice()}
+                      onInput={(event) => setBracketTargetPrice(event.currentTarget.value)}
+                      placeholder="Bracket target"
+                      class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                    />
+                    <button
+                      type="button"
+                      disabled={busyAction() === "execute" || !hasOpenPosition() || hasActiveOrder()}
+                      onClick={handleAttachBracket}
+                      class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                    >
+                      Attach Bracket
+                    </button>
+                  </div>
+
                   <div class="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
@@ -914,7 +998,7 @@ export default function PaperSessionDetailPage() {
                     </button>
                     <button
                       type="button"
-                      disabled={busyAction() === "execute" || !hasActiveOrder()}
+                      disabled={busyAction() === "execute" || !hasSingleActiveOrder()}
                       onClick={() => handleExecution("replace")}
                       class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
                     >

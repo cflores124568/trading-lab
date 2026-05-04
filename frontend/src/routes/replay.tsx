@@ -60,7 +60,6 @@ import type { WorkspaceLaunchIntent } from "../components/workspace/workspacePer
 import {
   defaultExecutionConfigForSymbol,
   normalizeRestingFillMode,
-  type RestingOrder,
 } from "../services/executionModel";
 import { buildReplayExecutionAnalytics } from "../services/executionAnalytics";
 
@@ -107,12 +106,17 @@ function markerTimeFromIso(value: string): number {
   return Math.floor(new Date(value).getTime() / 1000);
 }
 
-function createReplayAction(type: ReplayAction["type"], barIndex: number): ReplayAction {
+function createReplayAction(
+  type: ReplayAction["type"],
+  barIndex: number,
+  fields: Partial<Pick<ReplayAction, "price" | "stopPrice" | "targetPrice">> = {},
+): ReplayAction {
   return {
     id: `${type}_${barIndex}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     type,
     barIndex,
     createdAt: Date.now(),
+    ...fields,
   };
 }
 
@@ -301,6 +305,8 @@ export default function ReplayLabPage() {
   const [speed, setSpeed] = createSignal(8);
   const [currentIndex, setCurrentIndex] = createSignal(0);
   const [replayActions, setReplayActions] = createSignal<ReplayAction[]>([]);
+  const [bracketStopPrice, setBracketStopPrice] = createSignal("");
+  const [bracketTargetPrice, setBracketTargetPrice] = createSignal("");
   const [indicatorSettings, setIndicatorSettings] = createSignal(
     defaultPriceChartIndicatorSettings(),
   );
@@ -370,6 +376,9 @@ export default function ReplayLabPage() {
           type: action.type,
           barIndex: action.bar_index,
           createdAt: action.created_at,
+          price: action.price,
+          stopPrice: action.stop_price,
+          targetPrice: action.target_price,
         })),
       );
       setLaunchConfig({
@@ -542,6 +551,7 @@ export default function ReplayLabPage() {
       propFirmRules: config.propFirmRules,
     });
   });
+  const activeOrders = createMemo(() => replaySession()?.activeOrders ?? []);
 
   const isSessionComplete = createMemo(() => {
     const session = replaySession();
@@ -584,23 +594,30 @@ export default function ReplayLabPage() {
       !isReviewMode() &&
       replayIndex() < totalBars() - 1 &&
       !replaySession()?.position &&
-      !replaySession()?.activeOrder,
+      activeOrders().length === 0,
   );
   const canRestExit = createMemo(
     () =>
       !isReviewMode() &&
       replayIndex() < totalBars() - 1 &&
       !!replaySession()?.position &&
-      !replaySession()?.activeOrder,
+      activeOrders().length === 0,
+  );
+  const canAttachBracket = createMemo(
+    () =>
+      !isReviewMode() &&
+      replayIndex() < totalBars() - 1 &&
+      !!replaySession()?.position &&
+      activeOrders().length === 0,
   );
   const canExitPosition = createMemo(
     () => !!replaySession()?.position && !isReviewMode(),
   );
   const canCancelOrder = createMemo(
-    () => !!replaySession()?.activeOrder && !isReviewMode(),
+    () => activeOrders().length > 0 && !isReviewMode(),
   );
   const canReplaceOrder = createMemo(
-    () => !!replaySession()?.activeOrder && replayIndex() < totalBars() - 1 && !isReviewMode(),
+    () => activeOrders().length === 1 && replayIndex() < totalBars() - 1 && !isReviewMode(),
   );
   const replayStatusDetail = createMemo(() => {
     if (replayStatus() === "review") {
@@ -660,9 +677,11 @@ export default function ReplayLabPage() {
       ["Position", session.position ? session.position.side.toUpperCase() : "FLAT"],
       [
         "Order",
-        session.activeOrder
-          ? `${session.activeOrder.intent === "exit" ? "EXIT" : "ENTRY"} ${session.activeOrder.side.toUpperCase()} @ $${session.activeOrder.price.toFixed(2)}`
-          : "NONE",
+        session.activeOrders.length > 1
+          ? `${session.activeOrders.length} LIVE EXITS`
+          : session.activeOrder
+            ? `${session.activeOrder.intent === "exit" ? "EXIT" : "ENTRY"} ${session.activeOrder.side.toUpperCase()} @ $${session.activeOrder.price.toFixed(2)}`
+            : "NONE",
       ],
       ["Resting Fill", formatRestingFillMode(config.restingFillMode)],
     ] as [string, string][];
@@ -720,14 +739,25 @@ export default function ReplayLabPage() {
   });
 
   const activeOrderLabel = createMemo(() => {
-    const order = replaySession()?.activeOrder as RestingOrder | null | undefined;
-    if (!order) {
+    const orders = activeOrders();
+    if (orders.length === 0) {
       return "None";
     }
-    const armed = order.first_touch_bar_index !== undefined ? " [armed]" : "";
-    const replaceTag = order.replace_count ? ` [replace ${order.replace_count}]` : "";
-    const intent = order.intent === "exit" ? "EXIT" : "ENTRY";
-    return `${intent} ${order.side.toUpperCase()} @ $${order.price.toFixed(2)}${armed}${replaceTag}`;
+    return orders
+      .map((order) => {
+        const armed = order.first_touch_bar_index !== undefined ? " [armed]" : "";
+        const replaceTag = order.replace_count ? ` [replace ${order.replace_count}]` : "";
+        const role =
+          order.bracket_role === "target"
+            ? "TARGET"
+            : order.bracket_role === "stop"
+              ? "STOP"
+              : order.intent === "exit"
+                ? "EXIT"
+                : "ENTRY";
+        return `${role} ${order.side.toUpperCase()} @ $${order.price.toFixed(2)}${armed}${replaceTag}`;
+      })
+      .join(" | ");
   });
 
   const activeSourceBacktest = createMemo(
@@ -835,13 +865,16 @@ export default function ReplayLabPage() {
     });
   };
 
-  const recordReplayAction = (type: ReplayAction["type"]) => {
+  const recordReplayAction = (
+    type: ReplayAction["type"],
+    fields: Partial<Pick<ReplayAction, "price" | "stopPrice" | "targetPrice">> = {},
+  ) => {
     if (!candles() || totalBars() === 0 || isReviewMode()) {
       return;
     }
 
     if (
-      ["lift_ask", "hit_bid", "join_bid", "join_ask", "rest_exit", "replace", "buy", "sell"].includes(type) &&
+      ["lift_ask", "hit_bid", "join_bid", "join_ask", "rest_exit", "attach_bracket", "replace", "buy", "sell"].includes(type) &&
       replayIndex() >= totalBars() - 1
     ) {
       return;
@@ -849,7 +882,56 @@ export default function ReplayLabPage() {
 
     setBannerNotice(null);
     setIsReplayActive(false);
-    setReplayActions((previous) => [...previous, createReplayAction(type, replayIndex())]);
+    setReplayActions((previous) => [...previous, createReplayAction(type, replayIndex(), fields)]);
+  };
+
+  const attachReplayBracket = () => {
+    const stopPrice = Number(bracketStopPrice().trim());
+    const targetPrice = Number(bracketTargetPrice().trim());
+    if (!Number.isFinite(stopPrice) || stopPrice <= 0) {
+      setBannerError("Bracket stop needs a real price.");
+      return;
+    }
+    if (!Number.isFinite(targetPrice) || targetPrice <= 0) {
+      setBannerError("Bracket target needs a real price.");
+      return;
+    }
+
+    const session = replaySession();
+    const quote = session?.currentQuote;
+    const position = session?.position;
+    if (!position || !quote) {
+      setBannerError("Open a position first so the bracket has something to protect.");
+      return;
+    }
+
+    if (position.side === "buy") {
+      if (stopPrice >= quote.reference) {
+        setBannerError("Long brackets need the stop below the current reference price.");
+        return;
+      }
+      if (targetPrice <= quote.reference) {
+        setBannerError("Long brackets need the target above the current reference price.");
+        return;
+      }
+    } else {
+      if (stopPrice <= quote.reference) {
+        setBannerError("Short brackets need the stop above the current reference price.");
+        return;
+      }
+      if (targetPrice >= quote.reference) {
+        setBannerError("Short brackets need the target below the current reference price.");
+        return;
+      }
+    }
+
+    setBannerError(null);
+    recordReplayAction("attach_bracket", {
+      stopPrice: Number(stopPrice.toFixed(4)),
+      targetPrice: Number(targetPrice.toFixed(4)),
+    });
+    setBracketStopPrice("");
+    setBracketTargetPrice("");
   };
 
   const jumpToTrade = (direction: "next" | "prev") => {
@@ -961,8 +1043,12 @@ export default function ReplayLabPage() {
         type: action.type,
         bar_index: action.barIndex,
         created_at: action.createdAt,
+        price: action.price,
+        stop_price: action.stopPrice,
+        target_price: action.targetPrice,
       })),
       active_order: session.activeOrder ? { ...session.activeOrder } : null,
+      active_orders: session.activeOrders.map((order) => ({ ...order })),
       execution_events: session.executionEvents.map((event) => ({ ...event })),
       trades: session.trades,
       metrics: session.metrics,
@@ -1465,6 +1551,8 @@ export default function ReplayLabPage() {
                               setIsReviewMode(false);
                               setCurrentIndex(0);
                               setReplayActions([]);
+                              setBracketStopPrice("");
+                              setBracketTargetPrice("");
                             });
                           }}
                           onStepBack={() => {
@@ -1511,6 +1599,69 @@ export default function ReplayLabPage() {
                             value={formatReplaySessionStatus(replayStatus())}
                             detail={replayStatusDetail()}
                           />
+                        </div>
+                      </div>
+
+                      <div class="rounded-3xl border border-zinc-800 bg-zinc-950/60 p-5">
+                        <div class="flex items-center justify-between gap-3">
+                          <div>
+                            <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Bracket Builder</p>
+                            <p class="mt-1 text-sm text-zinc-400">
+                              Attach a stop/target OCO pair to the open replay trade.
+                            </p>
+                          </div>
+                          <div class="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-400">
+                            {activeOrders().length} live order{activeOrders().length === 1 ? "" : "s"}
+                          </div>
+                        </div>
+
+                        <div class="mt-4 space-y-3">
+                          <div class="grid gap-3 md:grid-cols-2">
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={bracketStopPrice()}
+                              onInput={(event) => setBracketStopPrice(event.currentTarget.value)}
+                              placeholder="Stop price"
+                              class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                            />
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={bracketTargetPrice()}
+                              onInput={(event) => setBracketTargetPrice(event.currentTarget.value)}
+                              placeholder="Target price"
+                              class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                            />
+                          </div>
+
+                          <button
+                            type="button"
+                            disabled={!canAttachBracket()}
+                            onClick={attachReplayBracket}
+                            class="w-full rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                          >
+                            Attach Bracket
+                          </button>
+
+                          <Show when={activeOrders().length > 0}>
+                            <div class="space-y-2 rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-3">
+                              <For each={activeOrders()}>
+                                {(order) => (
+                                  <div class="rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-xs text-zinc-300">
+                                    {order.bracket_role === "target"
+                                      ? "TARGET"
+                                      : order.bracket_role === "stop"
+                                        ? "STOP"
+                                        : order.intent === "exit"
+                                          ? "EXIT"
+                                          : "ENTRY"}{" "}
+                                    {order.side.toUpperCase()} @ ${order.price.toFixed(2)}
+                                  </div>
+                                )}
+                              </For>
+                            </div>
+                          </Show>
                         </div>
                       </div>
 

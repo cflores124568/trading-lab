@@ -126,7 +126,9 @@ function replayEventRole(event: ExecutionEvent): FillRole | "n/a" {
     return "exit";
   }
   if (event.type === "resting_filled") {
-    return normalizeExecutionAction(event.action) === "rest_exit" ? "exit" : "entry";
+    return ["rest_exit", "bracket_target", "bracket_stop"].includes(normalizeExecutionAction(event.action))
+      ? "exit"
+      : "entry";
   }
   if (event.type === "taker_fill") {
     return "entry";
