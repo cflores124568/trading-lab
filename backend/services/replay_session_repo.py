@@ -39,6 +39,7 @@ def _ensure_replay_sessions_schema(conn) -> None:
                     status            TEXT NOT NULL DEFAULT 'active',
                     actions           JSONB NOT NULL,
                     active_order      JSONB,
+                    active_orders     JSONB NOT NULL DEFAULT '[]'::jsonb,
                     execution_events  JSONB NOT NULL DEFAULT '[]'::jsonb,
                     trades            JSONB NOT NULL,
                     metrics           JSONB NOT NULL,
@@ -67,6 +68,9 @@ def _ensure_replay_sessions_schema(conn) -> None:
             )
             cur.execute("ALTER TABLE replay_sessions ADD COLUMN IF NOT EXISTS active_order JSONB")
             cur.execute(
+                "ALTER TABLE replay_sessions ADD COLUMN IF NOT EXISTS active_orders JSONB NOT NULL DEFAULT '[]'::jsonb"
+            )
+            cur.execute(
                 "ALTER TABLE replay_sessions ADD COLUMN IF NOT EXISTS execution_events JSONB NOT NULL DEFAULT '[]'::jsonb"
             )
             cur.execute(
@@ -88,7 +92,7 @@ def save_replay_session(result: dict) -> None:
             source_backtest, prop_firm_rules, commission, tick_value,
             tick_size, spread_ticks, volatile_bar_threshold_ticks,
             volatile_bar_extra_ticks, resting_fill_mode, current_bar_index, status, actions,
-            active_order, execution_events, trades, metrics, prop_firm_eval,
+            active_order, active_orders, execution_events, trades, metrics, prop_firm_eval,
             equity_curve, created_at, updated_at
         )
         VALUES (
@@ -115,6 +119,7 @@ def save_replay_session(result: dict) -> None:
             status            = EXCLUDED.status,
             actions           = EXCLUDED.actions,
             active_order      = EXCLUDED.active_order,
+            active_orders     = EXCLUDED.active_orders,
             execution_events  = EXCLUDED.execution_events,
             trades            = EXCLUDED.trades,
             metrics           = EXCLUDED.metrics,
@@ -148,6 +153,7 @@ def save_replay_session(result: dict) -> None:
                     result["status"],
                     json.dumps(result["actions"]),
                     json.dumps(result.get("active_order")),
+                    json.dumps(result.get("active_orders") or []),
                     json.dumps(result.get("execution_events") or []),
                     json.dumps(result["trades"]),
                     json.dumps(result["metrics"]),
@@ -206,6 +212,7 @@ def _row_to_result(row) -> dict:
         "status": row["status"],
         "actions": _maybe_json(row["actions"]),
         "active_order": _maybe_json(row.get("active_order")) if hasattr(row, "get") else None,
+        "active_orders": _maybe_json(row.get("active_orders")) if hasattr(row, "get") else [],
         "execution_events": _maybe_json(row.get("execution_events")) if hasattr(row, "get") else [],
         "trades": _maybe_json(row["trades"]),
         "metrics": _maybe_json(row["metrics"]),

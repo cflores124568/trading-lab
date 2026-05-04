@@ -98,6 +98,9 @@ class ReplayAction(BaseModel):
     bar_index: int = Field(ge=0)
     type: str
     created_at: int = Field(ge=0)
+    price: Optional[float] = Field(default=None, gt=0)
+    stop_price: Optional[float] = Field(default=None, gt=0)
+    target_price: Optional[float] = Field(default=None, gt=0)
 
 
 class ReplaySessionSourceBacktest(BaseModel):
@@ -128,6 +131,7 @@ class ReplaySessionBase(BaseModel):
     status: str = Field(default="active")
     actions: List[ReplayAction] = Field(default_factory=list)
     active_order: Optional[dict[str, Any]] = None
+    active_orders: List[dict[str, Any]] = Field(default_factory=list)
     execution_events: List[dict[str, Any]] = Field(default_factory=list)
     trades: List[Trade] = Field(default_factory=list)
     metrics: PerformanceMetrics
@@ -219,6 +223,7 @@ class PaperSessionTradeAction(str, Enum):
     JOIN_BID = "join_bid"
     JOIN_ASK = "join_ask"
     REST_EXIT = "rest_exit"
+    ATTACH_BRACKET = "attach_bracket"
     REPLACE = "replace"
     CANCEL = "cancel"
     FLATTEN = "flatten"
@@ -339,6 +344,7 @@ class PaperSessionBase(BaseModel):
     resting_fill_mode: str = Field(default="touch")
     current_position: dict[str, Any] = Field(default_factory=dict)
     active_order: dict[str, Any] = Field(default_factory=dict)
+    active_orders: List[dict[str, Any]] = Field(default_factory=list)
     last_quote: dict[str, Any] = Field(default_factory=dict)
     trade_log: List[Trade] = Field(default_factory=list)
     equity_curve: List[float] = Field(default_factory=list)
@@ -364,6 +370,8 @@ class PaperSessionStatusUpdate(BaseModel):
 class PaperSessionExecutionRequest(BaseModel):
     action: PaperSessionTradeAction
     price: Optional[float] = Field(default=None, gt=0)
+    stop_price: Optional[float] = Field(default=None, gt=0)
+    target_price: Optional[float] = Field(default=None, gt=0)
     filled_at: Optional[str] = None
     actor: str = Field(default="local-user")
     note: Optional[str] = None

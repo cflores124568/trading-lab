@@ -418,6 +418,7 @@ export type PaperSessionTradeAction =
   | "join_bid"
   | "join_ask"
   | "rest_exit"
+  | "attach_bracket"
   | "replace"
   | "cancel"
   | "flatten";
@@ -534,6 +535,7 @@ export interface PaperSessionResult {
   resting_fill_mode?: "touch" | "penetrate" | "touch_plus_1_bar";
   current_position: Record<string, unknown>;
   active_order: Record<string, unknown>;
+  active_orders: Record<string, unknown>[];
   last_quote: Record<string, unknown>;
   trade_log: Trade[];
   equity_curve: number[];
@@ -626,10 +628,14 @@ export interface ReplaySessionAction {
     | "join_bid"
     | "join_ask"
     | "rest_exit"
+    | "attach_bracket"
     | "replace"
     | "cancel"
     | "flatten";
   created_at: number;
+  price?: number;
+  stop_price?: number;
+  target_price?: number;
 }
 
 export interface ReplaySessionSourceBacktest {
@@ -660,6 +666,7 @@ export interface ReplaySessionPayload {
   status: string;
   actions: ReplaySessionAction[];
   active_order?: Record<string, unknown> | null;
+  active_orders?: Record<string, unknown>[];
   execution_events?: Record<string, unknown>[];
   trades: Trade[];
   metrics: PerformanceMetrics;
@@ -941,6 +948,8 @@ export const executePaperSessionAction = async (
   payload: {
     action: PaperSessionTradeAction;
     price?: number;
+    stopPrice?: number;
+    targetPrice?: number;
     filledAt?: string;
     actor?: string;
     note?: string;
@@ -952,6 +961,8 @@ export const executePaperSessionAction = async (
     body: JSON.stringify({
       action: payload.action,
       price: payload.price,
+      stop_price: payload.stopPrice,
+      target_price: payload.targetPrice,
       filled_at: payload.filledAt,
       actor: payload.actor ?? "local-user",
       note: payload.note,

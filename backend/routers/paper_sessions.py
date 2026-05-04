@@ -128,6 +128,8 @@ async def execute_session_action(
             paper_session_id,
             action=request.action.value,
             price=request.price,
+            stop_price=request.stop_price,
+            target_price=request.target_price,
             filled_at=request.filled_at,
             actor=request.actor,
             note=request.note,

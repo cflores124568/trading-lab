@@ -52,6 +52,7 @@ def _ensure_paper_sessions_schema(conn) -> None:
                     resting_fill_mode TEXT NOT NULL DEFAULT 'touch',
                     current_position JSONB NOT NULL DEFAULT '{}'::jsonb,
                     active_order     JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    active_orders    JSONB NOT NULL DEFAULT '[]'::jsonb,
                     last_quote       JSONB NOT NULL DEFAULT '{}'::jsonb,
                     trade_log        JSONB NOT NULL DEFAULT '[]'::jsonb,
                     equity_curve     JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -89,6 +90,9 @@ def _ensure_paper_sessions_schema(conn) -> None:
             )
             cur.execute(
                 "ALTER TABLE paper_sessions ADD COLUMN IF NOT EXISTS active_order JSONB NOT NULL DEFAULT '{}'::jsonb"
+            )
+            cur.execute(
+                "ALTER TABLE paper_sessions ADD COLUMN IF NOT EXISTS active_orders JSONB NOT NULL DEFAULT '[]'::jsonb"
             )
             cur.execute(
                 "ALTER TABLE paper_sessions ADD COLUMN IF NOT EXISTS last_quote JSONB NOT NULL DEFAULT '{}'::jsonb"
@@ -142,13 +146,13 @@ def save_paper_session(session: dict) -> None:
             commission, tick_value, tick_size, spread_ticks,
             volatile_bar_threshold_ticks, volatile_bar_extra_ticks, resting_fill_mode,
             current_position, active_order, last_quote, trade_log, equity_curve,
-            metrics_snapshot, guardrail_state, runner_state, last_bar_time,
+            active_orders, metrics_snapshot, guardrail_state, runner_state, last_bar_time,
             last_event_at, created_by, created_at, updated_at
         )
         VALUES (
             %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s,
             %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
-            %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s
+            %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s
         )
         ON CONFLICT (paper_session_id) DO UPDATE SET
             candidate_id     = EXCLUDED.candidate_id,
@@ -170,6 +174,7 @@ def save_paper_session(session: dict) -> None:
             resting_fill_mode = EXCLUDED.resting_fill_mode,
             current_position = EXCLUDED.current_position,
             active_order     = EXCLUDED.active_order,
+            active_orders    = EXCLUDED.active_orders,
             last_quote       = EXCLUDED.last_quote,
             trade_log        = EXCLUDED.trade_log,
             equity_curve     = EXCLUDED.equity_curve,
@@ -208,6 +213,7 @@ def save_paper_session(session: dict) -> None:
                     session.get("resting_fill_mode") or "touch",
                     json.dumps(session.get("current_position") or {}),
                     json.dumps(session.get("active_order") or {}),
+                    json.dumps(session.get("active_orders") or []),
                     json.dumps(session.get("last_quote") or {}),
                     json.dumps(session.get("trade_log") or []),
                     json.dumps(session.get("equity_curve") or []),
@@ -334,6 +340,7 @@ def _row_to_session(row) -> dict:
         "resting_fill_mode": row.get("resting_fill_mode") or "touch",
         "current_position": _maybe_json(row["current_position"]) or {},
         "active_order": _maybe_json(row.get("active_order")) or {},
+        "active_orders": _maybe_json(row.get("active_orders")) or [],
         "last_quote": _maybe_json(row.get("last_quote")) or {},
         "trade_log": _maybe_json(row.get("trade_log")) or [],
         "equity_curve": _maybe_json(row.get("equity_curve")) or [],
