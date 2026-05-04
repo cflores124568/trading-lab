@@ -6,6 +6,7 @@ export type ExecutionActionType =
   | "join_bid"
   | "join_ask"
   | "rest_exit"
+  | "replace"
   | "cancel"
   | "flatten";
 
@@ -15,7 +16,7 @@ export type ExecutionSide = "buy" | "sell";
 export type RestingFillMode = "touch" | "penetrate" | "touch_plus_1_bar";
 export type RestingOrderIntent = "entry" | "exit";
 
-export type RestingOrderStatus = "pending" | "filled" | "canceled";
+export type RestingOrderStatus = "pending" | "filled" | "canceled" | "replaced";
 
 export interface SyntheticQuote {
   bid: number;
@@ -42,19 +43,33 @@ export interface RestingOrder {
   filled_bar_index?: number;
   canceled_at?: string;
   canceled_bar_index?: number;
+  replaced_at?: string;
+  replaced_bar_index?: number;
+  replaced_by_order_id?: string;
+  parent_order_id?: string;
+  replaces_order_id?: string;
+  replace_count?: number;
   first_touch_at?: string;
   first_touch_bar_index?: number;
 }
 
 export interface ExecutionEvent {
   id: string;
-  type: "taker_fill" | "resting_submitted" | "resting_filled" | "resting_canceled" | "flatten" | "ignored";
+  type:
+    | "taker_fill"
+    | "resting_submitted"
+    | "resting_filled"
+    | "resting_canceled"
+    | "resting_replaced"
+    | "flatten"
+    | "ignored";
   action: ExecutionActionType | LegacyExecutionActionType;
   side?: ExecutionSide;
   price?: number;
   bar_index: number;
   time: string;
   order_id?: string;
+  replaced_order_id?: string;
   reason?: string;
 }
 
@@ -279,6 +294,54 @@ export function createRestingOrder(args: {
     type: args.action,
     status: "pending",
   };
+}
+
+export function replaceRestingOrder(args: {
+  order: RestingOrder;
+  newId: string;
+  price: number;
+  barIndex: number;
+  time: string;
+}): { replacedOrder: RestingOrder; nextOrder: RestingOrder } {
+  const parentOrderId = args.order.parent_order_id ?? args.order.id;
+  const replaceCount = (args.order.replace_count ?? 0) + 1;
+
+  const replacedOrder: RestingOrder = {
+    ...args.order,
+    status: "replaced",
+    replaced_at: args.time,
+    replaced_bar_index: args.barIndex,
+    replaced_by_order_id: args.newId,
+    parent_order_id: parentOrderId,
+    replace_count: replaceCount,
+  };
+  delete replacedOrder.filled_at;
+  delete replacedOrder.filled_bar_index;
+  delete replacedOrder.canceled_at;
+  delete replacedOrder.canceled_bar_index;
+
+  const nextOrder: RestingOrder = {
+    ...args.order,
+    id: args.newId,
+    price: roundPrice(args.price),
+    submitted_at: args.time,
+    submitted_bar_index: args.barIndex,
+    status: "pending",
+    parent_order_id: parentOrderId,
+    replaces_order_id: args.order.id,
+    replace_count: replaceCount,
+  };
+  delete nextOrder.filled_at;
+  delete nextOrder.filled_bar_index;
+  delete nextOrder.canceled_at;
+  delete nextOrder.canceled_bar_index;
+  delete nextOrder.replaced_at;
+  delete nextOrder.replaced_bar_index;
+  delete nextOrder.replaced_by_order_id;
+  delete nextOrder.first_touch_at;
+  delete nextOrder.first_touch_bar_index;
+
+  return { replacedOrder, nextOrder };
 }
 
 function roundPrice(value: number): number {

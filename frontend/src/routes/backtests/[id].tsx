@@ -1226,7 +1226,8 @@ export default function BacktestDetail() {
     }
     const intent = order.intent === "exit" ? "EXIT" : "ENTRY";
     const armed = order.first_touch_bar_index !== undefined ? " [armed]" : "";
-    return `${intent} ${order.side.toUpperCase()} @ $${order.price.toFixed(2)}${armed}`;
+    const replaceTag = order.replace_count ? ` [replace ${order.replace_count}]` : "";
+    return `${intent} ${order.side.toUpperCase()} @ $${order.price.toFixed(2)}${armed}${replaceTag}`;
   });
 
   const replayMetrics = createMemo(() => {
@@ -1380,6 +1381,13 @@ export default function BacktestDetail() {
 
   const recordReplayAction = (type: ReplayAction["type"]) => {
     if (!candles() || totalBars() === 0) {
+      return;
+    }
+
+    if (
+      ["lift_ask", "hit_bid", "join_bid", "join_ask", "rest_exit", "replace", "buy", "sell"].includes(type) &&
+      replayIndex() >= totalBars() - 1
+    ) {
       return;
     }
 
@@ -1669,6 +1677,7 @@ export default function BacktestDetail() {
                             canJoinBid={!replaySession()?.position && !replaySession()?.activeOrder}
                             canJoinAsk={!replaySession()?.position && !replaySession()?.activeOrder}
                             canRestExit={!!replaySession()?.position && !replaySession()?.activeOrder}
+                            canReplaceOrder={!!replaySession()?.activeOrder && replayIndex() < totalBars() - 1}
                             canCancelOrder={!!replaySession()?.activeOrder}
                             canFlatten={!!replaySession()?.position || !!replaySession()?.activeOrder}
                             onPlayPause={() => {
@@ -1702,6 +1711,7 @@ export default function BacktestDetail() {
                             onJoinBid={() => recordReplayAction("join_bid")}
                             onJoinAsk={() => recordReplayAction("join_ask")}
                             onRestExit={() => recordReplayAction("rest_exit")}
+                            onReplace={() => recordReplayAction("replace")}
                             onCancel={() => recordReplayAction("cancel")}
                             onFlatten={() => recordReplayAction("flatten")}
                           />

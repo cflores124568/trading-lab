@@ -262,3 +262,60 @@ def make_resting_order(
         "type": action,
         "status": "pending",
     }
+
+
+def replace_resting_order(
+    order: dict[str, Any],
+    *,
+    new_order_id: str,
+    price: float,
+    submitted_at: str,
+    submitted_bar_index: int | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Replace one working order with a new child order.
+
+    I don't mutate the old order in place because that hides the lifecycle and
+    makes later UI/event trails fuzzy. This marks the old order as `replaced`,
+    stamps lineage both ways, and returns the fresh child order that should be
+    treated as the new live intent.
+    """
+    original = dict(order)
+    parent_order_id = str(original.get("parent_order_id") or original.get("id") or new_order_id)
+    replace_count = int(original.get("replace_count") or 0) + 1
+
+    replaced_order = {
+        **original,
+        "status": "replaced",
+        "replaced_at": submitted_at,
+        "replaced_bar_index": submitted_bar_index,
+        "replaced_by_order_id": new_order_id,
+        "parent_order_id": parent_order_id,
+        "replace_count": replace_count,
+    }
+    replaced_order.pop("filled_at", None)
+    replaced_order.pop("filled_bar_index", None)
+    replaced_order.pop("canceled_at", None)
+    replaced_order.pop("canceled_bar_index", None)
+
+    next_order = {
+        **original,
+        "id": new_order_id,
+        "price": round(float(price), 10),
+        "submitted_at": submitted_at,
+        "submitted_bar_index": submitted_bar_index,
+        "status": "pending",
+        "parent_order_id": parent_order_id,
+        "replaces_order_id": str(original.get("id") or ""),
+        "replace_count": replace_count,
+    }
+    next_order.pop("filled_at", None)
+    next_order.pop("filled_bar_index", None)
+    next_order.pop("canceled_at", None)
+    next_order.pop("canceled_bar_index", None)
+    next_order.pop("replaced_at", None)
+    next_order.pop("replaced_bar_index", None)
+    next_order.pop("replaced_by_order_id", None)
+    next_order.pop("first_touch_at", None)
+    next_order.pop("first_touch_bar_index", None)
+
+    return replaced_order, next_order

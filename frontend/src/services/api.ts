@@ -418,6 +418,7 @@ export type PaperSessionTradeAction =
   | "join_bid"
   | "join_ask"
   | "rest_exit"
+  | "replace"
   | "cancel"
   | "flatten";
 
@@ -625,6 +626,7 @@ export interface ReplaySessionAction {
     | "join_bid"
     | "join_ask"
     | "rest_exit"
+    | "replace"
     | "cancel"
     | "flatten";
   created_at: number;

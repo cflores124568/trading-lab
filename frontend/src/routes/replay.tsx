@@ -599,6 +599,9 @@ export default function ReplayLabPage() {
   const canCancelOrder = createMemo(
     () => !!replaySession()?.activeOrder && !isReviewMode(),
   );
+  const canReplaceOrder = createMemo(
+    () => !!replaySession()?.activeOrder && replayIndex() < totalBars() - 1 && !isReviewMode(),
+  );
   const replayStatusDetail = createMemo(() => {
     if (replayStatus() === "review") {
       return "The run is done, so you can scrub and study it without changing the paper trades.";
@@ -722,8 +725,9 @@ export default function ReplayLabPage() {
       return "None";
     }
     const armed = order.first_touch_bar_index !== undefined ? " [armed]" : "";
+    const replaceTag = order.replace_count ? ` [replace ${order.replace_count}]` : "";
     const intent = order.intent === "exit" ? "EXIT" : "ENTRY";
-    return `${intent} ${order.side.toUpperCase()} @ $${order.price.toFixed(2)}${armed}`;
+    return `${intent} ${order.side.toUpperCase()} @ $${order.price.toFixed(2)}${armed}${replaceTag}`;
   });
 
   const activeSourceBacktest = createMemo(
@@ -837,7 +841,7 @@ export default function ReplayLabPage() {
     }
 
     if (
-      ["lift_ask", "hit_bid", "join_bid", "join_ask", "rest_exit", "buy", "sell"].includes(type) &&
+      ["lift_ask", "hit_bid", "join_bid", "join_ask", "rest_exit", "replace", "buy", "sell"].includes(type) &&
       replayIndex() >= totalBars() - 1
     ) {
       return;
@@ -1435,6 +1439,7 @@ export default function ReplayLabPage() {
                           canJoinBid={canPlaceEntries()}
                           canJoinAsk={canPlaceEntries()}
                           canRestExit={canRestExit()}
+                          canReplaceOrder={canReplaceOrder()}
                           canCancelOrder={canCancelOrder()}
                           canFlatten={canExitPosition() || canCancelOrder()}
                           onPlayPause={() => {
@@ -1479,6 +1484,7 @@ export default function ReplayLabPage() {
                           onJoinBid={() => recordReplayAction("join_bid")}
                           onJoinAsk={() => recordReplayAction("join_ask")}
                           onRestExit={() => recordReplayAction("rest_exit")}
+                          onReplace={() => recordReplayAction("replace")}
                           onCancel={() => recordReplayAction("cancel")}
                           onFlatten={() => recordReplayAction("flatten")}
                         />

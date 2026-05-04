@@ -200,6 +200,99 @@ class PaperSessionExecutionEventTests(unittest.TestCase):
         self.assertEqual(captured_events[-1]["payload"]["order"]["intent"], "exit")
         self.assertEqual(captured_events[-1]["payload"]["closed_trade"]["side"], "buy")
 
+    def test_replace_creates_a_new_child_order_with_lineage(self):
+        """Replacing should behave like cancel-and-new-child, not mutation.
+
+        I want the working order trail to stay honest. The old order should end
+        life as `replaced`, the new one should get a fresh id, and the session
+        should keep the lineage so later UI/event views can show what happened.
+        """
+        captured_event = {}
+        session = {
+            "paper_session_id": "paper-1",
+            "candidate_id": "cand-1",
+            "status": "running",
+            "symbol": "ES",
+            "interval": "1min",
+            "prop_firm_rules": {"account_size": 100_000},
+            "guardrails": {},
+            "commission": 5.0,
+            "tick_value": 50.0,
+            "tick_size": 0.25,
+            "spread_ticks": 1,
+            "volatile_bar_threshold_ticks": 0,
+            "volatile_bar_extra_ticks": 0,
+            "resting_fill_mode": "touch",
+            "current_position": {},
+            "active_order": {
+                "id": "order-1",
+                "intent": "entry",
+                "side": "buy",
+                "price": 100.0,
+                "submitted_at": "2026-05-01T09:30:00+00:00",
+                "submitted_bar_index": 1,
+                "type": "join_bid",
+                "status": "pending",
+                "first_touch_at": "2026-05-01T09:31:00+00:00",
+                "first_touch_bar_index": 2,
+            },
+            "last_quote": {"bid": 99.75, "ask": 100.0, "reference": 99.75},
+            "trade_log": [],
+            "equity_curve": [100_000.0],
+            "runner_state": {"bars_processed": 3},
+            "last_bar_time": "2026-05-01T09:32:00+00:00",
+            "last_event_at": "2026-05-01T09:32:00+00:00",
+            "created_by": "test",
+            "created_at": "2026-05-01T09:30:00+00:00",
+            "updated_at": "2026-05-01T09:32:00+00:00",
+        }
+
+        with patch.object(paper_session_service, "_require_paper_session", return_value=session), patch.object(
+            paper_session_service,
+            "_save_paper_session_any",
+            side_effect=lambda payload: payload,
+        ), patch.object(
+            paper_session_service,
+            "_append_paper_event_any",
+            side_effect=lambda payload: captured_event.update(payload),
+        ), patch.object(
+            paper_session_service,
+            "_require_candidate",
+            return_value={"candidate_id": "cand-1"},
+        ), patch.object(
+            paper_session_service,
+            "_sync_candidate_paper_session",
+            return_value=None,
+        ), patch.object(
+            paper_session_service,
+            "_append_candidate_session_audit",
+            return_value=None,
+        ), patch.object(
+            paper_session_service,
+            "_now",
+            return_value="2026-05-01T09:32:00+00:00",
+        ), patch.object(
+            paper_session_service.uuid,
+            "uuid4",
+            return_value="order-2",
+        ):
+            updated = paper_session_service.execute_paper_session_action(
+                "paper-1",
+                action="replace",
+                actor="tester",
+            )
+
+        self.assertEqual(updated["active_order"]["id"], "order-2")
+        self.assertEqual(updated["active_order"]["price"], 99.75)
+        self.assertEqual(updated["active_order"]["replaces_order_id"], "order-1")
+        self.assertEqual(updated["active_order"]["parent_order_id"], "order-1")
+        self.assertEqual(updated["active_order"]["replace_count"], 1)
+        self.assertNotIn("first_touch_at", updated["active_order"])
+        self.assertEqual(captured_event["event_type"], "order_replaced")
+        self.assertEqual(captured_event["payload"]["replaced_order"]["status"], "replaced")
+        self.assertEqual(captured_event["payload"]["replaced_order"]["replaced_by_order_id"], "order-2")
+        self.assertEqual(captured_event["payload"]["order"]["id"], "order-2")
+
 
 if __name__ == "__main__":
     unittest.main()

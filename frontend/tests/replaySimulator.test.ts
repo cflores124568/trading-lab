@@ -335,6 +335,49 @@ test("resting orders can be canceled before a later touch", () => {
   assert.equal(session.executionEvents.some((event) => event.type === "resting_canceled"), true);
 });
 
+test("resting orders can be replaced with a new child order", () => {
+  const candles: Candle[] = [
+    { time: 1 as Candle["time"], open: 100, high: 100.5, low: 100, close: 100, volume: 1 },
+    { time: 2 as Candle["time"], open: 100.75, high: 101, low: 100.5, close: 100.75, volume: 1 },
+    { time: 3 as Candle["time"], open: 100.75, high: 101, low: 99.5, close: 100.25, volume: 1 },
+  ];
+  const actions: ReplayAction[] = [
+    { id: "order-1", barIndex: 0, type: "join_bid", createdAt: 1 },
+    { id: "order-2", barIndex: 1, type: "replace", createdAt: 2 },
+  ];
+
+  const session = simulateReplaySession({
+    candles,
+    currentIndex: 2,
+    actions,
+    initialBalance: 100_000,
+    commission: 0,
+    tickValue: 10,
+    tickSize: 0.25,
+    spreadTicks: 1,
+    propFirmRules: rules,
+  });
+
+  assert.equal(session.position?.entry_bar_index, 2);
+  assert.equal(session.position?.entry_price, 100.75);
+  assert.equal(session.activeOrder, null);
+  assert.equal(
+    session.executionEvents.some(
+      (event) =>
+        event.type === "resting_replaced" &&
+        event.order_id === "order-2" &&
+        event.replaced_order_id === "order-1",
+    ),
+    true,
+  );
+  assert.equal(
+    session.executionEvents.some(
+      (event) => event.type === "resting_filled" && event.order_id === "order-2",
+    ),
+    true,
+  );
+});
+
 test("resting exits close the open replay trade as maker fills", () => {
   const candles: Candle[] = [
     { time: 1 as Candle["time"], open: 100, high: 100.5, low: 99.75, close: 100, volume: 1 },

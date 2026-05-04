@@ -3,6 +3,7 @@ import unittest
 from services.execution_model import (
     default_execution_config_for_symbol,
     make_resting_order,
+    replace_resting_order,
     resting_order_fill_update,
     resting_order_penetrated,
     resting_order_touched,
@@ -124,6 +125,37 @@ class ExecutionModelTests(unittest.TestCase):
         )
         self.assertTrue(should_fill)
         self.assertEqual(ready.get("first_touch_bar_index"), 3)
+
+    def test_replace_resting_order_keeps_lineage_and_resets_arming(self):
+        order = make_resting_order(
+            order_id="buy-1",
+            action="join_bid",
+            price=100.0,
+            submitted_at="2026-05-01T09:30:00+00:00",
+            submitted_bar_index=1,
+        )
+        order["first_touch_at"] = "2026-05-01T09:31:00+00:00"
+        order["first_touch_bar_index"] = 2
+
+        replaced, child = replace_resting_order(
+            order,
+            new_order_id="buy-2",
+            price=99.75,
+            submitted_at="2026-05-01T09:32:00+00:00",
+            submitted_bar_index=3,
+        )
+
+        self.assertEqual(replaced["status"], "replaced")
+        self.assertEqual(replaced["replaced_by_order_id"], "buy-2")
+        self.assertEqual(replaced["parent_order_id"], "buy-1")
+        self.assertEqual(replaced["replace_count"], 1)
+        self.assertEqual(child["status"], "pending")
+        self.assertEqual(child["id"], "buy-2")
+        self.assertEqual(child["replaces_order_id"], "buy-1")
+        self.assertEqual(child["parent_order_id"], "buy-1")
+        self.assertEqual(child["replace_count"], 1)
+        self.assertNotIn("first_touch_at", child)
+        self.assertNotIn("first_touch_bar_index", child)
 
 
 if __name__ == "__main__":

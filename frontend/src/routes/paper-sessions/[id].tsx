@@ -178,8 +178,10 @@ function orderLabel(order: Record<string, unknown>): string {
     return "No resting order.";
   }
   const armed = numberFromUnknown(order.first_touch_bar_index) !== null ? " [armed]" : "";
+  const replaceCount = numberFromUnknown(order.replace_count);
+  const replaceTag = replaceCount && replaceCount > 0 ? ` [replace ${replaceCount}]` : "";
   const intent = stringFromUnknown(order.intent) === "exit" ? "EXIT" : "ENTRY";
-  return `${intent} ${side.toUpperCase()} @ ${price.toFixed(4)}${armed}`;
+  return `${intent} ${side.toUpperCase()} @ ${price.toFixed(4)}${armed}${replaceTag}`;
 }
 
 function runnerModeTone(mode?: string | null): string {
@@ -909,6 +911,14 @@ export default function PaperSessionDetailPage() {
                       class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
                     >
                       Rest Exit
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyAction() === "execute" || !hasActiveOrder()}
+                      onClick={() => handleExecution("replace")}
+                      class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                    >
+                      Replace
                     </button>
                     <button
                       type="button"

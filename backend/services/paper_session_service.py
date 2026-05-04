@@ -21,6 +21,7 @@ from services.execution_model import (
     make_resting_order,
     normalize_execution_action,
     normalize_resting_fill_mode,
+    replace_resting_order,
     resting_order_fill_update,
     synthetic_quote_for_bar,
 )
@@ -496,6 +497,32 @@ def execute_paper_session_action(
         payload = {"action": action_key, "order": order, "quote": quote}
         audit_summary = summary
         event_type = "order_canceled"
+    elif action_key == "replace":
+        order = dict(session.get("active_order") or {})
+        if not order:
+            raise ValueError("There isn't a resting order to replace.")
+
+        replacement_price = execution_price
+        if replacement_price is None:
+            replacement_price = round(float(quote["bid" if order.get("side") == "buy" else "ask"]), 4)
+
+        replaced_order, child_order = replace_resting_order(
+            order,
+            new_order_id=str(uuid.uuid4()),
+            price=replacement_price,
+            submitted_at=timestamp,
+            submitted_bar_index=(session.get("runner_state") or {}).get("bars_processed"),
+        )
+        session["active_order"] = child_order
+        summary = note or _resting_replace_summary(replaced_order, child_order)
+        payload = {
+            "action": action_key,
+            "quote": quote,
+            "replaced_order": replaced_order,
+            "order": child_order,
+        }
+        audit_summary = summary
+        event_type = "order_replaced"
     elif action_key == "mark":
         if session["status"] not in POSITION_ACTION_STATUSES:
             raise ValueError("Paper session must be ready, running, or paused before you can mark a position.")
@@ -635,6 +662,20 @@ def _resting_cancel_summary(order: dict) -> str:
     if _resting_order_intent(order) == "exit":
         return f"Canceled resting exit {order.get('side')} order at {price:.2f}."
     return f"Canceled resting {order.get('side')} entry order at {price:.2f}."
+
+
+def _resting_replace_summary(order: dict, child_order: dict) -> str:
+    old_price = float(order.get("price") or 0.0)
+    new_price = float(child_order.get("price") or 0.0)
+    if _resting_order_intent(order) == "exit":
+        return (
+            f"Replaced resting exit {order.get('side')} order "
+            f"from {old_price:.2f} to {new_price:.2f}."
+        )
+    return (
+        f"Replaced resting {order.get('side')} entry order "
+        f"from {old_price:.2f} to {new_price:.2f}."
+    )
 
 
 def _paper_bot_to_session_status(paper_bot_status: str | None) -> str:

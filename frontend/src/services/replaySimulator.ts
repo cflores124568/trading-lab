@@ -4,6 +4,7 @@ import {
   DEFAULT_EXECUTION_CONFIG,
   normalizeExecutionAction,
   normalizeRestingFillMode,
+  replaceRestingOrder,
   restingOrderFillUpdate,
   syntheticQuoteForCandle,
   type ExecutionConfig,
@@ -21,6 +22,7 @@ export type ReplayActionType =
   | "join_bid"
   | "join_ask"
   | "rest_exit"
+  | "replace"
   | "cancel"
   | "flatten";
 
@@ -562,6 +564,39 @@ export function simulateReplaySession(args: {
             bar_index: i,
             time: getCandleTime(candle),
             reason: "No pending order to cancel.",
+          });
+        }
+        continue;
+      }
+
+      if (actionType === "replace") {
+        if (activeOrder && activeOrder.status === "pending") {
+          const nextPrice = activeOrder.side === "buy" ? quote.bid : quote.ask;
+          const replacement = replaceRestingOrder({
+            order: activeOrder,
+            newId: action.id,
+            price: nextPrice,
+            barIndex: i,
+            time: getCandleTime(candle),
+          });
+          appendEvent({
+            type: "resting_replaced",
+            action: action.type,
+            side: replacement.nextOrder.side,
+            price: replacement.nextOrder.price,
+            bar_index: i,
+            time: getCandleTime(candle),
+            order_id: replacement.nextOrder.id,
+            replaced_order_id: replacement.replacedOrder.id,
+          });
+          activeOrder = replacement.nextOrder;
+        } else {
+          appendEvent({
+            type: "ignored",
+            action: action.type,
+            bar_index: i,
+            time: getCandleTime(candle),
+            reason: "No pending order to replace.",
           });
         }
         continue;
