@@ -155,14 +155,15 @@ If parity is still noisy or semantics are still moving, stay in `3B`.
 
 ## Immediate Next Task
 
-The parity matrix is frozen now, and the reliability matrix is quiet.
-The next open artifact is the session-list health view so operators can tell
-at a glance whether a runner is healthy without drilling into the detail page.
+`3B` is closed.
+
+The parity matrix, reliability matrix, soak coverage, and session-list health
+view are all pinned now, so the next thread should move to `3C`.
 
 In practice that means:
 
-1. build the session-list health view
-2. keep `3C` blocked until operator-facing health is compact and readable
+1. start the `3C` planning thread
+2. keep the frozen `3B` semantics intact unless a follow-up change is explicit
 
 ## Tight Kickoff Prompt For The Next Thread
 

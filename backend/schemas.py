@@ -421,7 +421,14 @@ class PaperSessionSummary(BaseModel):
     symbol: str
     interval: str
     status: PaperSessionStatus
+    runner_health: str = "idle"
+    runner_bars_processed: int = 0
+    runner_last_candle_time: Optional[str] = None
+    runner_last_action: Optional[str] = None
+    runner_parity_passed: Optional[bool] = None
+    runner_last_error: Optional[str] = None
     last_event_at: Optional[str] = None
+    last_bar_time: Optional[str] = None
     created_at: str
     updated_at: str
 

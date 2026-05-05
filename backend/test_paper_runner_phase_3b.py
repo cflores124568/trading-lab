@@ -481,6 +481,63 @@ class PaperRunnerPhase3BTests(unittest.TestCase):
         self.assertNotIn("paper-failed", paper_runner_service._runner_handles)
         self.assertTrue(failure_handle.stop_event.is_set())
 
+    def test_build_paper_session_summary_exposes_runner_health(self):
+        """Keep the session-list health row pinned to the runner state.
+
+        The list page shouldn't have to reverse-engineer runner internals. This
+        summary helper is the contract: health, cursor, latest action, parity,
+        and error all need to be ready in one compact shape.
+        """
+        session = {
+            "paper_session_id": "paper-1",
+            "candidate_id": "cand-1",
+            "name": "ES runner",
+            "symbol": "ES",
+            "interval": "1min",
+            "status": "completed",
+            "runner_state": {
+                "mode": "completed",
+                "bars_processed": 42,
+                "last_candle_time": "2026-04-20T09:42:00+00:00",
+                "last_signal_action": "flip_to_buy",
+                "last_error": None,
+                "parity_check": {"status": "ok", "passed": True},
+            },
+            "last_bar_time": "2026-04-20T09:42:00+00:00",
+            "last_event_at": "2026-04-20T09:42:30+00:00",
+            "created_at": "2026-04-20T09:30:00+00:00",
+            "updated_at": "2026-04-20T09:42:30+00:00",
+        }
+
+        summary = paper_session_service.build_paper_session_summary(session)
+
+        self.assertEqual(summary["runner_health"], "quiet")
+        self.assertEqual(summary["runner_bars_processed"], 42)
+        self.assertEqual(summary["runner_last_candle_time"], "2026-04-20T09:42:00+00:00")
+        self.assertEqual(summary["runner_last_action"], "flip_to_buy")
+        self.assertTrue(summary["runner_parity_passed"])
+        self.assertIsNone(summary["runner_last_error"])
+        self.assertEqual(summary["last_bar_time"], "2026-04-20T09:42:00+00:00")
+
+        failed_summary = paper_session_service.build_paper_session_summary(
+            {
+                **session,
+                "status": "failed",
+                "runner_state": {
+                    "mode": "failed",
+                    "bars_processed": 12,
+                    "last_candle_time": "2026-04-20T09:42:00+00:00",
+                    "last_signal_action": "open_long",
+                    "last_error": "Historical runner stopped on daily loss breach.",
+                    "parity_check": {"status": "ok", "passed": False},
+                },
+            }
+        )
+
+        self.assertEqual(failed_summary["runner_health"], "failed")
+        self.assertFalse(failed_summary["runner_parity_passed"])
+        self.assertIn("daily loss", failed_summary["runner_last_error"])
+
     def test_long_run_soak_stays_deterministic(self):
         """Keep the long-run row honest with two identical soak passes.
 

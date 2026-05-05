@@ -59,7 +59,7 @@ Long-run soak coverage is pinned by
 
 ## Blockers
 
-`3B` stays open if any of these are still true:
+`3B` is closed. Keep these around as the historical gate, not active blockers:
 
 - [ ] parity only passes with hand-wavy explanations
 - [ ] one strategy still has uncovered edge cases
@@ -67,3 +67,7 @@ Long-run soak coverage is pinned by
 - [ ] end-of-window behavior is still ambiguous
 - [ ] guardrail breach handling is still ambiguous
 - [ ] session-list health still requires opening the detail page to understand runner health
+
+## Gate Note
+
+`3B` closed.

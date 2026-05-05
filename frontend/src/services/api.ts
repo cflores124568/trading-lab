@@ -556,7 +556,14 @@ export interface PaperSessionSummary {
   symbol: string;
   interval: string;
   status: PaperSessionStatus;
+  runner_health: string;
+  runner_bars_processed: number;
+  runner_last_candle_time?: string | null;
+  runner_last_action?: string | null;
+  runner_parity_passed?: boolean | null;
+  runner_last_error?: string | null;
   last_event_at?: string | null;
+  last_bar_time?: string | null;
   created_at: string;
   updated_at: string;
 }

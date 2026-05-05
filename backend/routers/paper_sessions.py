@@ -35,20 +35,7 @@ async def list_paper_sessions():
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Paper session storage unavailable: {exc}")
 
-    return [
-        {
-            "paper_session_id": session["paper_session_id"],
-            "candidate_id": session["candidate_id"],
-            "name": session["name"],
-            "symbol": session["symbol"],
-            "interval": session["interval"],
-            "status": session["status"],
-            "last_event_at": session.get("last_event_at"),
-            "created_at": session["created_at"],
-            "updated_at": session["updated_at"],
-        }
-        for session in source
-    ]
+    return source
 
 
 @router.get("/{paper_session_id}", response_model=PaperSessionResult)

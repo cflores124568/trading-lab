@@ -106,10 +106,44 @@ PAPER_SESSION_TRANSITIONS = {
 def list_paper_sessions_any() -> list[dict]:
     source = list_paper_sessions_db() if _db_required() else list_paper_sessions_mem()
     return sorted(
-        [_ensure_session_defaults(dict(session)) for session in source],
+        [build_paper_session_summary(dict(session)) for session in source],
         key=lambda session: session.get("updated_at", ""),
         reverse=True,
     )
+
+
+def build_paper_session_summary(session: dict) -> dict:
+    """Flatten one paper session into the compact list-card shape.
+
+    This keeps the paper-session list readable without making the frontend
+    reverse-engineer runner state. I pull out the bits an operator actually
+    needs at a glance: health, cursor, latest runner action, and parity.
+    """
+    session = _ensure_session_defaults(dict(session))
+    runner_state = dict(session.get("runner_state") or {})
+    parity_check = dict(runner_state.get("parity_check") or {})
+
+    health = _runner_health_label(runner_state, parity_check)
+    parity_passed = parity_check.get("status") == "ok" and bool(parity_check.get("passed"))
+
+    return {
+        "paper_session_id": session["paper_session_id"],
+        "candidate_id": session["candidate_id"],
+        "name": session["name"],
+        "symbol": session["symbol"],
+        "interval": session["interval"],
+        "status": session["status"],
+        "runner_health": health,
+        "runner_bars_processed": int(runner_state.get("bars_processed") or 0),
+        "runner_last_candle_time": runner_state.get("last_candle_time"),
+        "runner_last_action": runner_state.get("last_signal_action"),
+        "runner_parity_passed": parity_passed if parity_check else None,
+        "runner_last_error": runner_state.get("last_error"),
+        "last_event_at": session.get("last_event_at"),
+        "last_bar_time": session.get("last_bar_time"),
+        "created_at": session["created_at"],
+        "updated_at": session["updated_at"],
+    }
 
 
 def get_paper_session_any(paper_session_id: str) -> dict | None:
@@ -1441,3 +1475,25 @@ def _ensure_runner_state_defaults(state: dict | None) -> dict:
     payload.setdefault("last_error", None)
     payload.setdefault("updated_at", None)
     return payload
+
+
+def _runner_health_label(runner_state: dict, parity_check: dict | None = None) -> str:
+    parity_check = parity_check or {}
+    mode = str(runner_state.get("mode") or "idle")
+    last_error = runner_state.get("last_error")
+
+    if mode == "failed" or last_error:
+        return "failed"
+    if mode == "completed":
+        if parity_check.get("status") == "ok" and parity_check.get("passed"):
+            return "quiet"
+        if parity_check:
+            return "drift"
+        return "completed"
+    if mode == "running":
+        return "healthy"
+    if mode == "paused":
+        return "paused"
+    if int(runner_state.get("bars_processed") or 0) > 0:
+        return "observed"
+    return "idle"
