@@ -56,7 +56,7 @@ export default function AppShell(props: AppShellProps) {
               href="/"
               class="group inline-flex items-center gap-2 text-sm font-semibold text-zinc-100"
             >
-              <span class="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/80 text-sky-300 transition-colors group-hover:border-zinc-700 group-hover:text-sky-200">
+              <span class="flex h-8 w-8 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900/80 text-sky-300 transition-colors group-hover:border-zinc-700 group-hover:text-sky-200">
                 <CandlestickChart size={17} />
               </span>
               <span class="app-brand leading-tight">
@@ -65,7 +65,7 @@ export default function AppShell(props: AppShellProps) {
               </span>
             </A>
 
-            <nav class="flex max-w-[calc(100vw-3rem)] flex-nowrap items-center gap-1.5 overflow-x-auto rounded-2xl border border-zinc-800/80 bg-zinc-950/80 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:max-w-none">
+            <nav class="flex max-w-[calc(100vw-3rem)] flex-nowrap items-center gap-1.5 overflow-x-auto rounded-md border border-zinc-800/80 bg-zinc-950/80 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:max-w-none">
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const active = isActive(item.href, item.match);
@@ -74,7 +74,7 @@ export default function AppShell(props: AppShellProps) {
                   <A
                     href={item.href}
                     title={item.label}
-                    class={`group relative inline-flex shrink-0 items-center gap-1.5 rounded-xl px-2 py-2 text-sm font-medium transition-all duration-150 hover:-translate-y-px sm:px-2.5 ${
+                    class={`group relative inline-flex shrink-0 items-center gap-1.5 rounded-sm px-2 py-2 text-sm font-medium transition-all duration-150 hover:-translate-y-px sm:px-2.5 ${
                       active
                         ? "bg-zinc-900 text-zinc-100 shadow-sm shadow-black/25"
                         : item.intent === "action"

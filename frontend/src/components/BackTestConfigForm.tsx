@@ -1,14 +1,17 @@
 import { createSignal, createResource, Show, For, batch, createEffect, createMemo } from "solid-js";
 import { useNavigate } from "@solidjs/router";
+import { ChevronDown, ChevronRight } from "lucide-solid";
 import { fetchSymbols, fetchPropPresets, loadSymbol, runBacktest, type SymbolInfo, type PropFirmPreset} from "../services/api";
 import { BACKTEST_INTERVALS, STRATEGIES, STRATEGY_PARAMS, getBackendInterval, type StrategyValue} from "../constants";
 
 // Shared input styles 
 const field =
-  "w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm " +
-  "focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:opacity-40";
-const label = "block text-xs text-zinc-400 mb-1";
-const section = "app-panel app-panel-section space-y-4";
+  "w-full rounded-sm border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 " +
+  "focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:cursor-not-allowed disabled:opacity-40";
+const numericField = `${field} app-data`;
+const label = "mb-1 block text-[11px] uppercase tracking-[0.16em] text-zinc-500";
+const sectionBase = "app-panel app-panel-section space-y-4 rounded-md p-4 lg:p-5";
+const runStatCard = "rounded-sm border border-zinc-800 bg-zinc-950/60 px-3 py-2";
 
 const strategyDescriptions: Record<StrategyValue, string> = {
   ma_crossover: "Use fast and slow moving-average crossovers to capture trend shifts.",
@@ -67,6 +70,82 @@ function formatDailyLossLimit(limit: number | null | undefined): string {
   return `${(limit * 100).toFixed(0)}%`;
 }
 
+function formatStepValue(value: number, step: number): string {
+  const decimals = step.toString().includes(".") ? step.toString().split(".")[1].length : 0;
+  return Number(value.toFixed(decimals)).toString();
+}
+
+function StatCard(props: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div class={runStatCard}>
+      <p class="text-[11px] uppercase tracking-[0.18em] text-zinc-500">{props.label}</p>
+      <p class={`mt-1 text-sm font-medium text-zinc-100 ${props.mono ? "app-data" : ""}`}>
+        {props.value}
+      </p>
+    </div>
+  );
+}
+
+function StepperInput(props: {
+  label: string;
+  value: string;
+  step?: number;
+  min?: number;
+  placeholder?: string;
+  onChange: (value: string) => void;
+}) {
+  const step = () => props.step ?? 1;
+  const min = () => props.min;
+
+  const current = () => {
+    const parsed = Number(props.value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+
+    return min() ?? 0;
+  };
+
+  const bump = (direction: -1 | 1) => {
+    const next = current() + direction * step();
+    const clamped = min() != null ? Math.max(min()!, next) : next;
+    props.onChange(formatStepValue(clamped, step()));
+  };
+
+  return (
+    <div>
+      <label class={label}>{props.label}</label>
+      <div class="flex items-stretch gap-2">
+        <button
+          type="button"
+          class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-zinc-700 bg-zinc-950 text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-900 hover:text-zinc-100"
+          onClick={() => bump(-1)}
+          aria-label={`Decrease ${props.label}`}
+        >
+          −
+        </button>
+        <input
+          type="number"
+          min={props.min}
+          step={props.step ?? 1}
+          class={`${numericField} h-10 flex-1`}
+          value={props.value}
+          placeholder={props.placeholder}
+          onInput={(e) => props.onChange(e.currentTarget.value)}
+        />
+        <button
+          type="button"
+          class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-zinc-700 bg-zinc-950 text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-900 hover:text-zinc-100"
+          onClick={() => bump(1)}
+          aria-label={`Increase ${props.label}`}
+        >
+          +
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function BackTestConfigForm() {
   const navigate = useNavigate();
   const [symbols] = createResource(fetchSymbols);
@@ -88,6 +167,9 @@ export default function BackTestConfigForm() {
   const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const [step, setStep] = createSignal<"idle" | "loading-data" | "running">("idle");
+  const [showStrategy, setShowStrategy] = createSignal(true);
+  const [showExecution, setShowExecution] = createSignal(true);
+  const [showPropFirm, setShowPropFirm] = createSignal(true);
   const selectedStrategy = createMemo(
     () => STRATEGIES.find((item) => item.value === strategy()) ?? STRATEGIES[0]
   );
@@ -125,6 +207,11 @@ export default function BackTestConfigForm() {
         setParams((prev) => ({ ...prev, [key]: num }));
     }
   }
+
+  const strategyParams = createMemo(() => STRATEGY_PARAMS[strategy()]);
+  const collapsibleHeader =
+    "flex w-full items-start justify-between gap-3 rounded-sm text-left transition-colors " +
+    "focus:outline-none focus:ring-1 focus:ring-zinc-500";
 
   async function handleSubmit() {
     const sym = symbol();
@@ -187,57 +274,47 @@ export default function BackTestConfigForm() {
     }
   }
 
-  // ── Render 
+  // ── Render
   return (
-    <div class="space-y-6">
-      {/*  Error banner  */}
+    <div class="space-y-4">
       <Show when={error()}>
-        <div class="bg-red-950 border border-red-700 rounded-lg px-4 py-3 text-sm text-red-300">
+        <div class="rounded-sm border border-red-700 bg-red-950 px-4 py-3 text-sm text-red-300">
           {error()}
         </div>
       </Show>
 
-      <section class={section}>
+      <section class="app-panel rounded-md border-l-4 border-zinc-700/80 p-4 space-y-4 lg:p-5">
         <div class="space-y-2">
           <p class="app-kicker">Run Plan</p>
-          <h2 class="text-lg font-semibold text-zinc-100">Build the next saved run</h2>
+          <h2 class="text-lg font-medium text-zinc-100">Build the next saved run</h2>
           <p class="max-w-3xl text-sm text-zinc-400">
             Pick a market, set the strategy, and score it against prop-firm rules.
           </p>
         </div>
 
-        <div class="grid gap-3 md:grid-cols-3 xl:grid-cols-5">
+        <div class="grid gap-2 md:grid-cols-3 xl:grid-cols-5">
           <For each={runSummary()}>
-            {([key, value]) => (
-              <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">{key}</p>
-                <p class="mt-2 text-sm font-medium text-zinc-100">{value}</p>
-              </div>
-            )}
+            {([key, value]) => <StatCard label={key} value={value} mono />}
           </For>
         </div>
       </section>
 
-      {/* Symbol  & Interval*/}
-      <section class={section}>
+      <section class={`${sectionBase} border-l-4 border-zinc-700/80`}>
         <div class="space-y-1">
-          <p class="text-sm font-semibold text-zinc-100">1. Market</p>
-          <p class="text-xs text-zinc-400">
-            Contract, interval, and optional date range.
-          </p>
+          <p class="text-sm font-medium text-zinc-100">1. Market</p>
+          <p class="text-xs text-zinc-400">Contract, interval, and optional date range.</p>
         </div>
+
         <Show
           when={!symbols.loading && symbols() && symbols()!.length > 0}
           fallback={
             <Show
               when={!symbols.loading}
-              fallback={<div class="h-9 bg-zinc-800 rounded animate-pulse" />}
+              fallback={<div class="h-9 rounded-sm bg-zinc-800 animate-pulse" />}
             >
-              {/* DB not configured shows warning banner instead of picker */}
-              <div class="bg-yellow-950 border border-yellow-700 rounded-lg px-4 py-3 text-sm text-yellow-300">
-                No symbols found. Make sure your database is configured and
-                data has been imported via{" "}
-                <code class="font-mono text-yellow-200">fetch_databento.py</code>.
+              <div class="rounded-sm border border-yellow-700 bg-yellow-950 px-4 py-3 text-sm text-yellow-300">
+                No symbols found. Make sure your database is configured and data has been imported
+                via <code class="font-mono text-yellow-200">fetch_databento.py</code>.
               </div>
             </Show>
           }
@@ -248,13 +325,13 @@ export default function BackTestConfigForm() {
               class={field}
               value={symbol()?.symbol ?? ""}
               onChange={(e) => {
-                const found = symbols()!.find(
-                  (s) => s.symbol === e.currentTarget.value
-                );
+                const found = symbols()!.find((s) => s.symbol === e.currentTarget.value);
                 setSymbol(found ?? null);
               }}
             >
-              <option value="" disabled>Select a symbol… </option>
+              <option value="" disabled>
+                Select a symbol…
+              </option>
               <For each={symbols()}>
                 {(s) => (
                   <option value={s.symbol}>
@@ -265,15 +342,14 @@ export default function BackTestConfigForm() {
             </select>
           </div>
         </Show>
+
         <div>
           <label class={label}>Interval</label>
           <select
             class={field}
             value={interval().value}
             onChange={(e) => {
-              const found = BACKTEST_INTERVALS.find(
-                (i) => i.value === e.currentTarget.value
-              );
+              const found = BACKTEST_INTERVALS.find((i) => i.value === e.currentTarget.value);
               if (found) setInterval(found);
             }}
           >
@@ -283,13 +359,12 @@ export default function BackTestConfigForm() {
           </select>
         </div>
 
-        {/* Date range  */}
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid gap-2 md:grid-cols-2">
           <div>
             <label class={label}>Start date (optional)</label>
             <input
               type="date"
-              class={field}
+              class={`${field} app-data`}
               value={startDate()}
               onInput={(e) => setStartDate(e.currentTarget.value)}
             />
@@ -298,7 +373,7 @@ export default function BackTestConfigForm() {
             <label class={label}>End date (optional)</label>
             <input
               type="date"
-              class={field}
+              class={`${field} app-data`}
               value={endDate()}
               onInput={(e) => setEndDate(e.currentTarget.value)}
             />
@@ -306,209 +381,225 @@ export default function BackTestConfigForm() {
         </div>
       </section>
 
-      {/*  Strategy  */}
-      <section class={section}>
-        <div class="space-y-1">
-          <p class="text-sm font-semibold text-zinc-100">2. Strategy</p>
-          <p class="text-xs text-zinc-400">
-            Signal model and execution parameters.
-          </p>
-        </div>
-        <div>
-          <label class={label}>Type</label>
-          <select
-            class={field}
-            value={strategy()}
-            onChange={(e) =>
-              handleStrategyChange(e.currentTarget.value as StrategyValue)
-            }
-          >
-            <For each={STRATEGIES}>
-              {(s) => <option value={s.value}>{s.label}</option>}
-            </For>
-          </select>
-        </div>
-
-        <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-          <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Selected Strategy</p>
-          <p class="mt-2 text-sm font-semibold text-zinc-100">{selectedStrategy().label}</p>
-          <p class="mt-1 text-sm text-zinc-400">{strategyDescriptions[strategy()]}</p>
-        </div>
-
-        {/* Dynamic param inputs */}
-        <div class="grid grid-cols-2 gap-3">
-          <For each={STRATEGY_PARAMS[strategy()]}>
-            {(p) => (
-              <div>
-                <label class={label}>{p.label}</label>
-                <input
-                  type="number"
-                  class={field}
-                  value={params()[p.key] ?? p.default}
-                  onInput={(e) => handleParamChange(p.key, e.currentTarget.value)}
-                />
-              </div>
-            )}
-          </For>
-        </div>
-      </section>
-
-      <section class={section}>
-        <div class="space-y-1">
-          <p class="text-sm font-semibold text-zinc-100">3. Execution</p>
-          <p class="text-xs text-zinc-400">
-            Futures contract specs and conservative fill assumptions.
-          </p>
-        </div>
-
-        <div class="grid grid-cols-2 gap-2 md:grid-cols-4">
-          {(
-            [
-              ["Tick size", symbol()?.tick_size ?? "—"],
-              ["Tick value", symbol() ? `$${symbol()!.tick_value.toFixed(2)}` : "—"],
-              ["Commission", "$5.00"],
-              ["Fill model", "Next open"],
-            ] as [string, string | number][]
-          ).map(([k, v]) => (
-            <div class="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2">
-              <p class="text-zinc-400 text-xs">{k}</p>
-              <p class="text-zinc-100 text-sm font-mono">{v}</p>
-            </div>
-          ))}
-        </div>
-
-        <div>
-          <label class={label}>Slippage ticks per fill</label>
-          <input
-            type="number"
-            min="0"
-            step="0.25"
-            class={field}
-            value={slippageTicks()}
-            onInput={(e) => {
-              const value = parseFloat(e.currentTarget.value);
-              if (!Number.isNaN(value) && value >= 0) setSlippageTicks(value);
-            }}
-          />
-        </div>
-
-        <div class="grid gap-3 md:grid-cols-2">
-          <div>
-            <label class={label}>Stop loss ticks (optional)</label>
-            <input
-              type="number"
-              min="0.25"
-              step="0.25"
-              class={field}
-              value={stopLossTicks()}
-              placeholder="Off"
-              onInput={(e) => setStopLossTicks(e.currentTarget.value)}
-            />
-          </div>
-          <div>
-            <label class={label}>Take profit ticks (optional)</label>
-            <input
-              type="number"
-              min="0.25"
-              step="0.25"
-              class={field}
-              value={takeProfitTicks()}
-              placeholder="Off"
-              onInput={(e) => setTakeProfitTicks(e.currentTarget.value)}
-            />
-          </div>
-        </div>
-
-        <p class="text-xs text-zinc-500">
-          Brackets are measured from entry in ticks. If one candle tags both the stop and
-          target, I treat it as stop-first so the sim stays conservative.
-        </p>
-      </section>
-
-      {/* Prop firm preset  */}
-      <section class={section}>
-        <div class="space-y-1">
-          <p class="text-sm font-semibold text-zinc-100">4. Prop Firm Rules</p>
-          <p class="text-xs text-zinc-400">
-            Select the evaluation ruleset you want this strategy run to survive.
-          </p>
-        </div>
-
-        <Show
-          when={presets() && presets()!.length > 0}
-          fallback={<div class="h-9 bg-zinc-800 rounded animate-pulse" />}
+      <section class={`${sectionBase} border-l-4 border-zinc-700/80`}>
+        <button
+          type="button"
+          class={collapsibleHeader}
+          aria-expanded={showStrategy()}
+          aria-label={`${showStrategy() ? "Collapse" : "Expand"} strategy section`}
+          onClick={() => setShowStrategy((value) => !value)}
         >
-          <div>
-            <label class={label}>Preset</label>
-            <select
-              class={field}
-              value={preset()?.name ?? ""}
-              onChange={(e) => {
-                const found = presets()?.find((p) => p.name === e.currentTarget.value);
-                setPreset(found ?? null);
-              }}
-            >
-              <option value="" disabled>Select a preset…</option>
-              <For each={Object.entries(groupPresets(presets() ?? []))}>
-                {([firm, firmPresets]) => (
-                  <optgroup label={firm}>
-                    <For each={firmPresets}>
-                      {(p) => <option value={p.name}>{p.name}</option>}
-                    </For>
-                  </optgroup>
+          <div class="space-y-1">
+            <p class="text-sm font-medium text-zinc-100">2. Strategy</p>
+            <p class="text-xs text-zinc-400">Signal model and execution parameters.</p>
+          </div>
+          {showStrategy() ? (
+            <ChevronDown size={16} class="mt-1 shrink-0 text-zinc-500" />
+          ) : (
+            <ChevronRight size={16} class="mt-1 shrink-0 text-zinc-500" />
+          )}
+        </button>
+
+        <Show when={showStrategy()}>
+          <div class="space-y-4">
+            <div>
+              <label class={label}>Type</label>
+              <select
+                class={field}
+                value={strategy()}
+                onChange={(e) => handleStrategyChange(e.currentTarget.value as StrategyValue)}
+              >
+                <For each={STRATEGIES}>
+                  {(s) => <option value={s.value}>{s.label}</option>}
+                </For>
+              </select>
+            </div>
+
+            <div class="rounded-sm border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+              <p class="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                Selected Strategy
+              </p>
+              <p class="mt-2 text-sm font-medium text-zinc-100">{selectedStrategy().label}</p>
+              <p class="mt-1 text-sm text-zinc-400">{strategyDescriptions[strategy()]}</p>
+            </div>
+
+            <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              <For each={strategyParams()}>
+                {(p) => (
+                  <StepperInput
+                    label={p.label}
+                    value={String(params()[p.key] ?? p.default)}
+                    step={p.step}
+                    min={p.min}
+                    onChange={(raw) => handleParamChange(p.key, raw)}
+                  />
                 )}
               </For>
-            </select>
+            </div>
           </div>
+        </Show>
+      </section>
 
-          {/* Summary of selected preset */}
-          <Show when={preset()}>
-            {(p) => (
-              <div class="space-y-3">
-                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Selected Challenge</p>
-                  <p class="mt-2 text-sm font-semibold text-zinc-100">{p().name}</p>
-                </div>
+      <section class={`${sectionBase} border-l-4 border-zinc-700/80`}>
+        <button
+          type="button"
+          class={collapsibleHeader}
+          aria-expanded={showExecution()}
+          aria-label={`${showExecution() ? "Collapse" : "Expand"} execution section`}
+          onClick={() => setShowExecution((value) => !value)}
+        >
+          <div class="space-y-1">
+            <p class="text-sm font-medium text-zinc-100">3. Execution</p>
+            <p class="text-xs text-zinc-400">
+              Futures contract specs and conservative fill assumptions.
+            </p>
+          </div>
+          {showExecution() ? (
+            <ChevronDown size={16} class="mt-1 shrink-0 text-zinc-500" />
+          ) : (
+            <ChevronRight size={16} class="mt-1 shrink-0 text-zinc-500" />
+          )}
+        </button>
 
-                <div class="grid grid-cols-2 gap-2 md:grid-cols-3">
-                {(
-                  [
-                    ["Account", `$${p().account_size.toLocaleString()}`],
-                    [
-                      "Daily loss",
-                      formatDailyLossLimit(p().daily_loss_limit),
-                    ],
-                    ["Max DD", `${(p().max_drawdown * 100).toFixed(0)}%`],
-                    ["Target", `${(p().profit_target * 100).toFixed(0)}%`],
-                    ["Min days", p().min_trading_days ?? "—"],
-                    ["Drawdown type", p().drawdown_type ?? "eod"],
-                  ] as [string, string | number][]
-                ).map(([k, v]) => (
-                  <div class="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2">
-                    <p class="text-zinc-400 text-xs">{k}</p>
-                    <p class="text-zinc-100 text-sm font-mono">{v}</p>
-                  </div>
-                ))}
-                </div>
+        <Show when={showExecution()}>
+          <div class="space-y-4">
+            <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+              <StatCard label="Tick size" value={symbol()?.tick_size?.toString() ?? "—"} mono />
+              <StatCard
+                label="Tick value"
+                value={symbol() ? `$${symbol()!.tick_value.toFixed(2)}` : "—"}
+                mono
+              />
+              <StatCard label="Commission" value="$5.00" mono />
+              <StatCard label="Fill model" value="Next open" />
+            </div>
+
+            <StepperInput
+              label="Slippage ticks per fill"
+              value={String(slippageTicks())}
+              step={0.25}
+              min={0}
+              onChange={(raw) => {
+                const value = Number(raw);
+                if (!Number.isNaN(value) && value >= 0) setSlippageTicks(value);
+              }}
+            />
+
+            <div class="grid gap-2 md:grid-cols-2">
+              <StepperInput
+                label="Stop loss ticks (optional)"
+                value={stopLossTicks()}
+                step={0.25}
+                min={0.25}
+                placeholder="Off"
+                onChange={setStopLossTicks}
+              />
+              <StepperInput
+                label="Take profit ticks (optional)"
+                value={takeProfitTicks()}
+                step={0.25}
+                min={0.25}
+                placeholder="Off"
+                onChange={setTakeProfitTicks}
+              />
+            </div>
+
+            <p class="text-xs text-zinc-500">
+              Brackets are measured from entry in ticks. If one candle tags both the stop and
+              target, I treat it as stop-first so the sim stays conservative.
+            </p>
+          </div>
+        </Show>
+      </section>
+
+      <section class={`${sectionBase} border-l-4 border-zinc-700/80`}>
+        <button
+          type="button"
+          class={collapsibleHeader}
+          aria-expanded={showPropFirm()}
+          aria-label={`${showPropFirm() ? "Collapse" : "Expand"} prop firm section`}
+          onClick={() => setShowPropFirm((value) => !value)}
+        >
+          <div class="space-y-1">
+            <p class="text-sm font-medium text-zinc-100">4. Prop Firm Rules</p>
+            <p class="text-xs text-zinc-400">
+              Select the evaluation ruleset you want this strategy run to survive.
+            </p>
+          </div>
+          {showPropFirm() ? (
+            <ChevronDown size={16} class="mt-1 shrink-0 text-zinc-500" />
+          ) : (
+            <ChevronRight size={16} class="mt-1 shrink-0 text-zinc-500" />
+          )}
+        </button>
+
+        <Show when={showPropFirm()}>
+          <Show
+            when={presets() && presets()!.length > 0}
+            fallback={<div class="h-9 rounded-sm bg-zinc-800 animate-pulse" />}
+          >
+            <div class="space-y-4">
+              <div>
+                <label class={label}>Preset</label>
+                <select
+                  class={field}
+                  value={preset()?.name ?? ""}
+                  onChange={(e) => {
+                    const found = presets()?.find((p) => p.name === e.currentTarget.value);
+                    setPreset(found ?? null);
+                  }}
+                >
+                  <option value="" disabled>
+                    Select a preset…
+                  </option>
+                  <For each={Object.entries(groupPresets(presets() ?? []))}>
+                    {([firm, firmPresets]) => (
+                      <optgroup label={firm}>
+                        <For each={firmPresets}>
+                          {(p) => <option value={p.name}>{p.name}</option>}
+                        </For>
+                      </optgroup>
+                    )}
+                  </For>
+                </select>
               </div>
-            )}
+
+              <Show when={preset()}>
+                {(p) => (
+                  <div class="space-y-3">
+                    <div class="rounded-sm border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                      <p class="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                        Selected Challenge
+                      </p>
+                      <p class="mt-2 text-sm font-medium text-zinc-100">{p().name}</p>
+                    </div>
+
+                    <div class="grid gap-2 md:grid-cols-3">
+                      <StatCard label="Account" value={`$${p().account_size.toLocaleString()}`} mono />
+                      <StatCard label="Daily loss" value={formatDailyLossLimit(p().daily_loss_limit)} />
+                      <StatCard label="Max DD" value={`${(p().max_drawdown * 100).toFixed(0)}%`} mono />
+                      <StatCard label="Target" value={`${(p().profit_target * 100).toFixed(0)}%`} mono />
+                      <StatCard label="Min days" value={String(p().min_trading_days ?? "—")} mono />
+                      <StatCard label="Drawdown type" value={p().drawdown_type ?? "eod"} mono />
+                    </div>
+                  </div>
+                )}
+              </Show>
+            </div>
           </Show>
         </Show>
       </section>
 
-      {/* Submit  */}
-      <section class={section}>
+      <section class={`${sectionBase} border-l-4 border-zinc-700/80`}>
         <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div class="space-y-1">
-            <p class="text-sm font-semibold text-zinc-100">5. Launch</p>
-            <p class="text-xs text-zinc-400">
-              Run and save the result.
-            </p>
+            <p class="text-sm font-medium text-zinc-100">5. Launch</p>
+            <p class="text-xs text-zinc-400">Run and save the result.</p>
           </div>
 
           <button
             class={
-              "w-full rounded-xl px-5 py-3 text-sm font-semibold transition-colors md:w-auto " +
+              "w-full rounded-sm px-5 py-3 text-sm font-semibold transition-colors md:w-auto " +
               (loading()
                 ? "cursor-not-allowed bg-zinc-700 text-zinc-400"
                 : "bg-zinc-100 text-zinc-900 hover:bg-white")
