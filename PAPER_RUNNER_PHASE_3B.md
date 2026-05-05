@@ -155,13 +155,14 @@ If parity is still noisy or semantics are still moving, stay in `3B`.
 
 ## Immediate Next Task
 
-The parity matrix is now frozen in code and checklist form, so the next move
-is the reliability matrix instead of inventing new runner behavior.
+The parity matrix is frozen now, and the reliability matrix is mostly there.
+The only thing I still want to keep honest is the longer soak / long-run
+stability check before we call `3B` fully done.
 
 In practice that means:
 
-1. finish the reliability pass for pause, resume, restart, and cleanup
-2. keep `3C` blocked until those checks are quiet
+1. finish the long-run soak check
+2. keep `3C` blocked until that last row is quiet
 
 ## Tight Kickoff Prompt For The Next Thread
 

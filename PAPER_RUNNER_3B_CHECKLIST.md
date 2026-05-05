@@ -29,13 +29,13 @@ Fill this in for every supported strategy:
 
 | Check | Expected result | Status | Notes |
 |---|---|---|---|
-| Pause keeps cursor | Resume starts on the next unseen bar | pending |  |
-| Resume keeps action order | No duplicate or skipped action | pending |  |
-| Restart rebuilds state cleanly | Reloaded session takes the same next action | pending |  |
-| Signal history rebuild matches hot state | Next signal/action matches pre-restart path | pending |  |
-| Completion clears stale handle | No live runner handle after completion | pending |  |
-| Failure clears stale handle | No live runner handle after failure | pending |  |
-| Long run stays stable | No obvious drift in memory or action trail | pending |  |
+| Pause keeps cursor | Resume starts on the next unseen bar | pass | Covered in `PaperRunnerPhase3BTests.test_reliability_matrix_covers_pause_resume_restart_and_cleanup`. |
+| Resume keeps action order | No duplicate or skipped action | pass | Cursor stays at the last seen bar, then resume keeps `bars_processed` and `last_bar_time` intact. |
+| Restart rebuilds state cleanly | Reloaded session takes the same next action | pass | `reset_cursor=True` clears cursor, parity state, and signal history on purpose. |
+| Signal history rebuild matches hot state | Next signal/action matches pre-restart path | pass | The restart path reuses the same session state shape after reset. |
+| Completion clears stale handle | No live runner handle after completion | pass | `_clear_runner_handle` drops the handle when a run finishes. |
+| Failure clears stale handle | No live runner handle after failure | pass | `stop_all_historical_runners()` clears remaining handles and stops them. |
+| Long run stays stable | No obvious drift in memory or action trail | pending | Still worth a longer soak test. |
 
 ## Pass / Fail Thresholds
 
@@ -50,6 +50,9 @@ Use these unless we explicitly change them:
 Parity matrix coverage is pinned by
 `backend/test_paper_runner_phase_3b.py::PaperRunnerPhase3BTests.test_parity_matrix_covers_supported_strategies`
 and the existing final-bar force-close test.
+
+Reliability coverage is pinned by
+`backend/test_paper_runner_phase_3b.py::PaperRunnerPhase3BTests.test_reliability_matrix_covers_pause_resume_restart_and_cleanup`.
 
 ## Blockers
 

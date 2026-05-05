@@ -6,6 +6,7 @@ import sys
 import types
 import unittest
 from copy import deepcopy
+from threading import Event, Thread
 from unittest.mock import patch
 
 import pandas as pd
@@ -186,6 +187,247 @@ class PaperRunnerPhase3BTests(unittest.TestCase):
                 self.assertEqual(paper_runner_service._plan_signal_actions({"current_position": {"side": "sell"}}, 1), (["exit", "buy"], "flip_to_buy"))
                 self.assertEqual(paper_runner_service._plan_signal_actions({}, -1), (["sell"], "open_short"))
                 self.assertEqual(paper_runner_service._plan_signal_actions({"current_position": {"side": "buy"}}, -1), (["exit", "sell"], "flip_to_sell"))
+
+    def test_reliability_matrix_covers_pause_resume_restart_and_cleanup(self):
+        """Lock the runner reliability matrix before `3C` sneaks in.
+
+        This checks the annoying stuff that usually regresses first: pause
+        should keep the cursor, resume should keep going from that cursor,
+        reset should wipe the replay state on purpose, and stale in-process
+        handles should get cleaned up when a session finishes or fails.
+        """
+        paper_session_id = "paper-1"
+        base_session = {
+            "paper_session_id": paper_session_id,
+            "candidate_id": "cand-1",
+            "status": "paused",
+            "symbol": "ES",
+            "interval": "1min",
+            "last_bar_time": "2026-04-20T09:37:00+00:00",
+            "runner_state": {
+                "mode": "paused",
+                "bars_processed": 7,
+                "poll_interval_ms": 750,
+                "start_date": "2026-04-20T09:30:00+00:00",
+                "end_date": "2026-04-20T09:40:00+00:00",
+                "last_candle_time": "2026-04-20T09:37:00+00:00",
+                "last_price": 101.25,
+                "last_signal": 1,
+                "last_signal_action": "open_long",
+                "last_signal_reason": "Latest strategy signal crossed bullish (+1).",
+                "parity_check": {"status": "ok", "passed": True},
+                "last_error": None,
+            },
+            "trade_log": [],
+            "equity_curve": [100000.0, 100010.0],
+            "metrics_snapshot": {"total_pnl": 10.0, "max_drawdown": 0.0, "win_rate": 1.0},
+        }
+
+        pause_handle = paper_runner_service._RunnerHandle(stop_event=Event(), thread=Thread(target=lambda: None))
+        paper_runner_service._runner_handles[paper_session_id] = pause_handle
+
+        with patch.object(
+            paper_runner_service,
+            "_require_paper_session",
+            return_value=deepcopy(base_session),
+        ), patch.object(
+            paper_runner_service,
+            "_ensure_session_defaults",
+            side_effect=lambda payload: payload,
+        ), patch.object(
+            paper_runner_service,
+            "_save_paper_session_any",
+            return_value=None,
+        ), patch.object(
+            paper_runner_service,
+            "_append_paper_event_any",
+            return_value=None,
+        ), patch.object(
+            paper_runner_service,
+            "_make_paper_event",
+            side_effect=lambda **payload: payload,
+        ), patch.object(
+            paper_runner_service,
+            "_require_candidate",
+            return_value={"candidate_id": "cand-1"},
+        ), patch.object(
+            paper_runner_service,
+            "_sync_candidate_paper_session",
+            return_value=None,
+        ), patch.object(
+            paper_runner_service,
+            "_append_candidate_session_audit",
+            return_value=None,
+        ), patch.object(
+            paper_runner_service,
+            "_now",
+            return_value="2026-04-20T12:00:00+00:00",
+        ):
+            paused = paper_runner_service.pause_historical_runner(paper_session_id, actor="runner-test")
+
+        self.assertEqual(paused["status"], "paused")
+        self.assertEqual(paused["runner_state"]["mode"], "paused")
+        self.assertEqual(paused["runner_state"]["bars_processed"], 7)
+        self.assertEqual(paused["last_bar_time"], "2026-04-20T09:37:00+00:00")
+        self.assertFalse(paper_runner_service._runner_thread_alive(paper_session_id))
+        self.assertNotIn(paper_session_id, paper_runner_service._runner_handles)
+
+        paper_runner_service._signal_bar_history[paper_session_id] = [
+            {"time": "2026-04-20T09:37:00+00:00", "close": 101.25}
+        ]
+        resume_session = deepcopy(paused)
+        with patch.object(
+            paper_runner_service,
+            "_require_paper_session",
+            return_value=resume_session,
+        ), patch.object(
+            paper_runner_service,
+            "_require_db_runner_support",
+            return_value=None,
+        ), patch.object(
+            paper_runner_service,
+            "_ensure_session_defaults",
+            side_effect=lambda payload: payload,
+        ), patch.object(
+            paper_runner_service,
+            "_apply_default_window",
+            side_effect=lambda _session, state: state,
+        ), patch.object(
+            paper_runner_service,
+            "_validate_range",
+            return_value=None,
+        ), patch.object(
+            paper_runner_service,
+            "_spawn_runner_thread",
+            return_value=None,
+        ), patch.object(
+            paper_runner_service,
+            "_save_paper_session_any",
+            return_value=None,
+        ), patch.object(
+            paper_runner_service,
+            "_append_paper_event_any",
+            return_value=None,
+        ), patch.object(
+            paper_runner_service,
+            "_make_paper_event",
+            side_effect=lambda **payload: payload,
+        ), patch.object(
+            paper_runner_service,
+            "_require_candidate",
+            return_value={"candidate_id": "cand-1"},
+        ), patch.object(
+            paper_runner_service,
+            "_sync_candidate_paper_session",
+            return_value=None,
+        ), patch.object(
+            paper_runner_service,
+            "_append_candidate_session_audit",
+            return_value=None,
+        ), patch.object(
+            paper_runner_service,
+            "_now",
+            return_value="2026-04-20T12:05:00+00:00",
+        ):
+            resumed = paper_runner_service.start_historical_runner(
+                paper_session_id,
+                actor="runner-test",
+                reset_cursor=False,
+            )
+
+        self.assertEqual(resumed["status"], "running")
+        self.assertEqual(resumed["runner_state"]["mode"], "running")
+        self.assertEqual(resumed["runner_state"]["bars_processed"], 7)
+        self.assertEqual(resumed["last_bar_time"], "2026-04-20T09:37:00+00:00")
+
+        restart_session = deepcopy(resumed)
+        restart_session["status"] = "paused"
+        restart_session["runner_state"]["mode"] = "paused"
+        restart_session["runner_state"]["bars_processed"] = 7
+        restart_session["runner_state"]["last_candle_time"] = "2026-04-20T09:37:00+00:00"
+        paper_runner_service._signal_bar_history[paper_session_id] = [
+            {"time": "2026-04-20T09:37:00+00:00", "close": 101.25}
+        ]
+
+        with patch.object(
+            paper_runner_service,
+            "_require_paper_session",
+            return_value=restart_session,
+        ), patch.object(
+            paper_runner_service,
+            "_require_db_runner_support",
+            return_value=None,
+        ), patch.object(
+            paper_runner_service,
+            "_ensure_session_defaults",
+            side_effect=lambda payload: payload,
+        ), patch.object(
+            paper_runner_service,
+            "_apply_default_window",
+            side_effect=lambda _session, state: state,
+        ), patch.object(
+            paper_runner_service,
+            "_validate_range",
+            return_value=None,
+        ), patch.object(
+            paper_runner_service,
+            "_spawn_runner_thread",
+            return_value=None,
+        ), patch.object(
+            paper_runner_service,
+            "_save_paper_session_any",
+            return_value=None,
+        ), patch.object(
+            paper_runner_service,
+            "_append_paper_event_any",
+            return_value=None,
+        ), patch.object(
+            paper_runner_service,
+            "_make_paper_event",
+            side_effect=lambda **payload: payload,
+        ), patch.object(
+            paper_runner_service,
+            "_require_candidate",
+            return_value={"candidate_id": "cand-1"},
+        ), patch.object(
+            paper_runner_service,
+            "_sync_candidate_paper_session",
+            return_value=None,
+        ), patch.object(
+            paper_runner_service,
+            "_append_candidate_session_audit",
+            return_value=None,
+        ), patch.object(
+            paper_runner_service,
+            "_now",
+            return_value="2026-04-20T12:10:00+00:00",
+        ):
+            restarted = paper_runner_service.start_historical_runner(
+                paper_session_id,
+                actor="runner-test",
+                reset_cursor=True,
+            )
+
+        self.assertEqual(restarted["status"], "running")
+        self.assertEqual(restarted["runner_state"]["mode"], "running")
+        self.assertEqual(restarted["runner_state"]["bars_processed"], 0)
+        self.assertIsNone(restarted["last_bar_time"])
+        self.assertIsNone(restarted["runner_state"]["last_candle_time"])
+        self.assertEqual(restarted["runner_state"]["last_signal"], 0)
+        self.assertEqual(restarted["runner_state"]["parity_check"], {})
+        self.assertNotIn(paper_session_id, paper_runner_service._signal_bar_history)
+
+        completion_handle = paper_runner_service._RunnerHandle(stop_event=Event(), thread=Thread(target=lambda: None))
+        failure_handle = paper_runner_service._RunnerHandle(stop_event=Event(), thread=Thread(target=lambda: None))
+        paper_runner_service._runner_handles["paper-complete"] = completion_handle
+        paper_runner_service._runner_handles["paper-failed"] = failure_handle
+
+        paper_runner_service._clear_runner_handle("paper-complete", completion_handle.stop_event)
+        self.assertNotIn("paper-complete", paper_runner_service._runner_handles)
+
+        paper_runner_service.stop_all_historical_runners()
+        self.assertNotIn("paper-failed", paper_runner_service._runner_handles)
+        self.assertTrue(failure_handle.stop_event.is_set())
 
     def test_build_runner_parity_check_current_states_are_explicit(self):
         """Document the current parity helper outputs before we tighten them.
