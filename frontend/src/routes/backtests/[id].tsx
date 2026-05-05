@@ -62,8 +62,8 @@ type DetailTab = "overview" | "stats" | "prop-eval" | "trades" | "robustness";
 
 interface PropEvalDetails {
   account_size?: number;
-  daily_loss_limit_pct?: number;
-  daily_loss_limit_amount?: number;
+  daily_loss_limit_pct?: number | null;
+  daily_loss_limit_amount?: number | null;
   daily_loss_actual_loss?: number;
   daily_loss_actual_loss_pct?: number;
   daily_loss_breach_time?: string | null;
@@ -78,7 +78,7 @@ interface PropEvalDetails {
   profit_target_pct?: number;
   actual_profit_pct?: number;
   best_day_profit_pct?: number;
-  consistency_threshold?: number;
+  consistency_threshold?: number | null;
   min_trading_days_required?: number | null;
   trading_days_completed?: number;
   daily_pnls?: Record<string, number>;
@@ -146,7 +146,10 @@ function formatCurrency(
   return `${value < 0 ? "-" : ""}$${abs}`;
 }
 
-function formatPercent(value: number, digits = 1): string {
+function formatPercent(value: number | null | undefined, digits = 1, fallback = "n/a"): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return fallback;
+  }
   return `${(value * 100).toFixed(digits)}%`;
 }
 
@@ -542,9 +545,15 @@ function PropEvalPanel(props: {
         />
         <MetricCard
           label="Daily Loss Limit"
-          value={formatPercent(props.rules.daily_loss_limit, 2)}
+          value={
+            props.rules.daily_loss_limit == null || props.rules.daily_loss_limit === 0
+              ? "Off"
+              : formatPercent(props.rules.daily_loss_limit, 2)
+          }
           hint={
-            details().daily_loss_actual_loss !== undefined
+            props.rules.daily_loss_limit == null || props.rules.daily_loss_limit === 0
+              ? "No daily loss limit"
+              : details().daily_loss_actual_loss !== undefined
               ? `${formatCurrency(details().daily_loss_actual_loss ?? 0)} max intraday loss`
               : formatCurrency(props.rules.account_size * props.rules.daily_loss_limit)
           }

@@ -142,13 +142,18 @@ export function evaluatePropFirmRules(
   equityTimes: (number | string)[] = [],
 ): PropFirmEvaluation {
   const accountSize = rules.account_size ?? initialBalance;
-  const dailyLossLimit = rules.daily_loss_limit ?? 0.04;
+  const dailyLossLimit = rules.daily_loss_limit ?? null;
   const maxDrawdownLimit = rules.max_drawdown ?? 0.08;
   const profitTarget = rules.profit_target ?? 0.1;
   const consistencyRule = rules.consistency_rule ?? true;
-  const consistencyThreshold = rules.consistency_threshold ?? 0.3;
+  const consistencyThreshold = rules.consistency_threshold ?? null;
   const drawdownType = rules.drawdown_type ?? "intraday";
   const minTradingDays = rules.min_trading_days ?? null;
+  const dailyLossEnabled = dailyLossLimit != null && dailyLossLimit > 0;
+  const effectiveDailyLossLimit = dailyLossEnabled ? dailyLossLimit : Number.POSITIVE_INFINITY;
+  const dailyLossLimitPct = dailyLossEnabled ? dailyLossLimit : null;
+  const dailyLossLimitAmount =
+    dailyLossEnabled && dailyLossLimit != null ? round(accountSize * dailyLossLimit) : null;
 
   const dailyPnls = new Map<string, number>();
   for (const trade of trades) {
@@ -163,8 +168,8 @@ export function evaluatePropFirmRules(
 
   const dailyLossReport =
     equityTimes.length > 0
-      ? getPathDailyLoss(equityCurve, equityTimes, accountSize, dailyLossLimit)
-      : getTradeDailyLoss(dailyPnls, accountSize, dailyLossLimit);
+      ? getPathDailyLoss(equityCurve, equityTimes, accountSize, effectiveDailyLossLimit)
+      : getTradeDailyLoss(dailyPnls, accountSize, effectiveDailyLossLimit);
 
   const drawdownReport = getPathDrawdown(
     equityCurve,
@@ -184,12 +189,16 @@ export function evaluatePropFirmRules(
 
   let consistencyPassed = true;
   let bestDayProfitPct = 0;
-  if (consistencyRule && dailyPnls.size > 0) {
-    const totalProfit = finalBalance - accountSize;
-    if (totalProfit > 0) {
-      const bestDay = Math.max(...dailyPnls.values());
-      bestDayProfitPct = bestDay / totalProfit;
-      consistencyPassed = bestDayProfitPct <= consistencyThreshold;
+  if (consistencyRule) {
+    if (consistencyThreshold === null) {
+      consistencyPassed = false;
+    } else if (dailyPnls.size > 0) {
+      const totalProfit = finalBalance - accountSize;
+      if (totalProfit > 0) {
+        const bestDay = Math.max(...dailyPnls.values());
+        bestDayProfitPct = bestDay / totalProfit;
+        consistencyPassed = bestDayProfitPct <= consistencyThreshold;
+      }
     }
   }
 
@@ -207,8 +216,8 @@ export function evaluatePropFirmRules(
     min_trading_days_passed: minTradingDaysPassed,
     details: {
       account_size: accountSize,
-      daily_loss_limit_pct: dailyLossLimit,
-      daily_loss_limit_amount: round(accountSize * dailyLossLimit),
+      daily_loss_limit_pct: dailyLossLimitPct,
+      daily_loss_limit_amount: dailyLossLimitAmount,
       daily_loss_actual_loss: round(dailyLossReport.actual_loss_amount),
       daily_loss_actual_loss_pct: round(dailyLossReport.actual_loss_pct, 4),
       daily_loss_breach_time: dailyLossReport.breach_time,
@@ -220,10 +229,10 @@ export function evaluatePropFirmRules(
       drawdown_breach_equity: drawdownReport.breach_equity,
       drawdown_peak_equity: drawdownReport.peak_equity,
       drawdown_peak_time: drawdownReport.peak_time,
-      profit_target_pct: profitTarget,
-      actual_profit_pct: round(totalProfitPct, 4),
-      best_day_profit_pct: round(bestDayProfitPct, 4),
-      consistency_threshold: consistencyThreshold,
+        profit_target_pct: profitTarget,
+        actual_profit_pct: round(totalProfitPct, 4),
+        best_day_profit_pct: round(bestDayProfitPct, 4),
+        consistency_threshold: consistencyThreshold,
       min_trading_days_required: minTradingDays,
       trading_days_completed: tradingDaysCompleted,
       daily_pnls: Object.fromEntries(
@@ -391,6 +400,10 @@ export function groupPropPresets(
   }, {});
 }
 
+function normalizeDisabledValue(value: number | null | undefined): number | null {
+  return value === null || value === undefined || value === 0 ? null : value;
+}
+
 export function findMatchingPresetKey(
   presets: PropFirmPreset[],
   rules: PropFirmRules,
@@ -399,11 +412,11 @@ export function findMatchingPresetKey(
     return (
       preset.name === rules.name &&
       preset.account_size === rules.account_size &&
-      preset.daily_loss_limit === rules.daily_loss_limit &&
+      normalizeDisabledValue(preset.daily_loss_limit) === normalizeDisabledValue(rules.daily_loss_limit) &&
       preset.max_drawdown === rules.max_drawdown &&
       preset.profit_target === rules.profit_target &&
       preset.consistency_rule === rules.consistency_rule &&
-      preset.consistency_threshold === rules.consistency_threshold &&
+      normalizeDisabledValue(preset.consistency_threshold) === normalizeDisabledValue(rules.consistency_threshold) &&
       preset.drawdown_type === rules.drawdown_type &&
       preset.min_trading_days === rules.min_trading_days
     );

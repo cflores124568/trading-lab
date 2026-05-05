@@ -162,6 +162,14 @@ function formatRestingFillMode(mode: string | undefined): string {
   return "touch";
 }
 
+function formatDailyLossLimit(limit: number | null | undefined): string {
+  if (limit == null || limit === 0) {
+    return "Off";
+  }
+
+  return `${(limit * 100).toFixed(0)}%`;
+}
+
 function buildSourceBacktest(backtest: BacktestResult): ReplaySessionSourceBacktest {
   return {
     backtest_id: backtest.backtest_id,
@@ -1341,7 +1349,10 @@ export default function ReplayLabPage() {
                     <div class="grid grid-cols-2 gap-2">
                       {([
                         ["Account", `$${selectedPreset().account_size.toLocaleString()}`],
-                        ["Daily loss", `${(selectedPreset().daily_loss_limit * 100).toFixed(0)}%`],
+                        [
+                          "Daily loss",
+                          formatDailyLossLimit(selectedPreset().daily_loss_limit),
+                        ],
                         ["Max DD", `${(selectedPreset().max_drawdown * 100).toFixed(0)}%`],
                         ["Target", `${(selectedPreset().profit_target * 100).toFixed(0)}%`],
                         ["Min days", selectedPreset().min_trading_days ?? "—"],

@@ -59,6 +59,14 @@ function formatBracketSummary(stopLossTicks: string, takeProfitTicks: string): s
     .join(" / ");
 }
 
+function formatDailyLossLimit(limit: number | null | undefined): string {
+  if (limit == null || limit === 0) {
+    return "Off";
+  }
+
+  return `${(limit * 100).toFixed(0)}%`;
+}
+
 export default function BackTestConfigForm() {
   const navigate = useNavigate();
   const [symbols] = createResource(fetchSymbols);
@@ -466,7 +474,10 @@ export default function BackTestConfigForm() {
                 {(
                   [
                     ["Account", `$${p().account_size.toLocaleString()}`],
-                    ["Daily loss", `${(p().daily_loss_limit * 100).toFixed(0)}%`],
+                    [
+                      "Daily loss",
+                      formatDailyLossLimit(p().daily_loss_limit),
+                    ],
                     ["Max DD", `${(p().max_drawdown * 100).toFixed(0)}%`],
                     ["Target", `${(p().profit_target * 100).toFixed(0)}%`],
                     ["Min days", p().min_trading_days ?? "—"],

@@ -156,11 +156,11 @@ export interface PropFirmEvaluation {
 export interface PropFirmRules {
   name: string;
   account_size: number;
-  daily_loss_limit: number;
+  daily_loss_limit: number | null;
   max_drawdown: number;
   profit_target: number;
   consistency_rule: boolean;
-  consistency_threshold: number;
+  consistency_threshold: number | null;
   drawdown_type: "intraday" | "eod";
   min_trading_days: number | null;
 }
@@ -375,11 +375,11 @@ export interface PropFirmPreset {
   key: string;
   name: string;
   account_size: number;
-  daily_loss_limit: number;
+  daily_loss_limit: number | null;
   max_drawdown: number;
   profit_target: number;
   consistency_rule: boolean;
-  consistency_threshold: number;
+  consistency_threshold: number | null;
   drawdown_type: "intraday" | "eod";
   min_trading_days: number | null;
 }

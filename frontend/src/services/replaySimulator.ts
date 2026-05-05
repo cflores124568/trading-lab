@@ -283,13 +283,18 @@ function evaluatePropFirm(
   initialBalance: number,
 ): PropFirmEvaluation {
   const accountSize = rules.account_size ?? initialBalance;
-  const dailyLossLimit = rules.daily_loss_limit ?? 0.04;
+  const dailyLossLimit = rules.daily_loss_limit ?? null;
   const maxDrawdownLimit = rules.max_drawdown ?? 0.08;
   const profitTarget = rules.profit_target ?? 0.1;
   const consistencyRule = rules.consistency_rule ?? true;
-  const consistencyThreshold = rules.consistency_threshold ?? 0.3;
+  const consistencyThreshold = rules.consistency_threshold ?? null;
   const drawdownType = rules.drawdown_type ?? "intraday";
   const minTradingDays = rules.min_trading_days ?? null;
+  const dailyLossEnabled = dailyLossLimit != null && dailyLossLimit > 0;
+  const effectiveDailyLossLimit = dailyLossEnabled ? dailyLossLimit : Number.POSITIVE_INFINITY;
+  const dailyLossLimitPct = dailyLossEnabled ? dailyLossLimit : null;
+  const dailyLossLimitAmount =
+    dailyLossEnabled && dailyLossLimit != null ? round(accountSize * dailyLossLimit) : null;
 
   const dailyPnls = new Map<string, number>();
   for (const trade of trades) {
@@ -302,7 +307,7 @@ function evaluatePropFirm(
     minTradingDays === null || tradingDaysCompleted >= minTradingDays;
 
   const dailyLossBreached = Array.from(dailyPnls.values()).some(
-    (pnl) => pnl < -(accountSize * dailyLossLimit),
+    (pnl) => pnl < -(accountSize * effectiveDailyLossLimit),
   );
 
   const actualDrawdown = getReplayDrawdown(equityCurve, accountSize, drawdownType);
@@ -314,12 +319,16 @@ function evaluatePropFirm(
 
   let consistencyPassed = true;
   let bestDayProfitPct = 0;
-  if (consistencyRule && dailyPnls.size > 0) {
-    const totalProfit = finalBalance - accountSize;
-    if (totalProfit > 0) {
-      const bestDay = Math.max(...dailyPnls.values());
-      bestDayProfitPct = bestDay / totalProfit;
-      consistencyPassed = bestDayProfitPct <= consistencyThreshold;
+  if (consistencyRule) {
+    if (consistencyThreshold === null) {
+      consistencyPassed = false;
+    } else if (dailyPnls.size > 0) {
+      const totalProfit = finalBalance - accountSize;
+      if (totalProfit > 0) {
+        const bestDay = Math.max(...dailyPnls.values());
+        bestDayProfitPct = bestDay / totalProfit;
+        consistencyPassed = bestDayProfitPct <= consistencyThreshold;
+      }
     }
   }
 
@@ -337,7 +346,8 @@ function evaluatePropFirm(
     min_trading_days_passed: minTradingDaysPassed,
     details: {
       account_size: accountSize,
-      daily_loss_limit_pct: dailyLossLimit,
+      daily_loss_limit_pct: dailyLossLimitPct,
+      daily_loss_limit_amount: dailyLossLimitAmount,
       drawdown_type: drawdownType,
       max_drawdown_limit_pct: maxDrawdownLimit,
       actual_drawdown_pct: round(actualDrawdown, 4),
