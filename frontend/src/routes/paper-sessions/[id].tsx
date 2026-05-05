@@ -553,7 +553,7 @@ export default function PaperSessionDetailPage() {
         <>
           <A
             href="/paper-sessions"
-            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+            class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
           >
             All Paper Sessions
           </A>
@@ -561,7 +561,7 @@ export default function PaperSessionDetailPage() {
             {(entry) => (
               <A
                 href={`/candidates/${entry().candidate_id}`}
-                class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+                class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
               >
                 Open Candidate
               </A>
@@ -571,7 +571,7 @@ export default function PaperSessionDetailPage() {
             {(entry) => (
               <A
                 href={`/backtests/${entry()!.backtest_id}`}
-                class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+                class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
               >
                 Source Backtest
               </A>
@@ -591,7 +591,7 @@ export default function PaperSessionDetailPage() {
         {(entry) => (
           <div class="space-y-6">
             <Show when={error()}>
-              <div class="rounded-2xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">
+              <div class="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">
                 {error()}
               </div>
             </Show>
@@ -602,7 +602,7 @@ export default function PaperSessionDetailPage() {
                   <div class="flex flex-wrap items-center gap-2">
                     <p class="app-kicker">Runtime Status</p>
                     <span
-                      class={`rounded-full border px-2.5 py-1 text-xs font-medium uppercase tracking-[0.18em] ${statusTone(
+                      class={`rounded-sm border px-2.5 py-1 text-xs font-medium uppercase tracking-[0.18em] ${statusTone(
                         entry().status,
                       )}`}
                     >
@@ -615,7 +615,7 @@ export default function PaperSessionDetailPage() {
                   <p class="text-xs text-zinc-500">{formatParams(entry().strategy_params)}</p>
                 </div>
 
-                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4 text-sm text-zinc-300">
+                <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-4 text-sm text-zinc-300">
                   <p>Created by {entry().created_by}</p>
                   <p class="mt-1 text-zinc-500">{formatTimestamp(entry().created_at)}</p>
                   <p class="mt-3">Last event: {formatTimestamp(entry().last_event_at)}</p>
@@ -624,19 +624,19 @@ export default function PaperSessionDetailPage() {
               </div>
 
               <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-3">
                   <p class="app-kicker">Marked Equity</p>
                   <p class="mt-2 text-sm font-semibold text-zinc-100">
                     {formatCurrency(numberFromUnknown(metricsSnapshot().marked_equity))}
                   </p>
                 </div>
-                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-3">
                   <p class="app-kicker">Total PnL</p>
                   <p class="mt-2 text-sm font-semibold text-zinc-100">
                     {formatCurrency(numberFromUnknown(metricsSnapshot().total_pnl), true)}
                   </p>
                 </div>
-                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-3">
                   <p class="app-kicker">Closed Trades</p>
                   <p class="mt-2 text-sm font-semibold text-zinc-100">
                     {tradeLog().length}
@@ -645,7 +645,7 @@ export default function PaperSessionDetailPage() {
                     Win rate {formatPercent(numberFromUnknown(metricsSnapshot().win_rate), 1)}
                   </p>
                 </div>
-                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-3">
                   <p class="app-kicker">Open Position</p>
                   <p class="mt-2 text-sm font-semibold text-zinc-100">
                     {positionLabel(stringFromUnknown(currentPosition().side))}
@@ -659,13 +659,13 @@ export default function PaperSessionDetailPage() {
               <div class="flex flex-wrap gap-2">
                 <For each={availableActions()}>
                   {(action) => (
-                    <button
-                      type="button"
-                      disabled={busyAction() === `status-${action.status}`}
-                      onClick={() => handleStatusChange(action.status)}
-                      class={`rounded-xl transition-colors disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500 ${action.tone}`}
-                    >
-                      {busyAction() === `status-${action.status}` ? "Updating..." : action.label}
+                      <button
+                        type="button"
+                        disabled={busyAction() === `status-${action.status}`}
+                        onClick={() => handleStatusChange(action.status)}
+                        class={`rounded-sm transition-colors disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500 ${action.tone}`}
+                      >
+                        {busyAction() === `status-${action.status}` ? "Updating..." : action.label}
                     </button>
                   )}
                 </For>
@@ -679,11 +679,11 @@ export default function PaperSessionDetailPage() {
                     <p class="app-kicker">Paper Execution</p>
                   </div>
 
-                  <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4 space-y-4">
+                  <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-4 space-y-4">
                     <div class="flex flex-wrap items-center gap-2">
                       <p class="text-sm font-medium text-zinc-100">Historical Runner (Phase 3A)</p>
                       <span
-                        class={`rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.18em] ${runnerModeTone(
+                        class={`rounded-sm border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.18em] ${runnerModeTone(
                           stringFromUnknown(runnerState().mode),
                         )}`}
                       >
@@ -725,14 +725,14 @@ export default function PaperSessionDetailPage() {
                         value={runnerStartDate()}
                         onInput={(event) => setRunnerStartDate(event.currentTarget.value)}
                         placeholder="Runner window start"
-                        class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                        class="w-full rounded-sm border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
                       />
                       <input
                         type="datetime-local"
                         value={runnerEndDate()}
                         onInput={(event) => setRunnerEndDate(event.currentTarget.value)}
                         placeholder="Runner window end"
-                        class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                        class="w-full rounded-sm border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
                       />
                       <input
                         type="number"
@@ -741,7 +741,7 @@ export default function PaperSessionDetailPage() {
                         value={runnerPollInterval()}
                         onInput={(event) => setRunnerPollInterval(event.currentTarget.value)}
                         placeholder="Poll ms"
-                        class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                        class="w-full rounded-sm border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
                       />
                     </div>
 
@@ -760,7 +760,7 @@ export default function PaperSessionDetailPage() {
                         type="button"
                         disabled={busyAction() === "runner-start"}
                         onClick={handleRunnerStart}
-                        class="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+                        class="rounded-sm bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
                       >
                         {busyAction() === "runner-start" ? "Starting..." : "Start Runner"}
                       </button>
@@ -768,11 +768,11 @@ export default function PaperSessionDetailPage() {
                         type="button"
                         disabled={busyAction() === "runner-pause"}
                         onClick={handleRunnerPause}
-                        class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                        class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
                       >
                         {busyAction() === "runner-pause" ? "Pausing..." : "Pause Runner"}
                       </button>
-                      <div class="flex items-center gap-2 rounded-xl border border-zinc-700 px-2 py-1.5">
+                      <div class="flex items-center gap-2 rounded-sm border border-zinc-700 px-2 py-1.5">
                         <input
                           type="number"
                           min="1"
@@ -785,7 +785,7 @@ export default function PaperSessionDetailPage() {
                           type="button"
                           disabled={busyAction() === "runner-step"}
                           onClick={handleRunnerStep}
-                          class="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:text-zinc-500"
+                          class="rounded-sm border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:text-zinc-500"
                         >
                           {busyAction() === "runner-step" ? "Stepping..." : "Step Bars"}
                         </button>
@@ -839,7 +839,7 @@ export default function PaperSessionDetailPage() {
                         >
                           <For each={activeOrders()}>
                             {(order) => (
-                              <p class="rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-sm font-semibold text-zinc-100">
+                              <p class="rounded-sm border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-sm font-semibold text-zinc-100">
                                 {orderLabel(order)}
                               </p>
                             )}
@@ -925,7 +925,7 @@ export default function PaperSessionDetailPage() {
                     onInput={(event) => setExecutionNote(event.currentTarget.value)}
                     rows={2}
                     placeholder="Optional execution note..."
-                    class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                    class="w-full rounded-sm border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
                   />
 
                   <div class="grid gap-3 md:grid-cols-[1fr_1fr_180px]">
@@ -935,7 +935,7 @@ export default function PaperSessionDetailPage() {
                       value={bracketStopPrice()}
                       onInput={(event) => setBracketStopPrice(event.currentTarget.value)}
                       placeholder="Bracket stop"
-                      class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                      class="w-full rounded-sm border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
                     />
                     <input
                       type="number"
@@ -943,13 +943,13 @@ export default function PaperSessionDetailPage() {
                       value={bracketTargetPrice()}
                       onInput={(event) => setBracketTargetPrice(event.currentTarget.value)}
                       placeholder="Bracket target"
-                      class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                      class="w-full rounded-sm border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
                     />
                     <button
                       type="button"
                       disabled={busyAction() === "execute" || !hasOpenPosition() || hasActiveOrder()}
                       onClick={handleAttachBracket}
-                      class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                      class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
                     >
                       Attach Bracket
                     </button>
@@ -960,7 +960,7 @@ export default function PaperSessionDetailPage() {
                       type="button"
                       disabled={busyAction() === "execute"}
                       onClick={() => handleExecution("lift_ask")}
-                      class="rounded-xl bg-emerald-400 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-300 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+                      class="rounded-sm bg-emerald-400 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-300 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
                     >
                       Lift Ask
                     </button>
@@ -968,7 +968,7 @@ export default function PaperSessionDetailPage() {
                       type="button"
                       disabled={busyAction() === "execute"}
                       onClick={() => handleExecution("hit_bid")}
-                      class="rounded-xl bg-rose-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-rose-400 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+                      class="rounded-sm bg-rose-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-rose-400 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
                     >
                       Hit Bid
                     </button>
@@ -976,7 +976,7 @@ export default function PaperSessionDetailPage() {
                       type="button"
                       disabled={busyAction() === "execute" || hasOpenPosition() || hasActiveOrder()}
                       onClick={() => handleExecution("join_bid")}
-                      class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                      class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
                     >
                       Join Bid
                     </button>
@@ -984,7 +984,7 @@ export default function PaperSessionDetailPage() {
                       type="button"
                       disabled={busyAction() === "execute" || hasOpenPosition() || hasActiveOrder()}
                       onClick={() => handleExecution("join_ask")}
-                      class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                      class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
                     >
                       Join Ask
                     </button>
@@ -992,7 +992,7 @@ export default function PaperSessionDetailPage() {
                       type="button"
                       disabled={busyAction() === "execute" || !hasOpenPosition() || hasActiveOrder()}
                       onClick={() => handleExecution("rest_exit")}
-                      class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                      class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
                     >
                       Rest Exit
                     </button>
@@ -1000,7 +1000,7 @@ export default function PaperSessionDetailPage() {
                       type="button"
                       disabled={busyAction() === "execute" || !hasSingleActiveOrder()}
                       onClick={() => handleExecution("replace")}
-                      class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                      class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
                     >
                       Replace
                     </button>
@@ -1008,7 +1008,7 @@ export default function PaperSessionDetailPage() {
                       type="button"
                       disabled={busyAction() === "execute" || !hasActiveOrder()}
                       onClick={() => handleExecution("cancel")}
-                      class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                      class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
                     >
                       Cancel
                     </button>
@@ -1016,14 +1016,14 @@ export default function PaperSessionDetailPage() {
                       type="button"
                       disabled={busyAction() === "execute" || (!hasOpenPosition() && !hasActiveOrder())}
                       onClick={() => handleExecution("flatten")}
-                      class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                      class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
                     >
                       Flatten
                     </button>
                     <Show when={hasOpenPosition()}>
-                      <span class="rounded-full border border-zinc-700 px-3 py-2 text-xs text-zinc-400">
-                        Position is open, so `flatten` uses the synthetic opposite side.
-                      </span>
+                    <span class="rounded-sm border border-zinc-700 px-3 py-2 text-xs text-zinc-400">
+                      Position is open, so `flatten` uses the synthetic opposite side.
+                    </span>
                     </Show>
                   </div>
                 </section>
@@ -1038,14 +1038,14 @@ export default function PaperSessionDetailPage() {
                       value={eventType()}
                       onInput={(event) => setEventType(event.currentTarget.value)}
                       placeholder="operator_note"
-                      class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                      class="w-full rounded-sm border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
                     />
                     <textarea
                       value={eventSummary()}
                       onInput={(event) => setEventSummary(event.currentTarget.value)}
                       rows={3}
                       placeholder="Add a real session note..."
-                      class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                      class="w-full rounded-sm border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
                     />
                   </div>
 
@@ -1053,12 +1053,12 @@ export default function PaperSessionDetailPage() {
                     type="button"
                     disabled={busyAction() === "event-save"}
                     onClick={handleEventSave}
-                    class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                    class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
                   >
                     {busyAction() === "event-save" ? "Saving event..." : "Save Event"}
                   </button>
 
-                  <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60">
+                  <div class="rounded-md border border-zinc-800 bg-zinc-950/60">
                     <div class="border-b border-zinc-800 px-4 py-4">
                       <p class="app-kicker">Execution Tape</p>
                       <p class="mt-1 text-sm text-zinc-400">
@@ -1131,23 +1131,23 @@ export default function PaperSessionDetailPage() {
                     <Show
                       when={(events() ?? []).length > 0}
                       fallback={
-                        <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-6 text-sm text-zinc-500">
+                        <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-6 text-sm text-zinc-500">
                           No events yet.
                         </div>
                       }
                     >
                       <For each={[...(events() ?? [])].reverse()}>
                         {(event) => (
-                          <article class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4">
+                          <article class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-4">
                             <div class="flex flex-wrap items-center gap-2">
-                              <span class="rounded-full border border-zinc-700 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-300">
+                              <span class="rounded-sm border border-zinc-700 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-300">
                                 {event.event_type.replace(/_/g, " ")}
                               </span>
                               <span class="text-xs text-zinc-500">{event.actor}</span>
                             </div>
                             <p class="mt-3 text-sm text-zinc-200">{event.summary}</p>
                             <Show when={Object.keys(event.payload ?? {}).length > 0}>
-                              <pre class="mt-3 overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-xs text-zinc-400">
+                              <pre class="mt-3 overflow-x-auto rounded-md border border-zinc-800 bg-zinc-950 px-4 py-3 text-xs text-zinc-400">
                                 {formatJson(event.payload)}
                               </pre>
                             </Show>
@@ -1211,7 +1211,7 @@ export default function PaperSessionDetailPage() {
                         <div class="mt-3 space-y-3">
                           <For each={[...tradeLog()].reverse().slice(0, 6)}>
                             {(trade: Trade) => (
-                              <article class="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3">
+                              <article class="rounded-md border border-zinc-800 bg-zinc-950 px-4 py-3">
                                 <div class="flex flex-wrap items-center justify-between gap-2">
                                   <span class="text-sm font-medium text-zinc-100">
                                     {positionLabel(trade.side)}

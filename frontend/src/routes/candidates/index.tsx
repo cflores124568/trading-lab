@@ -77,7 +77,7 @@ export default function CandidateRegistryPage() {
       actions={
         <A
           href="/experiments"
-          class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+          class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
         >
           Back to Experiments
         </A>
@@ -86,27 +86,27 @@ export default function CandidateRegistryPage() {
       <div class="space-y-6">
         <section class="app-panel app-panel-section">
           <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-            <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+            <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-3">
               <p class="app-kicker">Total</p>
               <p class="mt-2 text-2xl font-semibold text-zinc-100">{counts().total}</p>
               <p class="mt-1 text-xs text-zinc-500">All promoted candidates</p>
             </div>
-            <div class="rounded-2xl border border-violet-800 bg-violet-950/30 px-4 py-3">
+            <div class="rounded-md border border-violet-800 bg-violet-950/30 px-4 py-3">
               <p class="app-kicker">Active</p>
               <p class="mt-2 text-2xl font-semibold text-zinc-100">{counts().active}</p>
               <p class="mt-1 text-xs text-zinc-500">Still in the decision pipeline</p>
             </div>
-            <div class="rounded-2xl border border-emerald-800 bg-emerald-950/30 px-4 py-3">
+            <div class="rounded-md border border-emerald-800 bg-emerald-950/30 px-4 py-3">
               <p class="app-kicker">Approved</p>
               <p class="mt-2 text-2xl font-semibold text-zinc-100">{counts().approved}</p>
               <p class="mt-1 text-xs text-zinc-500">Ready for paper prep</p>
             </div>
-            <div class="rounded-2xl border border-sky-800 bg-sky-950/30 px-4 py-3">
+            <div class="rounded-md border border-sky-800 bg-sky-950/30 px-4 py-3">
               <p class="app-kicker">Paper Stage</p>
               <p class="mt-2 text-2xl font-semibold text-zinc-100">{counts().paper}</p>
               <p class="mt-1 text-xs text-zinc-500">Drafted or wired for paper</p>
             </div>
-            <div class="rounded-2xl border border-red-800 bg-red-950/30 px-4 py-3">
+            <div class="rounded-md border border-red-800 bg-red-950/30 px-4 py-3">
               <p class="app-kicker">Rejected</p>
               <p class="mt-2 text-2xl font-semibold text-zinc-100">{counts().rejected}</p>
               <p class="mt-1 text-xs text-zinc-500">Kept for audit, not for action</p>
@@ -128,7 +128,7 @@ export default function CandidateRegistryPage() {
             <Show
               when={(candidates() ?? []).length > 0}
               fallback={
-                <div class="mt-6 rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-10 text-center text-sm text-zinc-500">
+                <div class="mt-6 rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-10 text-center text-sm text-zinc-500">
                   No candidates yet. Promote a run from an experiment to start the Phase 2 review flow.
                 </div>
               }
@@ -148,8 +148,8 @@ export default function CandidateRegistryPage() {
                   <tbody>
                     <For each={candidates()}>
                       {(candidate) => (
-                        <tr class="rounded-2xl border border-zinc-800 bg-zinc-950/70 text-zinc-200">
-                          <td class="rounded-l-2xl px-3 py-3">
+                        <tr class="rounded-md border border-zinc-800 bg-zinc-950/70 text-zinc-200">
+                          <td class="rounded-l-md px-3 py-3">
                             <div class="flex flex-wrap items-center gap-2">
                               <A
                                 href={`/candidates/${candidate.candidate_id}`}
@@ -158,7 +158,7 @@ export default function CandidateRegistryPage() {
                                 {candidate.symbol} {candidate.interval}
                               </A>
                               <span
-                                class={`rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.18em] ${statusTone(
+                                class={`rounded-sm border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.18em] ${statusTone(
                                   candidate.lifecycle_status,
                                 )}`}
                               >
@@ -196,13 +196,13 @@ export default function CandidateRegistryPage() {
                               fallback={<span class="text-zinc-500">No draft yet</span>}
                             >
                               {(paperBot) => (
-                                <span class="rounded-full border border-sky-700 bg-sky-950/30 px-2.5 py-1 font-medium uppercase tracking-[0.18em] text-sky-200">
+                                <span class="rounded-sm border border-sky-700 bg-sky-950/30 px-2.5 py-1 font-medium uppercase tracking-[0.18em] text-sky-200">
                                   {paperBot().status.replace(/_/g, " ")}
                                 </span>
                               )}
                             </Show>
                           </td>
-                          <td class="rounded-r-2xl px-3 py-3 text-xs text-zinc-500">
+                          <td class="rounded-r-md px-3 py-3 text-xs text-zinc-500">
                             {formatTimestamp(candidate.updated_at)}
                           </td>
                         </tr>

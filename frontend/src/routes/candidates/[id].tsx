@@ -80,7 +80,7 @@ function describeStatus(status: CandidateLifecycleStatus): string {
 
 function metricCard(label: string, value: string, note: string, tone = "border-zinc-800 bg-zinc-950/60") {
   return (
-    <div class={`rounded-2xl border px-4 py-3 ${tone}`}>
+    <div class={`rounded-md border px-4 py-3 ${tone}`}>
       <p class="app-kicker">{label}</p>
       <p class="mt-2 text-sm font-semibold text-zinc-100">{value}</p>
       <p class="mt-1 text-xs text-zinc-500">{note}</p>
@@ -180,13 +180,13 @@ export default function CandidateDetailPage() {
         <>
           <A
             href="/candidates"
-            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+            class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
           >
             Back to Candidates
           </A>
           <A
             href="/paper-sessions"
-            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+            class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
           >
             Paper Sessions
           </A>
@@ -195,13 +195,13 @@ export default function CandidateDetailPage() {
               <>
                 <A
                   href={`/experiments/${entry().experiment_id}`}
-                  class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+                  class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
                 >
                   Source Experiment
                 </A>
                 <A
                   href={`/backtests/${entry().backtest_id}`}
-                  class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+                  class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
                 >
                   Source Backtest
                 </A>
@@ -222,7 +222,7 @@ export default function CandidateDetailPage() {
         {(entry) => (
           <div class="space-y-6">
             <Show when={error()}>
-              <div class="rounded-2xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">
+              <div class="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">
                 {error()}
               </div>
             </Show>
@@ -233,7 +233,7 @@ export default function CandidateDetailPage() {
                   <div class="flex flex-wrap items-center gap-2">
                     <p class="app-kicker">Lifecycle</p>
                     <span
-                      class={`rounded-full border px-2.5 py-1 text-xs font-medium uppercase tracking-[0.18em] ${statusTone(
+                      class={`rounded-sm border px-2.5 py-1 text-xs font-medium uppercase tracking-[0.18em] ${statusTone(
                         entry().lifecycle_status,
                       )}`}
                     >
@@ -247,7 +247,7 @@ export default function CandidateDetailPage() {
                         type="button"
                         disabled={busyAction() === "approve"}
                         onClick={handleApprove}
-                        class="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+                        class="rounded-sm bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
                       >
                         {busyAction() === "approve" ? "Approving..." : "Approve"}
                       </button>
@@ -257,7 +257,7 @@ export default function CandidateDetailPage() {
                         type="button"
                         disabled={busyAction() === "reject"}
                         onClick={handleReject}
-                        class="rounded-xl border border-red-700 bg-red-950/40 px-4 py-2 text-sm font-medium text-red-200 transition-colors hover:bg-red-950/60 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                        class="rounded-sm border border-red-700 bg-red-950/40 px-4 py-2 text-sm font-medium text-red-200 transition-colors hover:bg-red-950/60 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
                       >
                         {busyAction() === "reject" ? "Rejecting..." : "Reject"}
                       </button>
@@ -265,7 +265,7 @@ export default function CandidateDetailPage() {
                   </div>
                 </div>
 
-                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4 text-sm text-zinc-300">
+                <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-4 text-sm text-zinc-300">
                   <p>Promoted by {entry().promoted_by}</p>
                   <p class="mt-1 text-zinc-500">{formatTimestamp(entry().promoted_at)}</p>
                   <Show when={entry().approved_at}>
@@ -351,13 +351,13 @@ export default function CandidateDetailPage() {
                       onInput={(event) => setNoteDraft(event.currentTarget.value)}
                       rows={4}
                       placeholder="Add a real review note..."
-                      class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                      class="w-full rounded-sm border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
                     />
                     <button
                       type="button"
                       disabled={busyAction() === "note"}
                       onClick={handleNoteSave}
-                      class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                      class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
                     >
                       {busyAction() === "note" ? "Saving note..." : "Save Note"}
                     </button>
@@ -367,14 +367,14 @@ export default function CandidateDetailPage() {
                     <Show
                       when={entry().notes.length > 0}
                       fallback={
-                        <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-6 text-sm text-zinc-500">
+                        <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-6 text-sm text-zinc-500">
                           No notes yet.
                         </div>
                       }
                     >
                       <For each={[...entry().notes].reverse()}>
                         {(note) => (
-                          <article class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4">
+                          <article class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-4">
                             <p class="text-sm text-zinc-200">{note.body}</p>
                             <p class="mt-3 text-xs text-zinc-500">
                               {note.author} · {formatTimestamp(note.created_at)}
@@ -399,14 +399,14 @@ export default function CandidateDetailPage() {
                     when={entry().paper_bot}
                     fallback={
                       <div class="space-y-3">
-                        <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-6 text-sm text-zinc-500">
+                        <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-6 text-sm text-zinc-500">
                           No paper bot draft yet.
                         </div>
                         <button
                           type="button"
                           disabled={busyAction() === "paper-create" || entry().lifecycle_status === "rejected"}
                           onClick={handleCreatePaperBot}
-                          class="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+                          class="rounded-sm bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
                         >
                           {busyAction() === "paper-create"
                             ? "Creating draft..."
@@ -417,7 +417,7 @@ export default function CandidateDetailPage() {
                   >
                     {(paperBot) => (
                       <div class="space-y-4">
-                        <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4 text-sm text-zinc-300">
+                        <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-4 text-sm text-zinc-300">
                           <p class="font-medium text-zinc-100">
                             {paperBot().symbol} {paperBot().interval} · {paperBot().strategy_type.replace(/_/g, " ")}
                           </p>
@@ -426,13 +426,13 @@ export default function CandidateDetailPage() {
                           </p>
                           <p class="mt-3">
                             Status:{" "}
-                            <span class="rounded-full border border-sky-700 bg-sky-950/30 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-sky-200">
+                            <span class="rounded-sm border border-sky-700 bg-sky-950/30 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-sky-200">
                               {paperBot().status.replace(/_/g, " ")}
                             </span>
                           </p>
                         </div>
 
-                        <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4 text-sm text-zinc-300">
+                        <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-4 text-sm text-zinc-300">
                           <p class="font-medium text-zinc-100">Guardrails snapshot</p>
                           <p class="mt-2">Prop preset: {entry().prop_firm_rules.name}</p>
                           <p class="mt-1">
@@ -458,7 +458,7 @@ export default function CandidateDetailPage() {
                               type="button"
                               disabled={busyAction() === "paper-ready"}
                               onClick={handlePaperReady}
-                              class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                              class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
                             >
                               {busyAction() === "paper-ready" ? "Updating..." : "Mark Ready"}
                             </button>
@@ -468,7 +468,7 @@ export default function CandidateDetailPage() {
                               type="button"
                               disabled={busyAction() === "paper-run"}
                               onClick={handlePaperRun}
-                              class="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+                              class="rounded-sm bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
                             >
                               {busyAction() === "paper-run" ? "Starting..." : "Start Paper Bot"}
                             </button>
@@ -478,7 +478,7 @@ export default function CandidateDetailPage() {
                               type="button"
                               disabled={busyAction() === "paper-stop"}
                               onClick={handlePaperStop}
-                              class="rounded-xl border border-red-700 bg-red-950/40 px-4 py-2 text-sm font-medium text-red-200 transition-colors hover:bg-red-950/60 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                              class="rounded-sm border border-red-700 bg-red-950/40 px-4 py-2 text-sm font-medium text-red-200 transition-colors hover:bg-red-950/60 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
                             >
                               {busyAction() === "paper-stop" ? "Stopping..." : "Stop / Pause"}
                             </button>
@@ -490,7 +490,7 @@ export default function CandidateDetailPage() {
                                 type="button"
                                 disabled={busyAction() === "session-create"}
                                 onClick={handleCreatePaperSession}
-                                class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                                class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
                               >
                                 {busyAction() === "session-create"
                                   ? "Creating session..."
@@ -501,7 +501,7 @@ export default function CandidateDetailPage() {
                             {(paperSessionId) => (
                               <A
                                 href={`/paper-sessions/${paperSessionId()}`}
-                                class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+                                class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
                               >
                                 Open Paper Session
                               </A>
@@ -520,9 +520,9 @@ export default function CandidateDetailPage() {
                   <div class="space-y-3">
                     <For each={[...entry().audit_log].reverse()}>
                       {(event) => (
-                        <article class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4">
+                        <article class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-4">
                           <div class="flex flex-wrap items-center gap-2">
-                            <span class="rounded-full border border-zinc-700 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-300">
+                            <span class="rounded-sm border border-zinc-700 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-300">
                               {event.event_type.replace(/_/g, " ")}
                             </span>
                             <span class="text-xs text-zinc-500">{event.actor}</span>
