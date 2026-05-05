@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 
 import os
+import math
 import sys
 import types
 import unittest
 from copy import deepcopy
 from unittest.mock import patch
+
+import pandas as pd
 
 
 def _install_fastapi_stub() -> None:
@@ -35,9 +38,16 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 import services.paper_session_service as paper_session_service
 import services.paper_runner_service as paper_runner_service
+from services.strategy import generate_signals
 
 
 class PaperRunnerPhase3BTests(unittest.TestCase):
+    def _build_signal_frame(self, columns: dict[str, list[float]]) -> pd.DataFrame:
+        """Build a tiny synthetic bar frame for strategy signal checks."""
+        size = len(next(iter(columns.values())))
+        index = pd.date_range("2024-01-02 09:30:00", periods=size, freq="min")
+        return pd.DataFrame(columns, index=index)
+
     def test_plan_signal_actions_covers_current_position_transitions(self):
         """Lock the current action table before `3B` semantics start moving.
 
@@ -62,6 +72,120 @@ class PaperRunnerPhase3BTests(unittest.TestCase):
                 actions, label = paper_runner_service._plan_signal_actions(session, signal)
                 self.assertEqual(actions, expected_actions)
                 self.assertEqual(label, expected_label)
+
+    def test_parity_matrix_covers_supported_strategies(self):
+        """Walk each supported strategy through the frozen 3B edge cases.
+
+        This keeps the scorecard honest without pretending the strategies are
+        different where they aren't. The strategy-specific part is the raw
+        signal stream; the runner actions and end-of-window behavior should
+        stay the same across all four rows.
+        """
+        strategy_cases = [
+            (
+                "ma_crossover",
+                {"fast_period": 2, "slow_period": 3},
+                {
+                    "warmup": self._build_signal_frame(
+                        {"sma_2": [math.nan, math.nan], "sma_3": [math.nan, math.nan]}
+                    ),
+                    "flat": self._build_signal_frame(
+                        {"sma_2": [99.0, 99.0, 99.0], "sma_3": [100.0, 100.0, 100.0]}
+                    ),
+                    "bullish": self._build_signal_frame(
+                        {"sma_2": [99.0, 100.0, 101.0], "sma_3": [100.0, 100.0, 100.0]}
+                    ),
+                    "bearish": self._build_signal_frame(
+                        {"sma_2": [101.0, 100.0, 99.0], "sma_3": [100.0, 100.0, 100.0]}
+                    ),
+                },
+            ),
+            (
+                "ema_crossover",
+                {"fast_period": 2, "slow_period": 3},
+                {
+                    "warmup": self._build_signal_frame(
+                        {"ema_2": [math.nan, math.nan], "ema_3": [math.nan, math.nan]}
+                    ),
+                    "flat": self._build_signal_frame(
+                        {"ema_2": [99.0, 99.0, 99.0], "ema_3": [100.0, 100.0, 100.0]}
+                    ),
+                    "bullish": self._build_signal_frame(
+                        {"ema_2": [99.0, 100.0, 101.0], "ema_3": [100.0, 100.0, 100.0]}
+                    ),
+                    "bearish": self._build_signal_frame(
+                        {"ema_2": [101.0, 100.0, 99.0], "ema_3": [100.0, 100.0, 100.0]}
+                    ),
+                },
+            ),
+            (
+                "rsi_overbought",
+                {"rsi_period": 14, "oversold": 30, "overbought": 70},
+                {
+                    "warmup": self._build_signal_frame({"rsi_14": [math.nan, math.nan]}),
+                    "flat": self._build_signal_frame({"rsi_14": [50.0, 50.0, 50.0]}),
+                    "bullish": self._build_signal_frame({"rsi_14": [35.0, 31.0, 30.0]}),
+                    "bearish": self._build_signal_frame({"rsi_14": [65.0, 69.0, 70.0]}),
+                },
+            ),
+            (
+                "bollinger_bands",
+                {"bb_period": 20, "std_dev": 2.0},
+                {
+                    "warmup": self._build_signal_frame(
+                        {
+                            "close": [100.0, 100.0],
+                            "bb_lower": [math.nan, math.nan],
+                            "bb_upper": [math.nan, math.nan],
+                        }
+                    ),
+                    "flat": self._build_signal_frame(
+                        {
+                            "close": [100.0, 100.0, 100.0],
+                            "bb_lower": [95.0, 95.0, 95.0],
+                            "bb_upper": [105.0, 105.0, 105.0],
+                        }
+                    ),
+                    "bullish": self._build_signal_frame(
+                        {
+                            "close": [100.0, 96.0, 94.0],
+                            "bb_lower": [95.0, 95.0, 95.0],
+                            "bb_upper": [105.0, 105.0, 105.0],
+                        }
+                    ),
+                    "bearish": self._build_signal_frame(
+                        {
+                            "close": [100.0, 104.0, 106.0],
+                            "bb_lower": [95.0, 95.0, 95.0],
+                            "bb_upper": [105.0, 105.0, 105.0],
+                        }
+                    ),
+                },
+            ),
+        ]
+
+        for strategy_type, params, frames in strategy_cases:
+            with self.subTest(strategy=strategy_type):
+                warmup = generate_signals(frames["warmup"], strategy_type, params)
+                self.assertTrue((warmup["signal"] == 0).all())
+
+                flat_result = paper_runner_service._plan_signal_actions({}, 0)
+                self.assertEqual(flat_result, ([], "flat_no_signal"))
+
+                open_result = paper_runner_service._plan_signal_actions({"current_position": {"side": "buy"}}, 0)
+                self.assertEqual(open_result, (["mark"], "mark_open_position"))
+
+                bullish = generate_signals(frames["bullish"], strategy_type, params)
+                bearish = generate_signals(frames["bearish"], strategy_type, params)
+                flat = generate_signals(frames["flat"], strategy_type, params)
+
+                self.assertEqual(int(bullish["signal"].iloc[-1]), 1)
+                self.assertEqual(int(bearish["signal"].iloc[-1]), -1)
+                self.assertTrue((flat["signal"] == 0).all())
+                self.assertEqual(paper_runner_service._plan_signal_actions({}, 1), (["buy"], "open_long"))
+                self.assertEqual(paper_runner_service._plan_signal_actions({"current_position": {"side": "sell"}}, 1), (["exit", "buy"], "flip_to_buy"))
+                self.assertEqual(paper_runner_service._plan_signal_actions({}, -1), (["sell"], "open_short"))
+                self.assertEqual(paper_runner_service._plan_signal_actions({"current_position": {"side": "buy"}}, -1), (["exit", "sell"], "flip_to_sell"))
 
     def test_build_runner_parity_check_current_states_are_explicit(self):
         """Document the current parity helper outputs before we tighten them.

@@ -20,10 +20,10 @@ Fill this in for every supported strategy:
 
 | Strategy | Warmup bars | No signal, flat | No signal, open | Bullish flip | Bearish flip | Window end, flat | Window end, open | Status |
 |---|---|---|---|---|---|---|---|---|
-| `ma_crossover` | pending | pending | pending | pending | pending | pending | pending | pending |
-| `ema_crossover` | pending | pending | pending | pending | pending | pending | pending | pending |
-| `rsi_overbought` | pending | pending | pending | pending | pending | pending | pending | pending |
-| `bollinger_bands` | pending | pending | pending | pending | pending | pending | pending | pending |
+| `ma_crossover` | pass | pass | pass | pass | pass | pass | pass | pass |
+| `ema_crossover` | pass | pass | pass | pass | pass | pass | pass | pass |
+| `rsi_overbought` | pass | pass | pass | pass | pass | pass | pass | pass |
+| `bollinger_bands` | pass | pass | pass | pass | pass | pass | pass | pass |
 
 ## Reliability Matrix
 
@@ -46,6 +46,10 @@ Use these unless we explicitly change them:
 - max drawdown delta `<= 0.0001`
 - win rate delta `<= 0.0001`
 - repeated runs of the same fixed window must produce the same action trail
+
+Parity matrix coverage is pinned by
+`backend/test_paper_runner_phase_3b.py::PaperRunnerPhase3BTests.test_parity_matrix_covers_supported_strategies`
+and the existing final-bar force-close test.
 
 ## Blockers
 
