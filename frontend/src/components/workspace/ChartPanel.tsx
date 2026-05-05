@@ -218,7 +218,7 @@ export default function ChartPanel(props: Props) {
   };
 
   return (
-    <section class="flex h-full min-h-[440px] flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+    <section class="flex h-full min-h-[440px] flex-col overflow-hidden rounded-md border border-zinc-800 bg-zinc-950/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
       <div class="border-b border-zinc-800 bg-zinc-950/90 px-3 py-2">
         <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div class="min-w-0 flex-1">
@@ -229,7 +229,7 @@ export default function ChartPanel(props: Props) {
                   draggable
                   title="Drag to reorder panel"
                   aria-label="Drag to reorder panel"
-                  class="inline-flex h-7 w-7 cursor-grab items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-500 transition-colors hover:border-zinc-700 hover:text-zinc-200 active:cursor-grabbing"
+                  class="inline-flex h-7 w-7 cursor-grab items-center justify-center rounded-sm border border-zinc-800 bg-zinc-950 text-zinc-500 transition-colors hover:border-zinc-700 hover:text-zinc-200 active:cursor-grabbing"
                   onDragStart={props.onReorderDragStart}
                   onDragEnd={props.onReorderDragEnd}
                 >
@@ -237,17 +237,17 @@ export default function ChartPanel(props: Props) {
                 </button>
               </Show>
               <h3 class="truncate text-sm font-semibold text-zinc-100">{props.panel.title}</h3>
-              <span class="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-300">
+              <span class="rounded-sm border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-300">
                 {query().symbol}
               </span>
               <span class="text-xs text-zinc-500">{query().interval}</span>
-              <span class="rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+              <span class="rounded-sm border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
                 {modeLabel()}
               </span>
-              <span class={`rounded-full border px-2 py-1 text-[11px] font-medium ${panelStateTone()}`}>
+              <span class={`rounded-sm border px-2 py-1 text-[11px] font-medium ${panelStateTone()}`}>
                 {panelStateLabel()}
               </span>
-              <span class="rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+              <span class="rounded-sm border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
                 {enabledStudyCount()} studies
               </span>
             </div>
@@ -258,7 +258,7 @@ export default function ChartPanel(props: Props) {
             <button
               type="button"
               title="Switch to live mode"
-              class={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+              class={`inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-xs font-medium transition-colors ${
                 query().mode === "live"
                   ? "bg-zinc-100 text-zinc-950"
                   : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
@@ -271,7 +271,7 @@ export default function ChartPanel(props: Props) {
             <button
               type="button"
               title="Switch to historical mode"
-              class={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+              class={`inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-xs font-medium transition-colors ${
               query().mode === "historical"
                 ? "bg-zinc-100 text-zinc-950"
                 : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
@@ -284,7 +284,7 @@ export default function ChartPanel(props: Props) {
             <button
               type="button"
               title={showControls() ? "Hide panel controls" : "Show panel controls"}
-              class="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100"
+              class="inline-flex items-center gap-1.5 rounded-sm border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100"
               onClick={() => setShowControls((current) => !current)}
             >
               <SlidersHorizontal size={14} />
@@ -303,10 +303,10 @@ export default function ChartPanel(props: Props) {
               </button>
 
               <Show when={showMenu()}>
-                <div class="absolute right-0 top-[calc(100%+0.5rem)] z-30 w-48 rounded-2xl border border-zinc-800 bg-zinc-950/98 p-2 shadow-2xl shadow-black/40">
+                <div class="absolute right-0 top-[calc(100%+0.5rem)] z-30 w-48 rounded-sm border border-zinc-800 bg-zinc-950/98 p-2 shadow-2xl shadow-black/40">
                   <button
                     type="button"
-                    class="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-900"
+                    class="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-900"
                     onClick={() => {
                       setShowMenu(false);
                       props.onToggleExpand();
@@ -317,7 +317,7 @@ export default function ChartPanel(props: Props) {
                   </button>
                   <button
                     type="button"
-                    class="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-900 disabled:cursor-not-allowed disabled:text-zinc-600"
+                    class="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-900 disabled:cursor-not-allowed disabled:text-zinc-600"
                     onClick={() => {
                       setShowMenu(false);
                       props.onDuplicate();
@@ -330,7 +330,7 @@ export default function ChartPanel(props: Props) {
                   <Show when={props.canRemove}>
                     <button
                       type="button"
-                      class="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-red-300 transition-colors hover:bg-red-950/40"
+                      class="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm text-red-300 transition-colors hover:bg-red-950/40"
                       onClick={() => {
                         setShowMenu(false);
                         props.onRemove();

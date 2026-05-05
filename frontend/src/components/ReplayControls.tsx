@@ -63,7 +63,7 @@ const speeds = [1, 2, 5, 8, 12, 20];
 
 function ghostButton(enabled: boolean): string {
   return [
-    "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors",
+    "flex items-center gap-2 rounded-sm border px-3 py-2 text-sm transition-colors",
     enabled
       ? "border-zinc-700 bg-zinc-900 text-zinc-200 hover:border-zinc-500 hover:bg-zinc-800"
       : "cursor-not-allowed border-zinc-800 bg-zinc-950 text-zinc-600",
@@ -77,14 +77,14 @@ function actionButton(enabled: boolean, tone: "green" | "rose"): string {
       : "bg-rose-500 text-white hover:bg-rose-400";
 
   return [
-    "flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+    "flex items-center gap-2 rounded-sm px-4 py-2 text-sm font-medium transition-colors",
     enabled ? activeTone : "cursor-not-allowed bg-zinc-800 text-zinc-500",
   ].join(" ");
 }
 
 export default function ReplayControls(props: Props) {
   return (
-    <div class="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/90">
+    <div class="overflow-hidden rounded-md border border-zinc-800 bg-zinc-900/90">
       <div class="border-b border-zinc-800 bg-zinc-950/70 px-5 py-4">
         <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div class="space-y-1">
@@ -93,23 +93,23 @@ export default function ReplayControls(props: Props) {
           </div>
 
           <div class="flex flex-wrap gap-3">
-            <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-xs text-zinc-500">
+            <div class="rounded-sm border border-zinc-800 bg-zinc-900 px-4 py-3 text-xs text-zinc-500">
               <p>Status</p>
               <p class="mt-1 text-sm font-semibold text-zinc-100">{props.statusLabel}</p>
             </div>
-            <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-xs text-zinc-500">
+            <div class="rounded-sm border border-zinc-800 bg-zinc-900 px-4 py-3 text-xs text-zinc-500">
               <p>Current Bar</p>
               <p class="mt-1 font-mono text-sm font-semibold text-zinc-100">
                 {props.currentBar} / {props.totalBars}
               </p>
             </div>
-            <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-xs text-zinc-500">
+            <div class="rounded-sm border border-zinc-800 bg-zinc-900 px-4 py-3 text-xs text-zinc-500">
               <p>Last Price</p>
               <p class="mt-1 font-mono text-sm font-semibold text-zinc-100">
                 {props.currentPriceLabel}
               </p>
             </div>
-            <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-xs text-zinc-500">
+            <div class="rounded-sm border border-zinc-800 bg-zinc-900 px-4 py-3 text-xs text-zinc-500">
               <p>Book</p>
               <p class="mt-1 font-mono text-sm font-semibold text-zinc-100">
                 {props.bidAskLabel}
@@ -125,7 +125,7 @@ export default function ReplayControls(props: Props) {
             <button
               onClick={props.onPlayPause}
               disabled={!props.isPlaying && !props.canStartPlayback}
-              class={`flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-colors ${
+              class={`flex items-center gap-2 rounded-sm px-6 py-3 text-sm font-semibold transition-colors ${
                 props.isPlaying || props.canStartPlayback
                   ? "bg-sky-400 text-zinc-950 hover:bg-sky-300"
                   : "cursor-not-allowed bg-zinc-800 text-zinc-500"
@@ -144,7 +144,7 @@ export default function ReplayControls(props: Props) {
 
             <button
               onClick={props.onRestart}
-              class="flex items-center gap-2 rounded-xl border border-zinc-700 px-4 py-3 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+              class="flex items-center gap-2 rounded-sm border border-zinc-700 px-4 py-3 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
             >
               <RotateCw size={18} />
               Restart
@@ -152,28 +152,28 @@ export default function ReplayControls(props: Props) {
           </div>
 
           <div class="grid min-w-72 grid-cols-1 gap-2 md:grid-cols-2 xl:max-w-[440px]">
-            <div class="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3 text-xs text-zinc-500">
+            <div class="rounded-sm border border-zinc-800 bg-zinc-950 px-3 py-3 text-xs text-zinc-500">
               <p>Time</p>
               <p class="mt-1 font-mono text-sm text-zinc-200">{props.currentTimeLabel}</p>
             </div>
-            <div class="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3 text-xs text-zinc-500">
+            <div class="rounded-sm border border-zinc-800 bg-zinc-950 px-3 py-3 text-xs text-zinc-500">
               <p>Position</p>
               <p class="mt-1 font-mono text-sm text-zinc-200">{props.positionLabel}</p>
             </div>
-            <div class="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3 text-xs text-zinc-500 md:col-span-2">
+            <div class="rounded-sm border border-zinc-800 bg-zinc-950 px-3 py-3 text-xs text-zinc-500 md:col-span-2">
               <p>Resting Order</p>
               <p class="mt-1 font-mono text-sm text-zinc-200">{props.activeOrderLabel}</p>
             </div>
           </div>
         </div>
 
-        <div class="rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4">
+        <div class="rounded-md border border-zinc-800 bg-zinc-950/80 p-4">
           <div class="flex items-center justify-between gap-3">
             <div class="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-zinc-500">
               <CircleDot size={16} />
               Timeline
             </div>
-            <div class="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs font-medium text-zinc-400">
+            <div class="rounded-sm border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs font-medium text-zinc-400">
               {Math.round(props.progress * 100)}% complete
             </div>
           </div>
@@ -209,7 +209,7 @@ export default function ReplayControls(props: Props) {
         </div>
 
         <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <div class="rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4">
+          <div class="rounded-md border border-zinc-800 bg-zinc-950/80 p-4">
             <div class="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-zinc-500">
               <Gauge size={16} />
               Speed
@@ -231,7 +231,7 @@ export default function ReplayControls(props: Props) {
             </div>
           </div>
 
-          <div class="rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4">
+          <div class="rounded-md border border-zinc-800 bg-zinc-950/80 p-4">
             <div class="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-zinc-500">
               <ArrowLeft size={16} />
               Navigation
@@ -273,7 +273,7 @@ export default function ReplayControls(props: Props) {
           </div>
         </div>
 
-        <div class="rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4">
+        <div class="rounded-md border border-zinc-800 bg-zinc-950/80 p-4">
           <div class="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-zinc-500">
             <TrendingUp size={16} />
             Execution Actions

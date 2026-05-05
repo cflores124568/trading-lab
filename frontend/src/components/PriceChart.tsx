@@ -434,14 +434,14 @@ export default function PriceChart(props: Props) {
 
   return (
     <div
-      class={`relative w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 ${props.class ?? ""}`}
+      class={`relative w-full overflow-hidden rounded-sm border border-zinc-800 bg-zinc-950 ${props.class ?? ""}`}
       style={props.height ? { height: `${props.height}px` } : undefined}
     >
       <div ref={container} class="h-full w-full" />
 
       {indicatorLegendMode() !== "hidden" && activeCandle() ? (
         <div
-          class={`pointer-events-none absolute left-3 top-3 z-10 max-w-[min(320px,calc(100%-1.5rem))] rounded-xl border border-zinc-800/90 bg-zinc-950/82 shadow-xl shadow-black/25 backdrop-blur ${
+          class={`pointer-events-none absolute left-3 top-3 z-10 max-w-[min(320px,calc(100%-1.5rem))] rounded-sm border border-zinc-800/90 bg-zinc-950/82 shadow-xl shadow-black/25 backdrop-blur ${
             indicatorLegendMode() === "full" ? "px-3 py-2.5" : "px-2.5 py-2"
           }`}
         >
