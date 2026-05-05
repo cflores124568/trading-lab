@@ -85,6 +85,34 @@ class PropFirmEvalTests(unittest.TestCase):
         self.assertEqual(result["details"]["drawdown_peak_equity"], 108000)
         self.assertEqual(result["details"]["first_breach_rule"], "drawdown")
 
+    def test_disabled_daily_loss_limit_skips_intraday_breach_checks(self):
+        rules = {
+            "name": "Replay Test",
+            "account_size": 100_000,
+            "daily_loss_limit": None,
+            "max_drawdown": 0.20,
+            "profit_target": 0.01,
+            "consistency_rule": False,
+            "consistency_threshold": None,
+            "drawdown_type": "intraday",
+            "min_trading_days": None,
+        }
+
+        result = evaluate_prop_firm(
+            rules,
+            trades=[_trade("2024-01-02", -1_500)],
+            equity_curve=[100_000, 98_500, 99_500],
+            initial_balance=100_000,
+            equity_timestamps=[
+                "2024-01-02T09:30:00",
+                "2024-01-02T10:00:00",
+                "2024-01-02T15:00:00",
+            ],
+        )
+
+        self.assertFalse(result["daily_loss_breached"])
+        self.assertEqual(result["details"]["daily_loss_limit_amount"], None)
+
     def test_min_trading_days_fails_when_run_finishes_too_early(self):
         rules = {
             "name": "Replay Test",
