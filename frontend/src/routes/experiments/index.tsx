@@ -1118,7 +1118,7 @@ export default function ExperimentsIndexPage() {
       <div class="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
         <div class="space-y-6">
           <Show when={error()}>
-            <div class="rounded-2xl border border-red-800/80 bg-red-950/40 px-4 py-3 text-sm text-red-200">
+            <div class="rounded-md border border-red-800/80 bg-red-950/40 px-4 py-3 text-sm text-red-200">
               {error()}
             </div>
           </Show>
@@ -1223,21 +1223,21 @@ export default function ExperimentsIndexPage() {
               </div>
 
               <div class="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-4 py-4">
+                <div class="rounded-md border border-zinc-800 bg-zinc-950/80 px-4 py-4">
                   <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Runtime</p>
                   <p class="app-data mt-2 text-2xl font-semibold text-zinc-100">
                     {formatDuration(runtimeEstimateMinutes())}
                   </p>
                   <p class="mt-1 text-xs text-zinc-500">Includes date span and strategy width heuristics.</p>
                 </div>
-                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-4 py-4">
+                <div class="rounded-md border border-zinc-800 bg-zinc-950/80 px-4 py-4">
                   <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Memory Footprint</p>
                   <p class="app-data mt-2 text-2xl font-semibold text-zinc-100">
                     {formatMemory(memoryEstimateMb())}
                   </p>
                   <p class="mt-1 text-xs text-zinc-500">A rough peak working-set estimate for the batch.</p>
                 </div>
-                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-4 py-4">
+                <div class="rounded-md border border-zinc-800 bg-zinc-950/80 px-4 py-4">
                   <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Coverage Overlap</p>
                   <p class="app-data mt-2 text-2xl font-semibold text-zinc-100">
                     {coverageStats().hasCoverage ? `${coverageStats().overlapDays}d` : "0d"}
@@ -1324,7 +1324,7 @@ export default function ExperimentsIndexPage() {
                         onClick={() =>
                           setSelectedSymbols((current) => toggleValue(current, symbol.symbol))
                         }
-                        class={`rounded-2xl border px-4 py-3 text-left transition-all ${
+                        class={`rounded-md border px-4 py-3 text-left transition-all ${
                           checked()
                             ? "app-card-glow"
                             : "border-zinc-800 bg-zinc-950/70 text-zinc-300 hover:border-zinc-600"
@@ -1344,7 +1344,7 @@ export default function ExperimentsIndexPage() {
               </div>
             </div>
 
-            <div class="rounded-2xl border border-zinc-800 bg-zinc-950/75 p-4">
+            <div class="rounded-md border border-zinc-800 bg-zinc-950/75 p-4">
               <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <label class={label}>Intervals</label>
@@ -1396,7 +1396,7 @@ export default function ExperimentsIndexPage() {
                                 : rangeToIntervals(index(), index()),
                             );
                           }}
-                          class={`rounded-2xl border px-3 py-3 text-center transition-all ${
+                          class={`rounded-md border px-3 py-3 text-center transition-all ${
                             checked()
                               ? "app-card-glow"
                               : "border-zinc-800 bg-zinc-950/75 text-zinc-300 hover:border-zinc-600"
@@ -1477,7 +1477,7 @@ export default function ExperimentsIndexPage() {
                       <div class="flex items-start justify-between gap-4">
                         <div>
                           <div class="flex items-center gap-3">
-                            <span class="rounded-xl border border-zinc-700 bg-zinc-950/70 px-2.5 py-1.5 app-data text-xs text-zinc-200">
+                            <span class="rounded-sm border border-zinc-700 bg-zinc-950/70 px-2.5 py-1.5 app-data text-xs text-zinc-200">
                               {profile.glyph}
                             </span>
                             <div>
@@ -1537,7 +1537,7 @@ export default function ExperimentsIndexPage() {
             </div>
 
             <Show when={validationError() || nyquistWarning()}>
-              <div class="rounded-2xl border border-amber-800/70 bg-amber-950/25 px-4 py-3 text-sm text-amber-100">
+              <div class="rounded-md border border-amber-800/70 bg-amber-950/25 px-4 py-3 text-sm text-amber-100">
                 {validationError() ?? nyquistWarning()}
               </div>
             </Show>
@@ -1641,14 +1641,14 @@ export default function ExperimentsIndexPage() {
               </div>
 
               <div class="mt-4 grid gap-3 sm:grid-cols-3">
-                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/75 px-4 py-3">
+                <div class="rounded-md border border-zinc-800 bg-zinc-950/75 px-4 py-3">
                   <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">ETA</p>
                   <p class="app-data mt-2 text-xl font-semibold text-zinc-100">
                     {formatDuration(runtimeEstimateMinutes() + queueDepth() * 4)}
                   </p>
                   <p class="mt-1 text-xs text-zinc-500">Includes the current run queue.</p>
                 </div>
-                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/75 px-4 py-3">
+                <div class="rounded-md border border-zinc-800 bg-zinc-950/75 px-4 py-3">
                   <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Scoring Bias</p>
                   <p class="mt-2 text-sm font-semibold text-zinc-100">
                     {scoringOptions.find((option) => option.value === scoringRule())?.label}
@@ -1657,7 +1657,7 @@ export default function ExperimentsIndexPage() {
                     {scoringOptions.find((option) => option.value === scoringRule())?.blurb}
                   </p>
                 </div>
-                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/75 px-4 py-3">
+                <div class="rounded-md border border-zinc-800 bg-zinc-950/75 px-4 py-3">
                   <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Confidence Band</p>
                   <p class="app-data mt-2 text-xl font-semibold text-zinc-100">
                     +/-{sharpeVarianceBand().toFixed(2)}
@@ -1667,7 +1667,7 @@ export default function ExperimentsIndexPage() {
               </div>
             </div>
 
-            <div class="rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4">
+            <div class="rounded-md border border-zinc-800 bg-zinc-950/80 p-4">
               <div class="flex items-center justify-between gap-3">
                 <div>
                   <p class="text-sm font-semibold text-zinc-100">Pre-flight validator</p>
@@ -1687,7 +1687,7 @@ export default function ExperimentsIndexPage() {
               <div class="mt-4 space-y-3">
                 <For each={preflightChecks()}>
                   {(check) => (
-                    <div class="rounded-2xl border border-zinc-800 bg-zinc-950/70 px-4 py-3">
+                    <div class="rounded-md border border-zinc-800 bg-zinc-950/70 px-4 py-3">
                       <div class="flex items-start gap-3">
                         <span
                           class={`mt-0.5 flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${
@@ -1725,7 +1725,7 @@ export default function ExperimentsIndexPage() {
                 type="button"
                 disabled={!isValidated() || busyAction() !== null}
                 onClick={() => handleCreate(true)}
-                class={`rounded-xl px-4 py-3 text-sm font-semibold transition-colors ${
+                class={`rounded-sm px-4 py-3 text-sm font-semibold transition-colors ${
                   !isValidated() || busyAction()
                     ? "cursor-not-allowed bg-zinc-800 text-zinc-500"
                     : "bg-zinc-100 text-zinc-950 hover:bg-white"
@@ -1759,7 +1759,7 @@ export default function ExperimentsIndexPage() {
             </div>
 
             <Show when={isValidated()}>
-              <div class="rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4">
+              <div class="rounded-md border border-zinc-800 bg-zinc-950/80 p-4">
                 <div class="flex items-center justify-between gap-3">
                   <div>
                     <p class="text-sm font-semibold text-zinc-100">First 10 runs</p>
@@ -1801,7 +1801,7 @@ export default function ExperimentsIndexPage() {
               </div>
             </Show>
 
-            <div class="rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4">
+            <div class="rounded-md border border-zinc-800 bg-zinc-950/80 p-4">
               <div class="flex items-center justify-between gap-3">
                 <div>
                   <p class="text-sm font-semibold text-zinc-100">Preview results view</p>
@@ -1883,12 +1883,12 @@ export default function ExperimentsIndexPage() {
               <Show
                 when={sortedExperiments().length > 0}
                 fallback={
-                  <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-10 text-center text-sm text-zinc-500">
+                  <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-10 text-center text-sm text-zinc-500">
                     No experiments yet. Build one on the left.
                   </div>
                 }
               >
-                <div class="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-950/70">
+                <div class="overflow-x-auto rounded-md border border-zinc-800 bg-zinc-950/70">
                   <table class="min-w-full text-left text-sm">
                     <thead class="bg-zinc-950/95 text-xs uppercase tracking-[0.18em] text-zinc-500">
                       <tr>
@@ -2039,15 +2039,15 @@ export default function ExperimentsIndexPage() {
             </div>
 
             <div class="mt-5 space-y-3">
-              <div class="flex items-center justify-between rounded-2xl border border-zinc-800 bg-zinc-950/80 px-4 py-3">
+              <div class="flex items-center justify-between rounded-md border border-zinc-800 bg-zinc-950/80 px-4 py-3">
                 <span class="text-sm text-zinc-300">Open or close this overlay</span>
                 <span class="app-kbd">?</span>
               </div>
-              <div class="flex items-center justify-between rounded-2xl border border-zinc-800 bg-zinc-950/80 px-4 py-3">
+              <div class="flex items-center justify-between rounded-md border border-zinc-800 bg-zinc-950/80 px-4 py-3">
                 <span class="text-sm text-zinc-300">Dismiss modal overlays</span>
                 <span class="app-kbd">Esc</span>
               </div>
-              <div class="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-4 py-3 text-sm text-zinc-400">
+              <div class="rounded-md border border-zinc-800 bg-zinc-950/80 px-4 py-3 text-sm text-zinc-400">
                 Validation and launch are still button-first on purpose. I didn't want to sneak destructive shortcuts in yet.
               </div>
             </div>

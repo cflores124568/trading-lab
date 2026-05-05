@@ -102,19 +102,19 @@ export default function BacktestComparePage() {
               return (
                 <div class="space-y-6">
                   <section class="grid gap-4 md:grid-cols-3">
-                    <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4">
+                    <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-4">
                       <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">PnL Delta</p>
                       <p class="mt-2 font-mono text-2xl font-semibold text-zinc-100">
                         {formatMoney((a.metrics.total_pnl ?? 0) - (b.metrics.total_pnl ?? 0))}
                       </p>
                     </div>
-                    <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4">
+                    <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-4">
                       <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Win Rate Delta</p>
                       <p class="mt-2 font-mono text-2xl font-semibold text-zinc-100">
                         {formatPercent((a.metrics.win_rate ?? 0) - (b.metrics.win_rate ?? 0))}
                       </p>
                     </div>
-                    <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4">
+                    <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-4">
                       <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Drawdown Delta</p>
                       <p class="mt-2 font-mono text-2xl font-semibold text-zinc-100">
                         {formatPercent((a.metrics.max_drawdown ?? 0) - (b.metrics.max_drawdown ?? 0))}
@@ -163,25 +163,25 @@ export default function BacktestComparePage() {
                           </div>
 
                           <div class="grid grid-cols-2 gap-3">
-                            <div class={`rounded-2xl border px-4 py-3 ${winnerTone(totalPnlWinner === key)}`}>
+                            <div class={`rounded-md border px-4 py-3 ${winnerTone(totalPnlWinner === key)}`}>
                               <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Total PnL</p>
                               <p class={`mt-2 font-mono text-lg font-semibold ${backtest.metrics.total_pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
                                 {formatMoney(backtest.metrics.total_pnl)}
                               </p>
                             </div>
-                            <div class={`rounded-2xl border px-4 py-3 ${winnerTone(winRateWinner === key)}`}>
+                            <div class={`rounded-md border px-4 py-3 ${winnerTone(winRateWinner === key)}`}>
                               <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Win Rate</p>
                               <p class="mt-2 font-mono text-lg font-semibold text-zinc-100">
                                 {formatPercent(backtest.metrics.win_rate)}
                               </p>
                             </div>
-                            <div class={`rounded-2xl border px-4 py-3 ${winnerTone(drawdownWinner === key)}`}>
+                            <div class={`rounded-md border px-4 py-3 ${winnerTone(drawdownWinner === key)}`}>
                               <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Max Drawdown</p>
                               <p class="mt-2 font-mono text-sm font-semibold text-zinc-100">
                                 {formatPercent(backtest.metrics.max_drawdown)}
                               </p>
                             </div>
-                            <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                            <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-3">
                               <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Created</p>
                               <p class="mt-2 text-sm font-medium text-zinc-100">
                                 {backtest.created_at.slice(0, 10)}
