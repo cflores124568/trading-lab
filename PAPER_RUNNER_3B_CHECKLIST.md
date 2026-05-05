@@ -9,10 +9,10 @@ is the thing we can actually mark up while we do the work.
 
 Do not treat parity noise as a bug until these are frozen:
 
-- [ ] End-of-window rule is explicit
-- [ ] Commission and equity rule is explicit
-- [ ] Guardrail breach behavior is explicit
-- [ ] Failure behavior is explicit for DB/data/signal errors
+- [x] End-of-window rule is explicit
+- [x] Commission and equity rule is explicit
+- [x] Guardrail breach behavior is explicit
+- [x] Failure behavior is explicit for DB/data/signal errors
 
 ## Parity Matrix
 

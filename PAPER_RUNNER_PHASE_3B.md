@@ -89,36 +89,35 @@ Every supported strategy needs coverage for:
 - missing backtest reference
 - data fetch failure or malformed next-bar input
 
-## Runner Semantics That Must Be Frozen
+## Runner Semantics
 
-This is the part that needs an explicit answer before more feature work:
+These rules are now frozen for `3B`:
 
 1. End of window
-   Does the runner force-close any open position on the last bar to mirror the
-   backtest engine, or does it stop with the position still open and treat parity
-   as a different class of comparison?
+   The runner force-closes any open position on the last candle close, then
+   marks the window complete. That keeps the saved run comparable to the
+   backtest instead of leaving a phantom open trade behind.
 
 2. Commission and equity accounting
-   Do paper sessions apply commission only on close, or do we align them with the
-   backtest engine's entry-plus-close balance behavior?
+   Open-position marks are net of commission, so the visible equity path lines
+   up with the backtest engine's mark-to-market math. Close and flatten still
+   realize commission on exit like the rest of the execution stack.
 
 3. Flat signal while a position is open
-   Is the expected behavior always `mark`, or are there any guardrail or session
-   rules that can override that?
+   Flat still means `mark`. The runner does not auto-close or auto-flip just
+   because the strategy went neutral.
 
 4. Guardrail breach handling
-   For each breach type, what happens exactly: `pause`, `stop`, `fail`, `log_only`,
-   operator notification, or some combination?
+   Hard daily-loss or drawdown breaches fail the runner immediately, preserve
+   the session state for inspection, and stop the loop.
 
 5. Failure semantics
-   On DB read failure, signal-generation failure, or invalid bar data, do we retry,
-   fail fast, or pause and ask for operator intervention?
+   DB read failures, malformed bar data, and signal-generation failures fail
+   fast in the auto-runner. They are not treated as soft pauses.
 
 6. Candidate/session synchronization
-   Which runner outcomes are required to sync candidate status immediately, and
-   which ones are just event-log material?
-
-`3B` should not proceed with "we'll decide that while testing." This is the test.
+   Sync happens on start, pause, force-close, completion, and failure so the
+   candidate status stays honest without having to open the detail page.
 
 ## Reliability Pass Criteria
 
@@ -156,16 +155,14 @@ If parity is still noisy or semantics are still moving, stay in `3B`.
 
 ## Immediate Next Task
 
-Define `3B` exit criteria and freeze runner semantics before writing more runner
-features.
+The semantics are frozen now, so the next move is to turn them into the parity
+matrix and reliability matrix instead of inventing new runner behavior.
 
 In practice that means:
 
-1. decide the end-of-window rule
-2. decide the commission/equity rule
-3. decide the guardrail breach rule
-4. turn those into a parity checklist and reliability checklist
-5. execute the checklist across all supported strategies
+1. finish the parity scorecard across every supported strategy
+2. finish the reliability pass for pause, resume, restart, and cleanup
+3. keep `3C` blocked until those checks are quiet
 
 ## Tight Kickoff Prompt For The Next Thread
 

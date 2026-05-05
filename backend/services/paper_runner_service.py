@@ -14,7 +14,9 @@ from services.indicators import add_all_indicators
 from services.paper_session_service import (
     _append_candidate_session_audit,
     _append_paper_event_any,
+    _force_close_open_position,
     _ensure_session_defaults,
+    _has_open_position,
     _make_paper_event,
     _now,
     _normalize_timestamp,
@@ -239,7 +241,8 @@ def step_historical_runner(
 
         refreshed = _ensure_session_defaults(_require_paper_session(paper_session_id))
         now = _now()
-        refreshed["status"] = PaperSessionStatus.PAUSED.value
+        if refreshed["status"] != PaperSessionStatus.FAILED.value:
+            refreshed["status"] = PaperSessionStatus.PAUSED.value
         _append_paper_event_any(
             _make_paper_event(
                 paper_session_id=paper_session_id,
@@ -334,6 +337,21 @@ def _advance_one_bar_locked(
 
     if next_bar is None:
         now = _now()
+        if _runner_guardrail_breached(session):
+            _mark_runner_failed_locked(paper_session_id, _runner_guardrail_breach_reason(session))
+            return _ensure_session_defaults(_require_paper_session(paper_session_id)), "guardrail_breached"
+
+        if _has_open_position(session):
+            close_price = _runner_window_close_price(session, state)
+            session = _force_close_open_position(
+                paper_session_id,
+                price=close_price,
+                filled_at=session.get("last_bar_time") or now,
+                actor="paper-runner",
+                note="Historical runner force-closed the open position at the window end.",
+                sync_candidate=False,
+            )
+
         previous_mode = state.get("mode")
         parity_check = _build_runner_parity_check(session, now=now)
         state["mode"] = "completed"
@@ -378,7 +396,11 @@ def _advance_one_bar_locked(
                     summary="Historical runner finished the candle window and paused the session.",
                     created_at=now,
                 )
-        return _ensure_session_defaults(_require_paper_session(paper_session_id)), "window_exhausted"
+        refreshed = _ensure_session_defaults(_require_paper_session(paper_session_id))
+        if _runner_guardrail_breached(refreshed):
+            _mark_runner_failed_locked(paper_session_id, _runner_guardrail_breach_reason(refreshed))
+            return _ensure_session_defaults(_require_paper_session(paper_session_id)), "guardrail_breached"
+        return refreshed, "window_exhausted"
 
     bar_time = _normalize_timestamp(next_bar["time"])
     close_price = round(float(next_bar["close"]), 4)
@@ -430,6 +452,10 @@ def _advance_one_bar_locked(
     session["last_event_at"] = state["updated_at"]
     session["updated_at"] = state["updated_at"]
     _save_paper_session_any(session)
+
+    if _runner_guardrail_breached(session):
+        _mark_runner_failed_locked(paper_session_id, _runner_guardrail_breach_reason(session))
+        return _ensure_session_defaults(_require_paper_session(paper_session_id)), "guardrail_breached"
 
     payload = {
         "bar_time": bar_time,
@@ -494,6 +520,42 @@ def _mark_runner_failed_locked(paper_session_id: str, message: str) -> None:
         summary=f"Historical runner failed: {message}",
         created_at=now,
     )
+
+
+def _runner_guardrail_breached(session: dict) -> bool:
+    guardrail_state = session.get("guardrail_state") or {}
+    return bool(guardrail_state.get("daily_loss_breached") or guardrail_state.get("drawdown_breached"))
+
+
+def _runner_guardrail_breach_reason(session: dict) -> str:
+    guardrail_state = session.get("guardrail_state") or {}
+    reasons: list[str] = []
+    if guardrail_state.get("daily_loss_breached"):
+        reasons.append("daily loss")
+    if guardrail_state.get("drawdown_breached"):
+        reasons.append("drawdown")
+    if not reasons:
+        reasons.append("guardrail")
+    return f"Historical runner stopped on {', '.join(reasons)} breach."
+
+
+def _runner_window_close_price(session: dict, state: dict) -> float:
+    last_price = state.get("last_price")
+    if last_price is not None:
+        return round(float(last_price), 4)
+
+    last_quote = session.get("last_quote") or {}
+    if last_quote.get("reference") is not None:
+        return round(float(last_quote["reference"]), 4)
+
+    current_position = session.get("current_position") or {}
+    if current_position.get("mark_price") is not None:
+        return round(float(current_position["mark_price"]), 4)
+
+    if current_position.get("entry_price") is not None:
+        return round(float(current_position["entry_price"]), 4)
+
+    raise ValueError("Historical runner needs a final price to close the open position.")
 
 
 def _spawn_runner_thread(paper_session_id: str) -> None:
@@ -727,6 +789,7 @@ def _build_runner_parity_check(session: dict, *, now: str) -> dict:
         session_trade_count == reference_trade_count
         and abs(total_pnl_delta) <= 0.01
         and abs(max_drawdown_delta) <= 0.0001
+        and abs(win_rate_delta) <= 0.0001
     )
     return {
         "status": "ok",

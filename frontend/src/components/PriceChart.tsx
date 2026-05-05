@@ -350,49 +350,49 @@ export default function PriceChart(props: Props) {
       color: "#38bdf8",
       lineWidth: 1,
       priceLineVisible: false,
-      lastValueVisible: false,
+      lastValueVisible: true,
     });
     ema20Series = chart.addSeries(LineSeries, {
       color: "#f59e0b",
       lineWidth: 2,
       priceLineVisible: false,
-      lastValueVisible: false,
+      lastValueVisible: true,
     });
     ema50Series = chart.addSeries(LineSeries, {
       color: "#f97316",
       lineWidth: 1,
       priceLineVisible: false,
-      lastValueVisible: false,
+      lastValueVisible: true,
     });
     vwapSeries = chart.addSeries(LineSeries, {
       color: "#a78bfa",
       lineWidth: 2,
       priceLineVisible: false,
-      lastValueVisible: false,
+      lastValueVisible: true,
     });
     sessionHighSeries = chart.addSeries(LineSeries, {
       color: "#22c55e",
       lineWidth: 1,
       priceLineVisible: false,
-      lastValueVisible: false,
+      lastValueVisible: true,
     });
     sessionLowSeries = chart.addSeries(LineSeries, {
       color: "#f43f5e",
       lineWidth: 1,
       priceLineVisible: false,
-      lastValueVisible: false,
+      lastValueVisible: true,
     });
     previousDayHighSeries = chart.addSeries(LineSeries, {
       color: "#14b8a6",
       lineWidth: 1,
       priceLineVisible: false,
-      lastValueVisible: false,
+      lastValueVisible: true,
     });
     previousDayLowSeries = chart.addSeries(LineSeries, {
       color: "#ec4899",
       lineWidth: 1,
       priceLineVisible: false,
-      lastValueVisible: false,
+      lastValueVisible: true,
     });
     volumeSeries = chart.addSeries(HistogramSeries, {
       priceFormat: { type: "volume" },

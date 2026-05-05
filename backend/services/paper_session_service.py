@@ -728,6 +728,88 @@ def execute_paper_session_action(
     return session
 
 
+def _force_close_open_position(
+    paper_session_id: str,
+    *,
+    price: float,
+    filled_at: str | None = None,
+    actor: str = "paper-runner",
+    note: str | None = None,
+    sync_candidate: bool = True,
+) -> dict:
+    """Close the live paper position without growing the equity curve.
+
+    The runner uses this at the end of a window so the last candle can be
+    realized instead of left hanging open. It behaves like a normal flatten,
+    but rewrites the last equity point to the realized value so the saved
+    curve still lines up with the final bar.
+    """
+    session = _ensure_session_defaults(_require_paper_session(paper_session_id))
+    if not _has_open_position(session):
+        return session
+
+    timestamp = _resolve_execution_timestamp(session, filled_at)
+    quote = _resolve_session_quote(session, price=price)
+    close_price = _price_for_action("flatten", quote, price)
+    if close_price is None:
+        raise ValueError("Runner force-close needs a valid price.")
+
+    position = _require_open_position(session)
+    trade = _close_position(session, position, close_price, timestamp)
+    session["trade_log"] = [*(session.get("trade_log") or []), trade]
+    session["current_position"] = {}
+
+    realized_equity = _realized_equity(session)
+    if session.get("equity_curve"):
+        session["equity_curve"][-1] = realized_equity
+    else:
+        session["equity_curve"] = [realized_equity]
+
+    now = _now()
+    session["last_bar_time"] = timestamp
+    session["last_quote"] = quote
+    session["last_event_at"] = now
+    session["updated_at"] = now
+    session = _ensure_session_defaults(session)
+    _save_paper_session_any(session)
+
+    summary = note or f"Runner force-closed the open {trade['side']} position at {close_price:.2f}."
+    _append_paper_event_any(
+        _make_paper_event(
+            paper_session_id=session["paper_session_id"],
+            candidate_id=session["candidate_id"],
+            event_type="position_closed",
+            actor=actor,
+            summary=summary,
+            created_at=now,
+            payload={
+                "action": "flatten",
+                "trade": trade,
+                "quote": quote,
+                "exit_price": close_price,
+                "realized_equity": realized_equity,
+            },
+        )
+    )
+
+    if sync_candidate:
+        candidate = _require_candidate(session["candidate_id"])
+        _sync_candidate_paper_session(
+            candidate,
+            session["paper_session_id"],
+            now,
+            session_status=session["status"],
+        )
+        _append_candidate_session_audit(
+            candidate,
+            actor=actor,
+            summary=summary,
+            created_at=now,
+        )
+
+    return _ensure_session_defaults(_require_paper_session(paper_session_id))
+
+
 def _require_paper_session(paper_session_id: str) -> dict:
     session = get_paper_session_any(paper_session_id)
     if session is None:
@@ -1136,7 +1218,8 @@ def _realized_equity(session: dict) -> float:
 
 def _marked_equity(session: dict) -> float:
     current_position = session.get("current_position") or {}
-    return round(_realized_equity(session) + float(current_position.get("unrealized_pnl") or 0.0), 2)
+    commission = float(session.get("commission") or 0.0) if _has_open_position(session) else 0.0
+    return round(_realized_equity(session) + float(current_position.get("unrealized_pnl") or 0.0) - commission, 2)
 
 
 def _has_open_position(session: dict) -> bool:
