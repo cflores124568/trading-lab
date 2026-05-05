@@ -28,7 +28,7 @@ def make_mff(account_size: int) -> dict:
         "max_drawdown":          0.08,
         "profit_target":         0.08,
         "consistency_rule":      False,
-        "consistency_threshold": 0.0,
+        "consistency_threshold": None,
         "drawdown_type":         "intraday",
         "min_trading_days":      15,
     }
@@ -41,7 +41,7 @@ def make_mff_rapid(account_size: int) -> dict:
         "max_drawdown":          0.08,
         "profit_target":         0.08,
         "consistency_rule":      False,
-        "consistency_threshold": 0.0,
+        "consistency_threshold": None,
         "drawdown_type":         "eod",
         "min_trading_days":      15,
     }
@@ -54,7 +54,7 @@ def make_mff_flex(account_size: int) -> dict:
         "max_drawdown":          0.08,
         "profit_target":         0.08,
         "consistency_rule":      False,
-        "consistency_threshold": 0.0,
+        "consistency_threshold": None,
         "drawdown_type":         "intraday",
         "min_trading_days":      15,
     }
@@ -97,7 +97,7 @@ LUCID_PRESETS = {
     "lucid_flex_50k": {
         "name":                  "Lucid Trading LucidFlex 50,000",
         "account_size":          50_000,
-        "daily_loss_limit":      0.0,
+        "daily_loss_limit":      None,
         "max_drawdown":          0.04,
         "profit_target":         0.06,
         "consistency_rule":      True,
@@ -108,7 +108,7 @@ LUCID_PRESETS = {
     "lucid_flex_100k": {
         "name":                  "Lucid Trading LucidFlex 100,000",
         "account_size":          100_000,
-        "daily_loss_limit":      0.0,
+        "daily_loss_limit":      None,
         "max_drawdown":          0.03,
         "profit_target":         0.05,
         "consistency_rule":      True,
@@ -119,7 +119,7 @@ LUCID_PRESETS = {
     "lucid_flex_150k": {
         "name":                  "Lucid Trading LucidFlex 150,000",
         "account_size":          150_000,
-        "daily_loss_limit":      0.0,
+        "daily_loss_limit":      None,
         "max_drawdown":          0.03,
         "profit_target":         0.05,
         "consistency_rule":      True,
@@ -176,7 +176,10 @@ async def get_preset(preset_name: str):
 @router.post("/validate", response_model=PropFirmRules)
 async def validate_custom_rules(rules: PropFirmRules):
     """Validate that a custom rule set is internally consistent."""
-    if rules.daily_loss_limit > rules.max_drawdown:
+    if (
+        rules.daily_loss_limit is not None
+        and rules.daily_loss_limit > rules.max_drawdown
+    ):
         raise HTTPException(
             status_code=400,
             detail="daily_loss_limit cannot exceed max_drawdown.",

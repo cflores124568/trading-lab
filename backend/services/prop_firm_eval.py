@@ -35,10 +35,12 @@ def evaluate_prop_firm(
     )
 
     timeline = _build_equity_timeline(equity_curve, equity_timestamps)
+    daily_loss_enabled = daily_loss_limit is not None and daily_loss_limit > 0
+    effective_daily_loss_limit = daily_loss_limit if daily_loss_enabled else float("inf")
     daily_loss_report = (
-        _check_daily_loss_path(timeline, account_size, daily_loss_limit)
+        _check_daily_loss_path(timeline, account_size, effective_daily_loss_limit)
         if timeline
-        else _check_daily_loss_legacy(daily_pnls, account_size, daily_loss_limit)
+        else _check_daily_loss_legacy(daily_pnls, account_size, effective_daily_loss_limit)
     )
     daily_loss_breached = daily_loss_report["breached"]
 
@@ -65,12 +67,15 @@ def evaluate_prop_firm(
     # Consistency rule
     consistency_passed = True
     best_day_pct       = 0.0
-    if consistency_rule and daily_pnls:
-        total_profit = final_balance - account_size
-        if total_profit > 0:
-            best_day = max(daily_pnls.values())
-            best_day_pct = best_day / total_profit
-            consistency_passed = best_day_pct <= consistency_threshold
+    if consistency_rule:
+        if consistency_threshold is None:
+            consistency_passed = False
+        elif daily_pnls:
+            total_profit = final_balance - account_size
+            if total_profit > 0:
+                best_day = max(daily_pnls.values())
+                best_day_pct = best_day / total_profit
+                consistency_passed = best_day_pct <= consistency_threshold
 
     #Aggregate
     passed = (
@@ -92,7 +97,7 @@ def evaluate_prop_firm(
         "details": {
             "account_size":           account_size,
             "daily_loss_limit_pct":   daily_loss_limit,
-            "daily_loss_limit_amount": round(account_size * daily_loss_limit, 2),
+            "daily_loss_limit_amount": None if not daily_loss_enabled else round(account_size * daily_loss_limit, 2),
             "daily_loss_actual_loss":  round(daily_loss_report["actual_loss_amount"], 2),
             "daily_loss_actual_loss_pct": round(daily_loss_report["actual_loss_pct"], 4),
             "daily_loss_breach_time": daily_loss_report["breach_time"],

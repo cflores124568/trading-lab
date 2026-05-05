@@ -1,7 +1,7 @@
 #Pydantic schemas for my Trading Lab API
 from enum import Enum
 from typing import Any, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # Health 
 class HealthResponse(BaseModel):
@@ -35,13 +35,26 @@ class Strategy(BaseModel):
 class PropFirmRules(BaseModel):
     name: str
     account_size: float = Field(default=100_000, gt=0)
-    daily_loss_limit: float = Field(default=0.04, gt=0, le=1)
+    daily_loss_limit: Optional[float] = Field(default=0.04, ge=0, le=1)
     max_drawdown: float = Field(default=0.08, gt=0, le=1)
     profit_target: float = Field(default=0.10, gt=0, le=1)
     consistency_rule: bool = Field(default=True)
-    consistency_threshold: float = Field(default=0.30, gt=0, le=1)
+    consistency_threshold: Optional[float] = Field(default=0.30, ge=0, le=1)
     drawdown_type: DrawdownType = Field(default=DrawdownType.EOD)
     min_trading_days: Optional[int] = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def _normalize_disabled_rules(self) -> "PropFirmRules":
+        if self.daily_loss_limit == 0:
+            self.daily_loss_limit = None
+
+        if self.consistency_rule:
+            if self.consistency_threshold is None or self.consistency_threshold <= 0:
+                raise ValueError("consistency_threshold must be set when consistency_rule is true.")
+        else:
+            self.consistency_threshold = None
+
+        return self
 
 #Trade
 class Trade(BaseModel):
