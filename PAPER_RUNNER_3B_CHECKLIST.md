@@ -35,7 +35,7 @@ Fill this in for every supported strategy:
 | Signal history rebuild matches hot state | Next signal/action matches pre-restart path | pass | The restart path reuses the same session state shape after reset. |
 | Completion clears stale handle | No live runner handle after completion | pass | `_clear_runner_handle` drops the handle when a run finishes. |
 | Failure clears stale handle | No live runner handle after failure | pass | `stop_all_historical_runners()` clears remaining handles and stops them. |
-| Long run stays stable | No obvious drift in memory or action trail | pending | Still worth a longer soak test. |
+| Long run stays stable | No obvious drift in memory or action trail | pass | Covered in `PaperRunnerPhase3BTests.test_long_run_soak_stays_deterministic`. |
 
 ## Pass / Fail Thresholds
 
@@ -53,6 +53,9 @@ and the existing final-bar force-close test.
 
 Reliability coverage is pinned by
 `backend/test_paper_runner_phase_3b.py::PaperRunnerPhase3BTests.test_reliability_matrix_covers_pause_resume_restart_and_cleanup`.
+
+Long-run soak coverage is pinned by
+`backend/test_paper_runner_phase_3b.py::PaperRunnerPhase3BTests.test_long_run_soak_stays_deterministic`.
 
 ## Blockers
 

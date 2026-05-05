@@ -155,14 +155,14 @@ If parity is still noisy or semantics are still moving, stay in `3B`.
 
 ## Immediate Next Task
 
-The parity matrix is frozen now, and the reliability matrix is mostly there.
-The only thing I still want to keep honest is the longer soak / long-run
-stability check before we call `3B` fully done.
+The parity matrix is frozen now, and the reliability matrix is quiet.
+The next open artifact is the session-list health view so operators can tell
+at a glance whether a runner is healthy without drilling into the detail page.
 
 In practice that means:
 
-1. finish the long-run soak check
-2. keep `3C` blocked until that last row is quiet
+1. build the session-list health view
+2. keep `3C` blocked until operator-facing health is compact and readable
 
 ## Tight Kickoff Prompt For The Next Thread
 

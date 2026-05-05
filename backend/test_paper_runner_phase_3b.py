@@ -5,7 +5,9 @@ import math
 import sys
 import types
 import unittest
+from contextlib import ExitStack
 from copy import deepcopy
+from datetime import datetime
 from threading import Event, Thread
 from unittest.mock import patch
 
@@ -48,6 +50,56 @@ class PaperRunnerPhase3BTests(unittest.TestCase):
         size = len(next(iter(columns.values())))
         index = pd.date_range("2024-01-02 09:30:00", periods=size, freq="min")
         return pd.DataFrame(columns, index=index)
+
+    def _build_soak_bars(
+        self,
+        *,
+        cycles: int = 4,
+        leg_size: int = 8,
+        step: float = 0.75,
+    ) -> list[dict[str, float | str]]:
+        """Build a longer bar window with repeated trend reversals.
+
+        The goal isn't realism. It's to create enough movement that the runner
+        has to keep making the same open/flip/mark decisions over and over
+        without the action trail drifting between runs.
+        """
+        bars: list[dict[str, float | str]] = []
+        price = 100.0
+        start = pd.Timestamp("2024-01-02 09:30:00", tz="UTC")
+
+        for cycle in range(cycles):
+            for _ in range(leg_size):
+                next_price = round(price + step, 4)
+                timestamp = start + pd.Timedelta(minutes=len(bars))
+                bars.append(
+                    {
+                        "time": timestamp.isoformat(),
+                        "open": round(price, 4),
+                        "high": round(max(price, next_price) + 0.5, 4),
+                        "low": round(min(price, next_price) - 0.5, 4),
+                        "close": next_price,
+                        "volume": 10.0 + len(bars),
+                    }
+                )
+                price = next_price
+
+            for _ in range(leg_size):
+                next_price = round(price - step, 4)
+                timestamp = start + pd.Timedelta(minutes=len(bars))
+                bars.append(
+                    {
+                        "time": timestamp.isoformat(),
+                        "open": round(price, 4),
+                        "high": round(max(price, next_price) + 0.5, 4),
+                        "low": round(min(price, next_price) - 0.5, 4),
+                        "close": next_price,
+                        "volume": 10.0 + len(bars),
+                    }
+                )
+                price = next_price
+
+        return bars
 
     def test_plan_signal_actions_covers_current_position_transitions(self):
         """Lock the current action table before `3B` semantics start moving.
@@ -428,6 +480,175 @@ class PaperRunnerPhase3BTests(unittest.TestCase):
         paper_runner_service.stop_all_historical_runners()
         self.assertNotIn("paper-failed", paper_runner_service._runner_handles)
         self.assertTrue(failure_handle.stop_event.is_set())
+
+    def test_long_run_soak_stays_deterministic(self):
+        """Keep the long-run row honest with two identical soak passes.
+
+        I don't need a production-scale stress test here. I just want a long
+        fixed window that forces repeated trend changes and proves the action
+        trail, equity curve, and final runner state don't drift when I rerun
+        the same thing from a clean cursor.
+        """
+        bars = self._build_soak_bars()
+        final_bar_time = bars[-1]["time"]
+
+        def fake_next(symbol: str, interval: str = "1min", *, after_time=None, start_date=None, end_date=None):
+            _ = symbol, interval
+            after_dt = datetime.fromisoformat(str(after_time).replace("Z", "+00:00")) if after_time else None
+            start_dt = datetime.fromisoformat(str(start_date).replace("Z", "+00:00")) if start_date else None
+            end_dt = datetime.fromisoformat(str(end_date).replace("Z", "+00:00")) if end_date else None
+
+            for bar in bars:
+                bar_dt = datetime.fromisoformat(str(bar["time"]).replace("Z", "+00:00"))
+                if start_dt and bar_dt < start_dt:
+                    continue
+                if end_dt and bar_dt > end_dt:
+                    continue
+                if after_dt and bar_dt <= after_dt:
+                    continue
+                return bar
+            return None
+
+        def run_soak(paper_session_id: str) -> tuple[dict, list[dict], list[dict]]:
+            session = {
+                "paper_session_id": paper_session_id,
+                "candidate_id": "cand-1",
+                "status": "ready",
+                "symbol": "ES",
+                "interval": "1min",
+                "strategy_type": "ema_crossover",
+                "strategy_params": {"fast_period": 3, "slow_period": 6},
+                "tick_size": 0.25,
+                "tick_value": 12.5,
+                "commission": 5.0,
+                "position_size": 1.0,
+                "slippage_ticks": 1.0,
+                "last_bar_time": None,
+                "runner_state": {
+                    "mode": "paused",
+                    "bars_processed": 0,
+                    "poll_interval_ms": 750,
+                    "start_date": bars[0]["time"],
+                    "end_date": final_bar_time,
+                    "last_candle_time": None,
+                    "last_price": None,
+                    "last_signal": 0,
+                    "last_signal_action": None,
+                    "last_signal_reason": None,
+                    "parity_check": {},
+                    "last_error": None,
+                },
+                "trade_log": [],
+                "equity_curve": [100000.0],
+                "current_position": {},
+                "metrics_snapshot": {"total_pnl": 0.0, "max_drawdown": 0.0, "win_rate": 0.0},
+            }
+
+            fixed_now = "2026-04-20T12:30:00+00:00"
+            with ExitStack() as stack:
+                stack.enter_context(
+                    patch.object(paper_runner_service, "_require_paper_session", return_value=session)
+                )
+                stack.enter_context(
+                    patch.object(paper_runner_service, "_require_db_runner_support", return_value=None)
+                )
+                stack.enter_context(
+                    patch.object(
+                        paper_runner_service,
+                        "_ensure_session_defaults",
+                        side_effect=lambda payload: payload,
+                    )
+                )
+                stack.enter_context(
+                    patch.object(
+                        paper_runner_service,
+                        "_apply_default_window",
+                        side_effect=lambda _session, state: state,
+                    )
+                )
+                stack.enter_context(patch.object(paper_runner_service, "_validate_range", return_value=None))
+                stack.enter_context(
+                    patch.object(paper_runner_service, "get_next_ohlcv_bar", side_effect=fake_next)
+                )
+                stack.enter_context(
+                    patch.object(
+                        paper_runner_service,
+                        "_build_runner_parity_check",
+                        return_value={"status": "ok", "passed": True},
+                    )
+                )
+                stack.enter_context(patch.object(paper_runner_service, "_save_paper_session_any", return_value=None))
+                stack.enter_context(patch.object(paper_runner_service, "_append_paper_event_any", return_value=None))
+                stack.enter_context(
+                    patch.object(
+                        paper_runner_service,
+                        "_make_paper_event",
+                        side_effect=lambda **payload: payload,
+                    )
+                )
+                stack.enter_context(
+                    patch.object(paper_runner_service, "_require_candidate", return_value={"candidate_id": "cand-1"})
+                )
+                stack.enter_context(
+                    patch.object(paper_runner_service, "_sync_candidate_paper_session", return_value=None)
+                )
+                stack.enter_context(
+                    patch.object(paper_runner_service, "_append_candidate_session_audit", return_value=None)
+                )
+                stack.enter_context(patch.object(paper_runner_service, "_now", return_value=fixed_now))
+                stack.enter_context(
+                    patch.object(paper_session_service, "_require_paper_session", return_value=session)
+                )
+                stack.enter_context(
+                    patch.object(paper_session_service, "_save_paper_session_any", return_value=None)
+                )
+                stack.enter_context(
+                    patch.object(paper_session_service, "_append_paper_event_any", return_value=None)
+                )
+                stack.enter_context(
+                    patch.object(
+                        paper_session_service,
+                        "_make_paper_event",
+                        side_effect=lambda **payload: payload,
+                    )
+                )
+                stack.enter_context(
+                    patch.object(paper_session_service, "_require_candidate", return_value={"candidate_id": "cand-1"})
+                )
+                stack.enter_context(
+                    patch.object(paper_session_service, "_sync_candidate_paper_session", return_value=None)
+                )
+                stack.enter_context(
+                    patch.object(paper_session_service, "_append_candidate_session_audit", return_value=None)
+                )
+                stack.enter_context(patch.object(paper_session_service, "_now", return_value=fixed_now))
+
+                result = paper_runner_service.step_historical_runner(
+                    paper_session_id,
+                    actor="runner-test",
+                    steps=len(bars) + 10,
+                )
+
+            history = deepcopy(paper_runner_service._signal_bar_history.get(paper_session_id, []))
+            paper_runner_service._reset_signal_history(paper_session_id)
+            return result, history, deepcopy(session)
+
+        first_result, first_history, first_session = run_soak("paper-soak-1")
+        second_result, second_history, second_session = run_soak("paper-soak-2")
+
+        self.assertEqual(first_result["runner_state"]["mode"], "completed")
+        self.assertEqual(second_result["runner_state"]["mode"], "completed")
+        self.assertEqual(first_result["runner_state"]["bars_processed"], len(bars))
+        self.assertEqual(second_result["runner_state"]["bars_processed"], len(bars))
+        self.assertGreater(len(first_result["trade_log"]), 0)
+        self.assertEqual(first_result["trade_log"], second_result["trade_log"])
+        self.assertEqual(first_result["equity_curve"], second_result["equity_curve"])
+        self.assertEqual(first_result["runner_state"]["last_signal_action"], second_result["runner_state"]["last_signal_action"])
+        self.assertEqual(first_history, second_history)
+        self.assertEqual(len(first_history), len(bars))
+        self.assertEqual(len(second_history), len(bars))
+        self.assertEqual(first_session["runner_state"]["bars_processed"], len(bars))
+        self.assertEqual(second_session["runner_state"]["bars_processed"], len(bars))
 
     def test_build_runner_parity_check_current_states_are_explicit(self):
         """Document the current parity helper outputs before we tighten them.
