@@ -70,6 +70,10 @@ def analyze_backtest_robustness(
             "slippage_ticks": request.slippage_ticks,
             "stop_loss_ticks": request.stop_loss_ticks,
             "take_profit_ticks": request.take_profit_ticks,
+            "execution_mode": request.execution_mode,
+            "spread_ticks": request.spread_ticks,
+            "volatile_bar_threshold_ticks": request.volatile_bar_threshold_ticks,
+            "volatile_bar_extra_ticks": request.volatile_bar_extra_ticks,
         },
         "baseline": {
             "total_pnl": float(backtest["metrics"]["total_pnl"]),
@@ -116,6 +120,10 @@ def _request_from_backtest(backtest: dict) -> tuple[BacktestRequest, list[str]]:
         if run_config.get("take_profit_ticks") is not None
         else None
     )
+    execution_mode = str(run_config.get("execution_mode") or "bar")
+    spread_ticks = int(run_config.get("spread_ticks") or 1)
+    volatile_bar_threshold_ticks = int(run_config.get("volatile_bar_threshold_ticks") or 0)
+    volatile_bar_extra_ticks = int(run_config.get("volatile_bar_extra_ticks") or 0)
 
     if not run_config:
         warnings.append(
@@ -138,6 +146,10 @@ def _request_from_backtest(backtest: dict) -> tuple[BacktestRequest, list[str]]:
         slippage_ticks=slippage_ticks,
         stop_loss_ticks=stop_loss_ticks,
         take_profit_ticks=take_profit_ticks,
+        execution_mode=execution_mode,
+        spread_ticks=spread_ticks,
+        volatile_bar_threshold_ticks=volatile_bar_threshold_ticks,
+        volatile_bar_extra_ticks=volatile_bar_extra_ticks,
     ), warnings
 
 

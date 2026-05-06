@@ -200,11 +200,22 @@ class BacktestServiceTests(unittest.TestCase):
 
         result = build_backtest_result(
             _dataset(),
-            _request(stop_loss_ticks=8.0, take_profit_ticks=16.0),
+            _request(
+                stop_loss_ticks=8.0,
+                take_profit_ticks=16.0,
+                execution_mode="synthetic_quotes",
+                spread_ticks=2,
+                volatile_bar_threshold_ticks=12,
+                volatile_bar_extra_ticks=1,
+            ),
         )
 
         self.assertEqual(result["run_config"]["stop_loss_ticks"], 8.0)
         self.assertEqual(result["run_config"]["take_profit_ticks"], 16.0)
+        self.assertEqual(result["run_config"]["execution_mode"], "synthetic_quotes")
+        self.assertEqual(result["run_config"]["spread_ticks"], 2)
+        self.assertEqual(result["run_config"]["volatile_bar_threshold_ticks"], 12)
+        self.assertEqual(result["run_config"]["volatile_bar_extra_ticks"], 1)
 
 
 if __name__ == "__main__":

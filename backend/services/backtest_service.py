@@ -50,6 +50,10 @@ def build_backtest_result(
         slippage_ticks=request.slippage_ticks,
         stop_loss_ticks=request.stop_loss_ticks,
         take_profit_ticks=request.take_profit_ticks,
+        execution_mode=request.execution_mode,
+        spread_ticks=request.spread_ticks,
+        volatile_bar_threshold_ticks=request.volatile_bar_threshold_ticks,
+        volatile_bar_extra_ticks=request.volatile_bar_extra_ticks,
     )
 
     trades = engine_result["trades"]
@@ -89,6 +93,10 @@ def build_backtest_result(
             "slippage_ticks": request.slippage_ticks,
             "stop_loss_ticks": request.stop_loss_ticks,
             "take_profit_ticks": request.take_profit_ticks,
+            "execution_mode": request.execution_mode,
+            "spread_ticks": request.spread_ticks,
+            "volatile_bar_threshold_ticks": request.volatile_bar_threshold_ticks,
+            "volatile_bar_extra_ticks": request.volatile_bar_extra_ticks,
         },
         "status": "completed",
         "created_at": created_at or datetime.utcnow().isoformat(),

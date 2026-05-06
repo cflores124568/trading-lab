@@ -1,6 +1,6 @@
 #Pydantic schemas for my Trading Lab API
 from enum import Enum
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 from pydantic import BaseModel, Field, model_validator
 
 # Health 
@@ -518,6 +518,10 @@ class BacktestRequest(BaseModel):
     slippage_ticks:  float          = Field(default=1.0, ge=0)
     stop_loss_ticks: Optional[float] = Field(default=None, gt=0)
     take_profit_ticks: Optional[float] = Field(default=None, gt=0)
+    execution_mode: Literal["bar", "synthetic_quotes"] = Field(default="bar")
+    spread_ticks: int = Field(default=1, ge=1)
+    volatile_bar_threshold_ticks: int = Field(default=0, ge=0)
+    volatile_bar_extra_ticks: int = Field(default=0, ge=0)
 
 
 class BacktestRunConfig(BaseModel):
@@ -529,6 +533,10 @@ class BacktestRunConfig(BaseModel):
     slippage_ticks: float = Field(default=1.0, ge=0)
     stop_loss_ticks: Optional[float] = Field(default=None, gt=0)
     take_profit_ticks: Optional[float] = Field(default=None, gt=0)
+    execution_mode: Literal["bar", "synthetic_quotes"] = Field(default="bar")
+    spread_ticks: int = Field(default=1, ge=1)
+    volatile_bar_threshold_ticks: int = Field(default=0, ge=0)
+    volatile_bar_extra_ticks: int = Field(default=0, ge=0)
 
 class BacktestResult(BaseModel):
     backtest_id:    str

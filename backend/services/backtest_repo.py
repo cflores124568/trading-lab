@@ -2,6 +2,13 @@ import json
 from threading import Lock
 from typing import Any, Optional
 import pandas as pd
+from services.execution_model import (
+    DEFAULT_BACKTEST_EXECUTION_MODE,
+    DEFAULT_SPREAD_TICKS,
+    DEFAULT_VOLATILE_BAR_EXTRA_TICKS,
+    DEFAULT_VOLATILE_BAR_THRESHOLD_TICKS,
+    normalize_backtest_execution_mode,
+)
 
 _schema_lock = Lock()
 _schema_ready = False
@@ -169,6 +176,14 @@ def _hydrate_run_config(row) -> dict:
             "slippage_ticks": float(raw.get("slippage_ticks") if raw.get("slippage_ticks") is not None else 1.0),
             "stop_loss_ticks": float(raw.get("stop_loss_ticks")) if raw.get("stop_loss_ticks") is not None else None,
             "take_profit_ticks": float(raw.get("take_profit_ticks")) if raw.get("take_profit_ticks") is not None else None,
+            "execution_mode": normalize_backtest_execution_mode(raw.get("execution_mode")),
+            "spread_ticks": max(1, int(raw.get("spread_ticks") or DEFAULT_SPREAD_TICKS)),
+            "volatile_bar_threshold_ticks": max(
+                0, int(raw.get("volatile_bar_threshold_ticks") or DEFAULT_VOLATILE_BAR_THRESHOLD_TICKS)
+            ),
+            "volatile_bar_extra_ticks": max(
+                0, int(raw.get("volatile_bar_extra_ticks") or DEFAULT_VOLATILE_BAR_EXTRA_TICKS)
+            ),
         }
 
     return {
@@ -180,6 +195,10 @@ def _hydrate_run_config(row) -> dict:
         "slippage_ticks": 1.0,
         "stop_loss_ticks": None,
         "take_profit_ticks": None,
+        "execution_mode": DEFAULT_BACKTEST_EXECUTION_MODE,
+        "spread_ticks": DEFAULT_SPREAD_TICKS,
+        "volatile_bar_threshold_ticks": DEFAULT_VOLATILE_BAR_THRESHOLD_TICKS,
+        "volatile_bar_extra_ticks": DEFAULT_VOLATILE_BAR_EXTRA_TICKS,
     }
 
 
