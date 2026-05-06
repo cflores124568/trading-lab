@@ -25,6 +25,22 @@ function winnerTone(isWinner: boolean): string {
   return isWinner ? "border-sky-500 bg-sky-500/10" : "border-zinc-800 bg-zinc-950/60";
 }
 
+function formatExecutionMode(value: "bar" | "synthetic_quotes" | undefined): string {
+  if (value === "synthetic_quotes") {
+    return "Synthetic Quotes";
+  }
+  return "Bar";
+}
+
+function formatMaybeTicks(value: number | null | undefined): string {
+  if (value === null || value === undefined) {
+    return "off";
+  }
+  return `${value}t`;
+}
+
+type CompareBacktest = BacktestCompare["backtest_a"];
+
 export default function BacktestComparePage() {
   const [params] = useSearchParams<{ a?: string; b?: string }>();
 
@@ -39,18 +55,33 @@ export default function BacktestComparePage() {
   );
 
   const metricRows = [
-    { label: "Backtest ID", getValue: (bt: any) => bt.backtest_id ?? "—" },
-    { label: "Symbol", getValue: (bt: any) => bt.symbol ?? "—" },
-    { label: "Strategy", getValue: (bt: any) => bt.strategy?.type.replace(/_/g, " ") ?? "—" },
-    { label: "Total PnL", getValue: (bt: any) => `$${bt.metrics.total_pnl.toFixed(2)}` },
-    { label: "Win Rate", getValue: (bt: any) => `${(bt.metrics.win_rate * 100).toFixed(1)}%` },
-    { label: "Max Drawdown", getValue: (bt: any) => `${(bt.metrics.max_drawdown * 100).toFixed(1)}%` },
-    { label: "Sharpe Ratio", getValue: (bt: any) => bt.metrics.sharpe_ratio.toFixed(2) },
-    { label: "Profit Factor", getValue: (bt: any) => bt.metrics.profit_factor.toFixed(2) },
-    { label: "Total Trades", getValue: (bt: any) => String(bt.metrics.total_trades ?? "—") },
-    { label: "Best Trade", getValue: (bt: any) => `$${bt.metrics.best_trade?.toFixed(2) ?? "—"}` },
-    { label: "Worst Trade", getValue: (bt: any) => `$${bt.metrics.worst_trade?.toFixed(2) ?? "—"}` },
-    { label: "Created", getValue: (bt: any) => bt.created_at?.slice(0, 10) ?? "—" },
+    { label: "Backtest ID", getValue: (bt: CompareBacktest) => bt.backtest_id ?? "—" },
+    { label: "Symbol", getValue: (bt: CompareBacktest) => bt.symbol ?? "—" },
+    {
+      label: "Strategy",
+      getValue: (bt: CompareBacktest) => bt.strategy?.type.replace(/_/g, " ") ?? "—",
+    },
+    { label: "Total PnL", getValue: (bt: CompareBacktest) => `$${bt.metrics.total_pnl.toFixed(2)}` },
+    {
+      label: "Win Rate",
+      getValue: (bt: CompareBacktest) => `${(bt.metrics.win_rate * 100).toFixed(1)}%`,
+    },
+    {
+      label: "Max Drawdown",
+      getValue: (bt: CompareBacktest) => `${(bt.metrics.max_drawdown * 100).toFixed(1)}%`,
+    },
+    { label: "Sharpe Ratio", getValue: (bt: CompareBacktest) => bt.metrics.sharpe_ratio.toFixed(2) },
+    { label: "Profit Factor", getValue: (bt: CompareBacktest) => bt.metrics.profit_factor.toFixed(2) },
+    { label: "Total Trades", getValue: (bt: CompareBacktest) => String(bt.metrics.total_trades ?? "—") },
+    {
+      label: "Best Trade",
+      getValue: (bt: CompareBacktest) => `$${bt.metrics.best_trade?.toFixed(2) ?? "—"}`,
+    },
+    {
+      label: "Worst Trade",
+      getValue: (bt: CompareBacktest) => `$${bt.metrics.worst_trade?.toFixed(2) ?? "—"}`,
+    },
+    { label: "Created", getValue: (bt: CompareBacktest) => bt.created_at?.slice(0, 10) ?? "—" },
   ];
 
   return (
@@ -83,6 +114,43 @@ export default function BacktestComparePage() {
               const data: BacktestCompare = result();
               const a = data.backtest_a;
               const b = data.backtest_b;
+              const executionRows = [
+                {
+                  label: "Execution Mode",
+                  valueA: formatExecutionMode(a.run_config.execution_mode),
+                  valueB: formatExecutionMode(b.run_config.execution_mode),
+                },
+                {
+                  label: "Spread",
+                  valueA: formatMaybeTicks(a.run_config.spread_ticks),
+                  valueB: formatMaybeTicks(b.run_config.spread_ticks),
+                },
+                {
+                  label: "Volatility Trigger",
+                  valueA: formatMaybeTicks(a.run_config.volatile_bar_threshold_ticks),
+                  valueB: formatMaybeTicks(b.run_config.volatile_bar_threshold_ticks),
+                },
+                {
+                  label: "Volatility Extra",
+                  valueA: formatMaybeTicks(a.run_config.volatile_bar_extra_ticks),
+                  valueB: formatMaybeTicks(b.run_config.volatile_bar_extra_ticks),
+                },
+                {
+                  label: "Slippage",
+                  valueA: formatMaybeTicks(a.run_config.slippage_ticks),
+                  valueB: formatMaybeTicks(b.run_config.slippage_ticks),
+                },
+                {
+                  label: "Stop Loss",
+                  valueA: formatMaybeTicks(a.run_config.stop_loss_ticks),
+                  valueB: formatMaybeTicks(b.run_config.stop_loss_ticks),
+                },
+                {
+                  label: "Take Profit",
+                  valueA: formatMaybeTicks(a.run_config.take_profit_ticks),
+                  valueB: formatMaybeTicks(b.run_config.take_profit_ticks),
+                },
+              ];
               const totalPnlWinner =
                 (a.metrics.total_pnl ?? Number.NEGATIVE_INFINITY) >=
                 (b.metrics.total_pnl ?? Number.NEGATIVE_INFINITY)
@@ -119,6 +187,53 @@ export default function BacktestComparePage() {
                       <p class="mt-2 font-mono text-2xl font-semibold text-zinc-100">
                         {formatPercent((a.metrics.max_drawdown ?? 0) - (b.metrics.max_drawdown ?? 0))}
                       </p>
+                    </div>
+                  </section>
+
+                  <section class="app-panel overflow-x-auto">
+                    <div class="min-w-[720px]">
+                      <div class="grid grid-cols-[minmax(0,1fr)_180px_180px_120px] border-b border-zinc-800 bg-zinc-950/60">
+                      <div class="p-4 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                        Execution Assumption
+                      </div>
+                      <div class="border-l border-zinc-800 p-4 text-sm font-semibold font-mono">
+                        {a.backtest_id}
+                      </div>
+                      <div class="border-l border-zinc-800 p-4 text-sm font-semibold font-mono">
+                        {b.backtest_id}
+                      </div>
+                      <div class="border-l border-zinc-800 p-4 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                        Diff
+                      </div>
+                      </div>
+
+                      <For each={executionRows}>
+                        {(row) => {
+                          const isSame = row.valueA === row.valueB;
+                          return (
+                            <div class="grid grid-cols-[minmax(0,1fr)_180px_180px_120px] border-b border-zinc-800 last:border-b-0">
+                              <div class="p-4 text-sm text-zinc-400">{row.label}</div>
+                              <div class="border-l border-zinc-800 p-4 text-sm font-mono">
+                                {row.valueA}
+                              </div>
+                              <div class="border-l border-zinc-800 p-4 text-sm font-mono">
+                                {row.valueB}
+                              </div>
+                              <div class="border-l border-zinc-800 p-4">
+                                <span
+                                  class={`rounded-full px-2 py-1 text-[11px] font-semibold uppercase tracking-wide ${
+                                    isSame
+                                      ? "border border-emerald-900/80 bg-emerald-950/40 text-emerald-300"
+                                      : "border border-amber-900/80 bg-amber-950/40 text-amber-300"
+                                  }`}
+                                >
+                                  {isSame ? "same" : "different"}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        }}
+                      </For>
                     </div>
                   </section>
 
