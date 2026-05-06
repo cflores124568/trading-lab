@@ -125,6 +125,13 @@ Data layer:
 - run bar-by-bar execution
 - calculate trades, equity curve, and summary metrics
 
+Execution assumptions contract:
+
+- default mode is `execution_mode="bar"` to preserve the simple legacy fill model
+- `execution_mode="synthetic_quotes"` is opt-in and only changes fills when explicitly requested
+- each saved backtest persists execution assumptions in `run_config` (`execution_mode`, `spread_ticks`, `volatile_bar_*`, `slippage_ticks`, optional brackets)
+- compare and experiment flows are expected to carry those same assumptions so saved-run reproducibility stays intact
+
 ### 3. Prop-Firm Evaluation
 
 - evaluate runs against firm-style rule sets
