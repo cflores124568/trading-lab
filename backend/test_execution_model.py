@@ -3,6 +3,7 @@ import unittest
 from services.execution_model import (
     default_execution_config_for_symbol,
     make_resting_order,
+    normalize_backtest_execution_mode,
     replace_resting_order,
     resting_order_fill_update,
     resting_order_penetrated,
@@ -12,6 +13,11 @@ from services.execution_model import (
 
 
 class ExecutionModelTests(unittest.TestCase):
+    def test_backtest_execution_mode_falls_back_to_bar(self):
+        self.assertEqual(normalize_backtest_execution_mode("synthetic_quotes"), "synthetic_quotes")
+        self.assertEqual(normalize_backtest_execution_mode("BAR"), "bar")
+        self.assertEqual(normalize_backtest_execution_mode("nonsense"), "bar")
+
     def test_synthetic_quote_uses_close_reference_and_tick_spread(self):
         quote = synthetic_quote_for_bar(
             {"close": 100.12, "high": 101, "low": 99},

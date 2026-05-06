@@ -6,6 +6,8 @@ from typing import Any
 
 
 DEFAULT_TICK_SIZE = 0.25
+DEFAULT_BACKTEST_EXECUTION_MODE = "bar"
+BACKTEST_EXECUTION_MODES = {"bar", "synthetic_quotes"}
 DEFAULT_SPREAD_TICKS = 1
 DEFAULT_VOLATILE_BAR_THRESHOLD_TICKS = 0
 DEFAULT_VOLATILE_BAR_EXTRA_TICKS = 0
@@ -133,6 +135,19 @@ def normalize_resting_fill_mode(mode: str | None) -> str:
     if candidate in {"touch", "penetrate", "touch_plus_1_bar"}:
         return candidate
     return DEFAULT_RESTING_FILL_MODE
+
+
+def normalize_backtest_execution_mode(mode: str | None) -> str:
+    """Keep backtests on known execution modes.
+
+    Backtest payloads can come from old saves, new UI toggles, or manual API
+    calls. If any of those sends junk, I fall back to the legacy `bar` mode so
+    existing behavior stays safe instead of blowing up.
+    """
+    candidate = str(mode or "").strip().lower()
+    if candidate in BACKTEST_EXECUTION_MODES:
+        return candidate
+    return DEFAULT_BACKTEST_EXECUTION_MODE
 
 
 def synthetic_quote_for_bar(

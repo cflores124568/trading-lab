@@ -4,6 +4,14 @@ from __future__ import annotations
 from typing import List
 import numpy as np
 import pandas as pd
+from services.execution_model import (
+    DEFAULT_BACKTEST_EXECUTION_MODE,
+    DEFAULT_SPREAD_TICKS,
+    DEFAULT_VOLATILE_BAR_EXTRA_TICKS,
+    DEFAULT_VOLATILE_BAR_THRESHOLD_TICKS,
+    normalize_backtest_execution_mode,
+    synthetic_quote_for_bar,
+)
 
 #Try to import compiled C++ kernel 
 try:
@@ -24,19 +32,26 @@ def run_backtest(
     slippage_ticks:  float = 1.0,
     stop_loss_ticks: float | None = None,
     take_profit_ticks: float | None = None,
+    execution_mode: str = DEFAULT_BACKTEST_EXECUTION_MODE,
+    spread_ticks: int = DEFAULT_SPREAD_TICKS,
+    volatile_bar_threshold_ticks: int = DEFAULT_VOLATILE_BAR_THRESHOLD_TICKS,
+    volatile_bar_extra_ticks: int = DEFAULT_VOLATILE_BAR_EXTRA_TICKS,
 ) -> dict:
     """Run a next-bar futures backtest from completed-bar signals.
 
-    A signal on one bar still fills at the next bar's open with adverse
-    slippage applied. If you turn on `stop_loss_ticks` or
+    Legacy `bar` mode still fills at the next bar's open with adverse slippage.
+    `synthetic_quotes` mode switches to bid/ask fills built from the same
+    spread rules we use in paper/replay. If you turn on `stop_loss_ticks` or
     `take_profit_ticks`, the trade can also exit inside that same bar off its
     `high`/`low`, and I resolve double-hits conservatively by assuming the
     stop got tagged first.
     """
     uses_brackets = _uses_bracket_exits(stop_loss_ticks, take_profit_ticks)
+    resolved_execution_mode = normalize_backtest_execution_mode(execution_mode)
+    uses_synthetic_quotes = resolved_execution_mode == "synthetic_quotes"
     _validate(df, require_ohlc_range=uses_brackets)
 
-    if _CPP_AVAILABLE and not uses_brackets:
+    if _CPP_AVAILABLE and not uses_brackets and not uses_synthetic_quotes:
         try:
             return _run_cpp(
                 df,
@@ -61,6 +76,10 @@ def run_backtest(
         slippage_ticks,
         stop_loss_ticks,
         take_profit_ticks,
+        resolved_execution_mode,
+        spread_ticks,
+        volatile_bar_threshold_ticks,
+        volatile_bar_extra_ticks,
     )
 
 #Internal helpers
@@ -138,6 +157,10 @@ def _run_python(
     slippage_ticks:  float,
     stop_loss_ticks: float | None,
     take_profit_ticks: float | None,
+    execution_mode: str,
+    spread_ticks: int,
+    volatile_bar_threshold_ticks: int,
+    volatile_bar_extra_ticks: int,
 ) -> dict:
     if tick_size <= 0:
         raise ValueError("tick_size must be greater than zero.")
@@ -151,7 +174,18 @@ def _run_python(
     for i in range(1, len(df)):
         bar = df.iloc[i]
         signal = int(df.iloc[i - 1].get("signal", 0))
+        quote = None
         execution_base = _round_to_tick(float(bar["open"]), tick_size)
+
+        if execution_mode == "synthetic_quotes":
+            quote = _quote_for_execution_open(
+                bar,
+                tick_size=tick_size,
+                spread_ticks=spread_ticks,
+                volatile_bar_threshold_ticks=volatile_bar_threshold_ticks,
+                volatile_bar_extra_ticks=volatile_bar_extra_ticks,
+            )
+            execution_base = float(quote["reference"])
 
         # A flip closes the old trade and opens the new one at the next bar open.
         if position is not None:
@@ -160,13 +194,16 @@ def _run_python(
                 (position["side"] == "sell" and signal ==  1)
             )
             if should_close:
-                exit_price = _apply_slippage(
-                    execution_base,
-                    side=position["side"],
-                    action="exit",
-                    tick_size=tick_size,
-                    slippage_ticks=slippage_ticks,
-                )
+                if execution_mode == "synthetic_quotes" and quote is not None:
+                    exit_price = _flatten_price_for_position(position["side"], quote)
+                else:
+                    exit_price = _apply_slippage(
+                        execution_base,
+                        side=position["side"],
+                        action="exit",
+                        tick_size=tick_size,
+                        slippage_ticks=slippage_ticks,
+                    )
                 pnl = _position_pnl(
                     side=position["side"],
                     entry_price=position["entry_price"],
@@ -198,13 +235,16 @@ def _run_python(
         #Open new position
         if position is None and signal != 0 and i < len(df) - 1:
             side = "buy" if signal == 1 else "sell"
-            entry_price = _apply_slippage(
-                execution_base,
-                side=side,
-                action="entry",
-                tick_size=tick_size,
-                slippage_ticks=slippage_ticks,
-            )
+            if execution_mode == "synthetic_quotes" and quote is not None:
+                entry_price = round(float(quote["ask"] if side == "buy" else quote["bid"]), 10)
+            else:
+                entry_price = _apply_slippage(
+                    execution_base,
+                    side=side,
+                    action="entry",
+                    tick_size=tick_size,
+                    slippage_ticks=slippage_ticks,
+                )
             position = {
                 "side":        side,
                 "entry_price": entry_price,
@@ -272,13 +312,23 @@ def _run_python(
     #Force-close at final bar
     if position is not None:
         last_bar   = df.iloc[-1]
-        exit_price = _apply_slippage(
-            _round_to_tick(float(last_bar["close"]), tick_size),
-            side=position["side"],
-            action="exit",
-            tick_size=tick_size,
-            slippage_ticks=slippage_ticks,
-        )
+        if execution_mode == "synthetic_quotes":
+            final_quote = _quote_for_execution_close(
+                last_bar,
+                tick_size=tick_size,
+                spread_ticks=spread_ticks,
+                volatile_bar_threshold_ticks=volatile_bar_threshold_ticks,
+                volatile_bar_extra_ticks=volatile_bar_extra_ticks,
+            )
+            exit_price = _flatten_price_for_position(position["side"], final_quote)
+        else:
+            exit_price = _apply_slippage(
+                _round_to_tick(float(last_bar["close"]), tick_size),
+                side=position["side"],
+                action="exit",
+                tick_size=tick_size,
+                slippage_ticks=slippage_ticks,
+            )
         pnl = _position_pnl(
             side=position["side"],
             entry_price=position["entry_price"],
@@ -310,6 +360,54 @@ def _run_python(
         "trades":       trades,
         "equity_curve": equity_curve,
     }
+
+
+def _quote_for_execution_open(
+    bar,
+    *,
+    tick_size: float,
+    spread_ticks: int,
+    volatile_bar_threshold_ticks: int,
+    volatile_bar_extra_ticks: int,
+) -> dict:
+    synthetic = synthetic_quote_for_bar(
+        {
+            "close": float(bar["open"]),
+            "high": float(bar.get("high", bar["open"])),
+            "low": float(bar.get("low", bar["open"])),
+        },
+        tick_size=tick_size,
+        spread_ticks=spread_ticks,
+        volatile_bar_threshold_ticks=volatile_bar_threshold_ticks,
+        volatile_bar_extra_ticks=volatile_bar_extra_ticks,
+    )
+    return synthetic.as_dict()
+
+
+def _quote_for_execution_close(
+    bar,
+    *,
+    tick_size: float,
+    spread_ticks: int,
+    volatile_bar_threshold_ticks: int,
+    volatile_bar_extra_ticks: int,
+) -> dict:
+    synthetic = synthetic_quote_for_bar(
+        {
+            "close": float(bar["close"]),
+            "high": float(bar.get("high", bar["close"])),
+            "low": float(bar.get("low", bar["close"])),
+        },
+        tick_size=tick_size,
+        spread_ticks=spread_ticks,
+        volatile_bar_threshold_ticks=volatile_bar_threshold_ticks,
+        volatile_bar_extra_ticks=volatile_bar_extra_ticks,
+    )
+    return synthetic.as_dict()
+
+
+def _flatten_price_for_position(side: str, quote: dict) -> float:
+    return round(float(quote["bid"] if side == "buy" else quote["ask"]), 10)
 
 
 def _round_to_tick(price: float, tick_size: float) -> float:
