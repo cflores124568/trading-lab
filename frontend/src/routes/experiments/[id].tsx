@@ -80,6 +80,10 @@ function formatParams(params: Record<string, unknown>): string {
   return entries.map(([key, value]) => `${key}=${value}`).join(", ");
 }
 
+function formatExecutionMode(mode?: "bar" | "synthetic_quotes" | null): string {
+  return mode === "synthetic_quotes" ? "Synthetic quotes" : "Simple bar fills";
+}
+
 function metricCardTone(tone: "default" | "good" | "bad" = "default"): string {
   if (tone === "good") {
     return "border-emerald-800 bg-emerald-950/30";
@@ -316,6 +320,14 @@ export default function ExperimentDetailPage() {
                     <p>Initial balance: ${batchResult().initial_balance.toLocaleString()}</p>
                     <p>Position size: {batchResult().position_size}</p>
                     <p>Commission: ${batchResult().commission.toFixed(2)}</p>
+                    <p>Slippage: {batchResult().slippage_ticks.toFixed(2)} ticks</p>
+                    <p>Execution: {formatExecutionMode(batchResult().execution_mode)}</p>
+                    <Show when={batchResult().execution_mode === "synthetic_quotes"}>
+                      <p>
+                        Spread: {batchResult().spread_ticks}t base, +{batchResult().volatile_bar_extra_ticks}t after{" "}
+                        {batchResult().volatile_bar_threshold_ticks}t bar range
+                      </p>
+                    </Show>
                     <p>
                       Range: {batchResult().start_date ?? "Start open"} to{" "}
                       {batchResult().end_date ?? "End open"}

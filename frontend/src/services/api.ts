@@ -447,6 +447,11 @@ export interface ExperimentCreateRequest {
   initial_balance: number;
   position_size: number;
   commission: number;
+  slippage_ticks: number;
+  execution_mode: "bar" | "synthetic_quotes";
+  spread_ticks: number;
+  volatile_bar_threshold_ticks: number;
+  volatile_bar_extra_ticks: number;
   scoring_rule: ExperimentScoringRule;
 }
 

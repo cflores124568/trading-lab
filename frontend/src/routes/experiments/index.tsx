@@ -509,6 +509,11 @@ export default function ExperimentsIndexPage() {
   const [initialBalance, setInitialBalance] = createSignal(100_000);
   const [positionSize, setPositionSize] = createSignal(1);
   const [commission, setCommission] = createSignal(5);
+  const [slippageTicks, setSlippageTicks] = createSignal(1);
+  const [executionMode, setExecutionMode] = createSignal<"bar" | "synthetic_quotes">("bar");
+  const [spreadTicks, setSpreadTicks] = createSignal(1);
+  const [volatileBarThresholdTicks, setVolatileBarThresholdTicks] = createSignal(0);
+  const [volatileBarExtraTicks, setVolatileBarExtraTicks] = createSignal(0);
   const [busyAction, setBusyAction] = createSignal<string | null>(null);
   const [error, setError] = createSignal<string | null>(null);
   const [appliedSeedId, setAppliedSeedId] = createSignal("");
@@ -629,6 +634,11 @@ export default function ExperimentsIndexPage() {
       initialBalance: initialBalance(),
       positionSize: positionSize(),
       commission: commission(),
+      slippageTicks: slippageTicks(),
+      executionMode: executionMode(),
+      spreadTicks: spreadTicks(),
+      volatileBarThresholdTicks: volatileBarThresholdTicks(),
+      volatileBarExtraTicks: volatileBarExtraTicks(),
     }),
   );
   const isValidated = createMemo(
@@ -814,6 +824,15 @@ export default function ExperimentsIndexPage() {
     if (commission() < 0) {
       return "Commission can't be negative.";
     }
+    if (slippageTicks() < 0) {
+      return "Slippage ticks can't be negative.";
+    }
+    if (spreadTicks() < 1) {
+      return "Spread ticks has to be at least 1.";
+    }
+    if (volatileBarThresholdTicks() < 0 || volatileBarExtraTicks() < 0) {
+      return "Volatility spread settings can't be negative.";
+    }
     if (invalidComboCount() > 0) {
       return strategy() === "rsi_overbought"
         ? "The RSI grid includes oversold values that are not below overbought."
@@ -847,6 +866,11 @@ export default function ExperimentsIndexPage() {
       setInitialBalance(request.initial_balance);
       setPositionSize(request.position_size);
       setCommission(request.commission);
+      setSlippageTicks(request.slippage_ticks ?? 1);
+      setExecutionMode(request.execution_mode ?? "bar");
+      setSpreadTicks(request.spread_ticks ?? 1);
+      setVolatileBarThresholdTicks(request.volatile_bar_threshold_ticks ?? 0);
+      setVolatileBarExtraTicks(request.volatile_bar_extra_ticks ?? 0);
       setAutoOptimizeIntervals(false);
       setError(null);
       setValidatedSignature("");
@@ -867,6 +891,11 @@ export default function ExperimentsIndexPage() {
         initial_balance: experiment.initial_balance,
         position_size: experiment.position_size,
         commission: experiment.commission,
+        slippage_ticks: experiment.slippage_ticks,
+        execution_mode: experiment.execution_mode,
+        spread_ticks: experiment.spread_ticks,
+        volatile_bar_threshold_ticks: experiment.volatile_bar_threshold_ticks,
+        volatile_bar_extra_ticks: experiment.volatile_bar_extra_ticks,
         scoring_rule: experiment.scoring_rule,
       },
       "clone",
@@ -899,6 +928,11 @@ export default function ExperimentsIndexPage() {
       initial_balance: initialBalance(),
       position_size: positionSize(),
       commission: commission(),
+      slippage_ticks: slippageTicks(),
+      execution_mode: executionMode(),
+      spread_ticks: spreadTicks(),
+      volatile_bar_threshold_ticks: volatileBarThresholdTicks(),
+      volatile_bar_extra_ticks: volatileBarExtraTicks(),
       scoring_rule: scoringRule(),
     };
   };
@@ -1016,6 +1050,11 @@ export default function ExperimentsIndexPage() {
       setInitialBalance(seed.prop_firm_rules.account_size);
       setStartDate(seed.replay_context?.start_date ?? "");
       setEndDate(seed.replay_context?.end_date ?? "");
+      setSlippageTicks(seed.run_config?.slippage_ticks ?? 1);
+      setExecutionMode(seed.run_config?.execution_mode ?? "bar");
+      setSpreadTicks(seed.run_config?.spread_ticks ?? 1);
+      setVolatileBarThresholdTicks(seed.run_config?.volatile_bar_threshold_ticks ?? 0);
+      setVolatileBarExtraTicks(seed.run_config?.volatile_bar_extra_ticks ?? 0);
       setAppliedSeedId(seedId);
       setAutoOptimizeIntervals(false);
       setValidatedSignature("");
@@ -1606,6 +1645,75 @@ export default function ExperimentsIndexPage() {
                 />
               </div>
             </div>
+
+            <div class="grid gap-3 md:grid-cols-2">
+              <div>
+                <label class={label}>Execution mode</label>
+                <select
+                  class={field}
+                  value={executionMode()}
+                  onChange={(event) =>
+                    setExecutionMode(event.currentTarget.value as "bar" | "synthetic_quotes")
+                  }
+                >
+                  <option value="bar">Simple bar fills</option>
+                  <option value="synthetic_quotes">Synthetic bid/ask quotes</option>
+                </select>
+              </div>
+              <div>
+                <label class={label}>Slippage ticks per fill</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.25"
+                  class={`${field} app-data`}
+                  value={slippageTicks()}
+                  onInput={(event) => setSlippageTicks(Number(event.currentTarget.value) || 0)}
+                />
+              </div>
+            </div>
+
+            <Show when={executionMode() === "synthetic_quotes"}>
+              <div class="grid gap-3 md:grid-cols-3">
+                <div>
+                  <label class={label}>Base spread (ticks)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    class={`${field} app-data`}
+                    value={spreadTicks()}
+                    onInput={(event) => setSpreadTicks(Math.max(1, Math.round(Number(event.currentTarget.value) || 1)))}
+                  />
+                </div>
+                <div>
+                  <label class={label}>Volatile threshold (ticks)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    class={`${field} app-data`}
+                    value={volatileBarThresholdTicks()}
+                    onInput={(event) =>
+                      setVolatileBarThresholdTicks(Math.max(0, Math.round(Number(event.currentTarget.value) || 0)))
+                    }
+                  />
+                </div>
+                <div>
+                  <label class={label}>Volatile extra spread (ticks)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    class={`${field} app-data`}
+                    value={volatileBarExtraTicks()}
+                    onInput={(event) =>
+                      setVolatileBarExtraTicks(Math.max(0, Math.round(Number(event.currentTarget.value) || 0)))
+                    }
+                  />
+                </div>
+              </div>
+            </Show>
           </section>
         </div>
 
