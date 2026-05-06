@@ -179,6 +179,10 @@ export interface BacktestCreateRequest {
   slippage_ticks: number;
   stop_loss_ticks?: number;
   take_profit_ticks?: number;
+  execution_mode?: "bar" | "synthetic_quotes";
+  spread_ticks?: number;
+  volatile_bar_threshold_ticks?: number;
+  volatile_bar_extra_ticks?: number;
 }
 
 //Full backtest result returned by the backend.
@@ -204,6 +208,10 @@ export interface BacktestResult {
     slippage_ticks: number;
     stop_loss_ticks?: number | null;
     take_profit_ticks?: number | null;
+    execution_mode: "bar" | "synthetic_quotes";
+    spread_ticks: number;
+    volatile_bar_threshold_ticks: number;
+    volatile_bar_extra_ticks: number;
   };
   status: string;
   created_at: string;
@@ -345,6 +353,10 @@ export interface BacktestRobustnessResult {
     slippage_ticks: number;
     stop_loss_ticks?: number | null;
     take_profit_ticks?: number | null;
+    execution_mode: "bar" | "synthetic_quotes";
+    spread_ticks: number;
+    volatile_bar_threshold_ticks: number;
+    volatile_bar_extra_ticks: number;
   };
   baseline: {
     total_pnl: number;

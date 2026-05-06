@@ -3,6 +3,7 @@ import { useNavigate } from "@solidjs/router";
 import { ChevronDown, ChevronRight } from "lucide-solid";
 import { fetchSymbols, fetchPropPresets, loadSymbol, runBacktest, type SymbolInfo, type PropFirmPreset} from "../services/api";
 import { BACKTEST_INTERVALS, STRATEGIES, STRATEGY_PARAMS, getBackendInterval, type StrategyValue} from "../constants";
+import { defaultExecutionConfigForSymbol } from "../services/executionModel";
 
 // Shared input styles 
 const field =
@@ -60,6 +61,10 @@ function formatBracketSummary(stopLossTicks: string, takeProfitTicks: string): s
   ]
     .filter(Boolean)
     .join(" / ");
+}
+
+function executionModeLabel(mode: "bar" | "synthetic_quotes"): string {
+  return mode === "synthetic_quotes" ? "Synthetic quotes" : "Simple bar fills";
 }
 
 function formatDailyLossLimit(limit: number | null | undefined): string {
@@ -164,6 +169,10 @@ export default function BackTestConfigForm() {
   const [slippageTicks, setSlippageTicks] = createSignal(1);
   const [stopLossTicks, setStopLossTicks] = createSignal("");
   const [takeProfitTicks, setTakeProfitTicks] = createSignal("");
+  const [executionMode, setExecutionMode] = createSignal<"bar" | "synthetic_quotes">("bar");
+  const [spreadTicks, setSpreadTicks] = createSignal(1);
+  const [volatileBarThresholdTicks, setVolatileBarThresholdTicks] = createSignal(0);
+  const [volatileBarExtraTicks, setVolatileBarExtraTicks] = createSignal(0);
   const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const [step, setStep] = createSignal<"idle" | "loading-data" | "running">("idle");
@@ -178,6 +187,7 @@ export default function BackTestConfigForm() {
     ["Interval", interval().label],
     ["Strategy", selectedStrategy().label],
     ["Preset", preset()?.name ?? "Choose a challenge"],
+    ["Execution", executionModeLabel(executionMode())],
     ["Brackets", formatBracketSummary(stopLossTicks(), takeProfitTicks())],
   ] as [string, string][]);
 
@@ -187,6 +197,15 @@ export default function BackTestConfigForm() {
     if(loadedSymbols && loadedSymbols.length > 0 && !symbol()){
       setSymbol(loadedSymbols[0]); // Change to loadedSymbols.find(s => s.symbol === "NQ") for other defaults
     }
+  });
+
+  createEffect(() => {
+    const defaults = defaultExecutionConfigForSymbol(symbol()?.symbol);
+    batch(() => {
+      setSpreadTicks(defaults.spreadTicks);
+      setVolatileBarThresholdTicks(defaults.volatileBarThresholdTicks);
+      setVolatileBarExtraTicks(defaults.volatileBarExtraTicks);
+    });
   });
 
   //Submit guard
@@ -262,6 +281,10 @@ export default function BackTestConfigForm() {
         slippage_ticks: slippageTicks(),
         stop_loss_ticks: stopLoss.value,
         take_profit_ticks: takeProfit.value,
+        execution_mode: executionMode(),
+        spread_ticks: spreadTicks(),
+        volatile_bar_threshold_ticks: volatileBarThresholdTicks(),
+        volatile_bar_extra_ticks: volatileBarExtraTicks(),
       });
       navigate(`/backtests/${result.backtest_id}`);
     } catch (e: unknown) {
@@ -471,8 +494,55 @@ export default function BackTestConfigForm() {
                 mono
               />
               <StatCard label="Commission" value="$5.00" mono />
-              <StatCard label="Fill model" value="Next open" />
+              <StatCard label="Fill model" value={executionModeLabel(executionMode())} />
             </div>
+
+            <div>
+              <label class={label}>Execution mode</label>
+              <select
+                class={field}
+                value={executionMode()}
+                onChange={(e) => setExecutionMode(e.currentTarget.value as "bar" | "synthetic_quotes")}
+              >
+                <option value="bar">Simple bar fills</option>
+                <option value="synthetic_quotes">Synthetic bid/ask quotes</option>
+              </select>
+            </div>
+
+            <Show when={executionMode() === "synthetic_quotes"}>
+              <div class="grid gap-2 md:grid-cols-3">
+                <StepperInput
+                  label="Base spread (ticks)"
+                  value={String(spreadTicks())}
+                  step={1}
+                  min={1}
+                  onChange={(raw) => {
+                    const value = Number(raw);
+                    if (!Number.isNaN(value) && value >= 1) setSpreadTicks(Math.round(value));
+                  }}
+                />
+                <StepperInput
+                  label="Volatile bar threshold (ticks)"
+                  value={String(volatileBarThresholdTicks())}
+                  step={1}
+                  min={0}
+                  onChange={(raw) => {
+                    const value = Number(raw);
+                    if (!Number.isNaN(value) && value >= 0) setVolatileBarThresholdTicks(Math.round(value));
+                  }}
+                />
+                <StepperInput
+                  label="Volatile bar extra spread (ticks)"
+                  value={String(volatileBarExtraTicks())}
+                  step={1}
+                  min={0}
+                  onChange={(raw) => {
+                    const value = Number(raw);
+                    if (!Number.isNaN(value) && value >= 0) setVolatileBarExtraTicks(Math.round(value));
+                  }}
+                />
+              </div>
+            </Show>
 
             <StepperInput
               label="Slippage ticks per fill"
@@ -508,6 +578,12 @@ export default function BackTestConfigForm() {
               Brackets are measured from entry in ticks. If one candle tags both the stop and
               target, I treat it as stop-first so the sim stays conservative.
             </p>
+            <Show when={executionMode() === "synthetic_quotes"}>
+              <p class="text-xs text-zinc-500">
+                Synthetic mode prices taker fills off bid/ask. Slippage still applies on bracket
+                exits so old configs stay comparable.
+              </p>
+            </Show>
           </div>
         </Show>
       </section>

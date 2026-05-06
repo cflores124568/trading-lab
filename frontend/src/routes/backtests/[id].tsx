@@ -206,17 +206,25 @@ function formatBracketConfig(runConfig?: {
     .join(" · ");
 }
 
+function formatExecutionMode(mode?: "bar" | "synthetic_quotes" | null): string {
+  return mode === "synthetic_quotes" ? "Synthetic quotes" : "Simple bar fills";
+}
+
 function formatRunConfigSummary(runConfig: BacktestRobustnessResult["run_config"]): string {
   const positionSize = Number.isInteger(runConfig.position_size)
     ? runConfig.position_size.toFixed(0)
     : runConfig.position_size.toFixed(2);
 
   return [
+    `Exec ${formatExecutionMode(runConfig.execution_mode)}`,
     `Balance ${formatCurrency(runConfig.initial_balance)}`,
     `Size ${positionSize}`,
     `Comm ${formatCurrency(runConfig.commission)}`,
     `Tick ${runConfig.tick_size} / ${formatCurrency(runConfig.tick_value)}`,
     `Slip ${runConfig.slippage_ticks}t`,
+    runConfig.execution_mode === "synthetic_quotes"
+      ? `Spread ${runConfig.spread_ticks}t (+${runConfig.volatile_bar_extra_ticks}t over ${runConfig.volatile_bar_threshold_ticks}t range)`
+      : "Spread n/a",
     formatBracketConfig(runConfig),
   ].join(" · ");
 }
@@ -1043,6 +1051,7 @@ export default function BacktestDetail() {
     return [
       ["Symbol", backtest.symbol || "Unknown"],
       ["Strategy", backtest.strategy.type],
+      ["Execution", formatExecutionMode(backtest.run_config.execution_mode)],
       ["Saved Preset", backtest.prop_firm_rules.name],
       ["Brackets", formatBracketConfig(backtest.run_config)],
       ["Created", new Date(backtest.created_at).toLocaleString()],
