@@ -39,6 +39,11 @@ def _ensure_experiments_schema(conn) -> None:
                     initial_balance  DOUBLE PRECISION NOT NULL DEFAULT 100000,
                     position_size    DOUBLE PRECISION NOT NULL DEFAULT 1,
                     commission       DOUBLE PRECISION NOT NULL DEFAULT 5,
+                    slippage_ticks   DOUBLE PRECISION NOT NULL DEFAULT 1,
+                    execution_mode   TEXT NOT NULL DEFAULT 'bar',
+                    spread_ticks     INTEGER NOT NULL DEFAULT 1,
+                    volatile_bar_threshold_ticks INTEGER NOT NULL DEFAULT 0,
+                    volatile_bar_extra_ticks     INTEGER NOT NULL DEFAULT 0,
                     scoring_rule     TEXT NOT NULL DEFAULT 'prop_score_v1',
                     status           TEXT NOT NULL DEFAULT 'draft',
                     total_runs       INTEGER NOT NULL DEFAULT 0,
@@ -83,6 +88,21 @@ def _ensure_experiments_schema(conn) -> None:
                 """
             )
             cur.execute(
+                "ALTER TABLE experiments ADD COLUMN IF NOT EXISTS slippage_ticks DOUBLE PRECISION NOT NULL DEFAULT 1"
+            )
+            cur.execute(
+                "ALTER TABLE experiments ADD COLUMN IF NOT EXISTS execution_mode TEXT NOT NULL DEFAULT 'bar'"
+            )
+            cur.execute(
+                "ALTER TABLE experiments ADD COLUMN IF NOT EXISTS spread_ticks INTEGER NOT NULL DEFAULT 1"
+            )
+            cur.execute(
+                "ALTER TABLE experiments ADD COLUMN IF NOT EXISTS volatile_bar_threshold_ticks INTEGER NOT NULL DEFAULT 0"
+            )
+            cur.execute(
+                "ALTER TABLE experiments ADD COLUMN IF NOT EXISTS volatile_bar_extra_ticks INTEGER NOT NULL DEFAULT 0"
+            )
+            cur.execute(
                 "ALTER TABLE experiment_runs ADD COLUMN IF NOT EXISTS candidate_id TEXT"
             )
             cur.execute(
@@ -114,12 +134,14 @@ def save_experiment(experiment: dict) -> None:
         INSERT INTO experiments (
             experiment_id, name, symbols, intervals, strategy_type, parameter_space,
             start_date, end_date, prop_firm_rules, initial_balance, position_size,
-            commission, scoring_rule, status, total_runs, completed_runs, failed_runs,
+            commission, slippage_ticks, execution_mode, spread_ticks,
+            volatile_bar_threshold_ticks, volatile_bar_extra_ticks, scoring_rule,
+            status, total_runs, completed_runs, failed_runs,
             best_run_id, best_backtest_id, last_run_at, created_at, updated_at
         )
         VALUES (
             %s, %s, %s::jsonb, %s::jsonb, %s, %s::jsonb, %s, %s, %s::jsonb, %s, %s, %s,
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
         )
         ON CONFLICT (experiment_id) DO UPDATE SET
             name             = EXCLUDED.name,
@@ -133,6 +155,11 @@ def save_experiment(experiment: dict) -> None:
             initial_balance  = EXCLUDED.initial_balance,
             position_size    = EXCLUDED.position_size,
             commission       = EXCLUDED.commission,
+            slippage_ticks   = EXCLUDED.slippage_ticks,
+            execution_mode   = EXCLUDED.execution_mode,
+            spread_ticks     = EXCLUDED.spread_ticks,
+            volatile_bar_threshold_ticks = EXCLUDED.volatile_bar_threshold_ticks,
+            volatile_bar_extra_ticks     = EXCLUDED.volatile_bar_extra_ticks,
             scoring_rule     = EXCLUDED.scoring_rule,
             status           = EXCLUDED.status,
             total_runs       = EXCLUDED.total_runs,
@@ -162,6 +189,11 @@ def save_experiment(experiment: dict) -> None:
                     experiment["initial_balance"],
                     experiment["position_size"],
                     experiment["commission"],
+                    experiment.get("slippage_ticks", 1.0),
+                    experiment.get("execution_mode", "bar"),
+                    experiment.get("spread_ticks", 1),
+                    experiment.get("volatile_bar_threshold_ticks", 0),
+                    experiment.get("volatile_bar_extra_ticks", 0),
                     experiment["scoring_rule"],
                     experiment["status"],
                     experiment.get("total_runs", 0),
@@ -286,6 +318,11 @@ def _row_to_experiment(row) -> dict:
         "initial_balance": float(row["initial_balance"]),
         "position_size": float(row["position_size"]),
         "commission": float(row["commission"]),
+        "slippage_ticks": float(row.get("slippage_ticks") or 1.0) if hasattr(row, "get") else float(row["slippage_ticks"]),
+        "execution_mode": str(row.get("execution_mode") or "bar") if hasattr(row, "get") else str(row["execution_mode"]),
+        "spread_ticks": int(row.get("spread_ticks") or 1) if hasattr(row, "get") else int(row["spread_ticks"]),
+        "volatile_bar_threshold_ticks": int(row.get("volatile_bar_threshold_ticks") or 0) if hasattr(row, "get") else int(row["volatile_bar_threshold_ticks"]),
+        "volatile_bar_extra_ticks": int(row.get("volatile_bar_extra_ticks") or 0) if hasattr(row, "get") else int(row["volatile_bar_extra_ticks"]),
         "scoring_rule": row["scoring_rule"],
         "status": row["status"],
         "total_runs": int(row["total_runs"]),

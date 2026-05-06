@@ -163,6 +163,11 @@ CREATE TABLE IF NOT EXISTS experiments (
     initial_balance  DOUBLE PRECISION NOT NULL DEFAULT 100000,
     position_size    DOUBLE PRECISION NOT NULL DEFAULT 1,
     commission       DOUBLE PRECISION NOT NULL DEFAULT 5,
+    slippage_ticks   DOUBLE PRECISION NOT NULL DEFAULT 1,
+    execution_mode   TEXT NOT NULL DEFAULT 'bar',
+    spread_ticks     INTEGER NOT NULL DEFAULT 1,
+    volatile_bar_threshold_ticks INTEGER NOT NULL DEFAULT 0,
+    volatile_bar_extra_ticks     INTEGER NOT NULL DEFAULT 0,
     scoring_rule     TEXT NOT NULL DEFAULT 'prop_score_v1',
     status           TEXT NOT NULL DEFAULT 'draft',
     total_runs       INTEGER NOT NULL DEFAULT 0,
@@ -177,6 +182,21 @@ CREATE TABLE IF NOT EXISTS experiments (
 
 CREATE INDEX IF NOT EXISTS experiments_updated_at_idx
     ON experiments (updated_at DESC);
+
+ALTER TABLE experiments
+    ADD COLUMN IF NOT EXISTS slippage_ticks DOUBLE PRECISION NOT NULL DEFAULT 1;
+
+ALTER TABLE experiments
+    ADD COLUMN IF NOT EXISTS execution_mode TEXT NOT NULL DEFAULT 'bar';
+
+ALTER TABLE experiments
+    ADD COLUMN IF NOT EXISTS spread_ticks INTEGER NOT NULL DEFAULT 1;
+
+ALTER TABLE experiments
+    ADD COLUMN IF NOT EXISTS volatile_bar_threshold_ticks INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE experiments
+    ADD COLUMN IF NOT EXISTS volatile_bar_extra_ticks INTEGER NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS experiment_runs (
     experiment_run_id TEXT PRIMARY KEY,

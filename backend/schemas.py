@@ -254,6 +254,11 @@ class ExperimentBase(BaseModel):
     initial_balance: float = Field(default=100_000, gt=0)
     position_size: float = Field(default=1.0, gt=0)
     commission: float = Field(default=5.0, ge=0)
+    slippage_ticks: float = Field(default=1.0, ge=0)
+    execution_mode: Literal["bar", "synthetic_quotes"] = Field(default="bar")
+    spread_ticks: int = Field(default=1, ge=1)
+    volatile_bar_threshold_ticks: int = Field(default=0, ge=0)
+    volatile_bar_extra_ticks: int = Field(default=0, ge=0)
     scoring_rule: ExperimentScoringRule = Field(default=ExperimentScoringRule.PROP_SCORE_V1)
 
 
