@@ -77,6 +77,11 @@ def main() -> None:
                 "initial_balance": 100_000,
                 "position_size": 1.0,
                 "commission": 5.0,
+                "slippage_ticks": 0.0,
+                "execution_mode": "synthetic_quotes",
+                "spread_ticks": 2,
+                "volatile_bar_threshold_ticks": 10,
+                "volatile_bar_extra_ticks": 1,
                 "scoring_rule": "prop_score_v1",
             }
             created = client.post("/api/experiments/", json=payload)
@@ -84,6 +89,8 @@ def main() -> None:
             experiment = created.json()
             experiment_id = experiment["experiment_id"]
             _require(experiment["status"] == "draft", "New experiment should start as draft.")
+            _require(experiment["execution_mode"] == "synthetic_quotes", "Experiment lost execution mode settings.")
+            _require(experiment["spread_ticks"] == 2, "Experiment lost spread settings.")
             print(f"      Experiment id: {experiment_id}")
 
             print("\n[2/4] Listing and reading the saved experiment ...")
@@ -105,6 +112,12 @@ def main() -> None:
             _require(len(payload["results"]) == 4, "Run endpoint returned the wrong number of results.")
             _require(payload["results"][0]["rank"] == 1, "Top result did not get rank 1.")
             _require(payload["results"][0]["backtest_id"], "Completed run is missing backtest linkage.")
+            best_backtest = client.get(f"/api/backtests/{payload['results'][0]['backtest_id']}")
+            _require(best_backtest.status_code == 200, f"Linked backtest lookup failed: {best_backtest.text}")
+            _require(
+                best_backtest.json()["run_config"]["execution_mode"] == "synthetic_quotes",
+                "Experiment run did not pass execution mode into the saved backtest.",
+            )
             print(f"      Ranked runs: {len(payload['results'])}")
 
             print("\n[4/7] Reading persisted results from the results endpoint ...")

@@ -51,6 +51,11 @@ def create_experiment_record(request: ExperimentCreate) -> dict:
         initial_balance=request.initial_balance,
         position_size=request.position_size,
         commission=request.commission,
+        slippage_ticks=request.slippage_ticks,
+        execution_mode=request.execution_mode,
+        spread_ticks=request.spread_ticks,
+        volatile_bar_threshold_ticks=request.volatile_bar_threshold_ticks,
+        volatile_bar_extra_ticks=request.volatile_bar_extra_ticks,
         scoring_rule=request.scoring_rule,
         status="draft",
         total_runs=0,
@@ -116,9 +121,13 @@ def run_experiment(experiment: dict) -> tuple[dict, list[dict]]:
                 initial_balance=experiment["initial_balance"],
                 position_size=experiment["position_size"],
                 commission=experiment["commission"],
+                slippage_ticks=experiment.get("slippage_ticks") or 1.0,
                 tick_size=dataset_info.get("tick_size") or 0.25,
                 tick_value=dataset_info.get("tick_value") or 12.5,
-                slippage_ticks=experiment.get("slippage_ticks") or 1.0,
+                execution_mode=str(experiment.get("execution_mode") or "bar"),
+                spread_ticks=max(1, int(experiment.get("spread_ticks") or 1)),
+                volatile_bar_threshold_ticks=max(0, int(experiment.get("volatile_bar_threshold_ticks") or 0)),
+                volatile_bar_extra_ticks=max(0, int(experiment.get("volatile_bar_extra_ticks") or 0)),
             )
             backtest = build_backtest_result(dataset, request)
             persist_backtest_result(backtest)
