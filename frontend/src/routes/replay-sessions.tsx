@@ -2,6 +2,7 @@ import { A } from "@solidjs/router";
 import { createResource, For, Show } from "solid-js";
 import AppShell from "../components/AppShell";
 import WorkspaceLaunchControl from "../components/workspace/WorkspaceLaunchControl";
+import WorkspaceContextBadge from "../components/workspace/WorkspaceContextBadge";
 import { fetchReplaySessions, type ReplaySessionSummary } from "../services/api";
 import { formatReplaySessionStatus } from "../services/replaySessionState";
 
@@ -34,6 +35,8 @@ export default function ReplaySessionListPage() {
       }
     >
       <div class="mx-auto w-full max-w-5xl">
+        <WorkspaceContextBadge />
+
         <Show when={!sessions.loading} fallback={<div class="app-panel h-40 animate-pulse" />}>
           <Show
             when={(sessions() ?? []).length > 0}

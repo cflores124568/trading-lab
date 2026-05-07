@@ -14,6 +14,7 @@ import {
 } from "lucide-solid";
 import AppShell from "../../components/AppShell";
 import WorkspaceLaunchControl from "../../components/workspace/WorkspaceLaunchControl";
+import WorkspaceContextBadge from "../../components/workspace/WorkspaceContextBadge";
 import { fetchBacktests, type BacktestSummary } from "../../services/api";
 
 function formatMoney(value: number): string {
@@ -187,6 +188,8 @@ export default function BacktestList() {
       }
     >
       <div class="mx-auto w-full max-w-6xl space-y-4">
+        <WorkspaceContextBadge />
+
         <Show when={!backtests.loading} fallback={<BacktestLoadingState />}>
           <Show
             when={!backtests.error}

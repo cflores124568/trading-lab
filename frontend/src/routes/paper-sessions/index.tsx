@@ -1,6 +1,7 @@
 import { A } from "@solidjs/router";
 import { createResource, For, Show } from "solid-js";
 import AppShell from "../../components/AppShell";
+import WorkspaceContextBadge from "../../components/workspace/WorkspaceContextBadge";
 import { fetchPaperSessions } from "../../services/api";
 
 function describeStatus(status: string): string {
@@ -105,6 +106,8 @@ export default function PaperSessionListPage() {
       }
     >
       <div class="mx-auto w-full max-w-5xl">
+        <WorkspaceContextBadge />
+
         <Show when={!sessions.loading} fallback={<div class="app-panel h-40 animate-pulse" />}>
           <Show
             when={(sessions() ?? []).length > 0}

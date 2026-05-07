@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight } from "lucide-solid";
 import { fetchSymbols, fetchPropPresets, loadSymbol, runBacktest, type SymbolInfo, type PropFirmPreset} from "../services/api";
 import { BACKTEST_INTERVALS, STRATEGIES, STRATEGY_PARAMS, getBackendInterval, type StrategyValue} from "../constants";
 import { defaultExecutionConfigForSymbol } from "../services/executionModel";
+import { loadActiveWorkspaceContext } from "./workspace/workspacePersistence";
 
 // Shared input styles 
 const field =
@@ -31,6 +32,17 @@ function groupPresets(presets: PropFirmPreset[]): Record<string, PropFirmPreset[
     (acc[firm] ??= []).push(p);
     return acc;
   }, {});
+}
+
+function findPresetByPropFirm(presets: PropFirmPreset[], propFirm: string): PropFirmPreset | null {
+  const cleanedFirm = propFirm.trim().toLowerCase();
+  if (!cleanedFirm) {
+    return null;
+  }
+
+  return (
+    presets.find((preset) => preset.name.toLowerCase().includes(cleanedFirm)) ?? null
+  );
 }
 
 function parseOptionalTickInput(raw: string, label: string): { value?: number; error?: string } {
@@ -153,6 +165,7 @@ function StepperInput(props: {
 
 export default function BackTestConfigForm() {
   const navigate = useNavigate();
+  const workspaceContext = createMemo(() => loadActiveWorkspaceContext());
   const [symbols] = createResource(fetchSymbols);
   const [presets] = createResource(fetchPropPresets);
   const defaultInterval = BACKTEST_INTERVALS.find((i) => i.value === "15m")!;
@@ -179,6 +192,7 @@ export default function BackTestConfigForm() {
   const [showStrategy, setShowStrategy] = createSignal(true);
   const [showExecution, setShowExecution] = createSignal(true);
   const [showPropFirm, setShowPropFirm] = createSignal(true);
+  const [marketSeedNotice, setMarketSeedNotice] = createSignal<string | null>(null);
   const selectedStrategy = createMemo(
     () => STRATEGIES.find((item) => item.value === strategy()) ?? STRATEGIES[0]
   );
@@ -191,12 +205,55 @@ export default function BackTestConfigForm() {
     ["Brackets", formatBracketSummary(stopLossTicks(), takeProfitTicks())],
   ] as [string, string][]);
 
-  // Auto select first symbol upon load
+  // Seed market defaults from the active workspace, then fall back to first symbol.
+  let seededMarketDefaults = false;
   createEffect(() => {
     const loadedSymbols = symbols();
-    if(loadedSymbols && loadedSymbols.length > 0 && !symbol()){
-      setSymbol(loadedSymbols[0]); // Change to loadedSymbols.find(s => s.symbol === "NQ") for other defaults
+    if (!loadedSymbols || loadedSymbols.length === 0 || seededMarketDefaults) {
+      return;
     }
+
+    seededMarketDefaults = true;
+    const context = workspaceContext();
+    const defaultQuery = context?.query;
+    const defaultSymbol = defaultQuery?.symbol
+      ? loadedSymbols.find((candidate) => candidate.symbol === defaultQuery.symbol)
+      : null;
+    const defaultInterval = defaultQuery?.interval
+      ? BACKTEST_INTERVALS.find((candidate) => candidate.value === defaultQuery.interval)
+      : null;
+
+    batch(() => {
+      setSymbol(defaultSymbol ?? loadedSymbols[0]);
+      if (defaultInterval) {
+        setInterval(defaultInterval);
+      }
+      if (defaultQuery?.mode === "historical") {
+        setStartDate(defaultQuery.startDate ?? "");
+        setEndDate(defaultQuery.endDate ?? "");
+      }
+      if (context?.query) {
+        setMarketSeedNotice(`Seeded market defaults from ${context.workspaceName}.`);
+      }
+    });
+  });
+
+  // Seed prop firm defaults from workspace account profile when available.
+  let seededPresetDefaults = false;
+  createEffect(() => {
+    const loadedPresets = presets();
+    if (!loadedPresets || loadedPresets.length === 0 || preset() || seededPresetDefaults) {
+      return;
+    }
+
+    seededPresetDefaults = true;
+    const context = workspaceContext();
+    const preferred =
+      context?.accountProfile.propFirm
+        ? findPresetByPropFirm(loadedPresets, context.accountProfile.propFirm)
+        : null;
+
+    setPreset(preferred ?? loadedPresets[0]);
   });
 
   createEffect(() => {
@@ -313,6 +370,9 @@ export default function BackTestConfigForm() {
           <p class="max-w-3xl text-sm text-zinc-400">
             Pick a market, set the strategy, and score it against prop-firm rules.
           </p>
+          <Show when={marketSeedNotice()}>
+            <p class="text-xs text-cyan-300">{marketSeedNotice()}</p>
+          </Show>
         </div>
 
         <div class="grid gap-2 md:grid-cols-3 xl:grid-cols-5">

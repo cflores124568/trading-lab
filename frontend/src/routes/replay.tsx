@@ -56,7 +56,10 @@ import {
   type PriceChartIndicatorSettings,
 } from "../services/chartIndicators";
 import WorkspaceLaunchControl from "../components/workspace/WorkspaceLaunchControl";
-import type { WorkspaceLaunchIntent } from "../components/workspace/workspacePersistence";
+import {
+  loadActiveWorkspaceContext,
+  type WorkspaceLaunchIntent,
+} from "../components/workspace/workspacePersistence";
 import {
   defaultExecutionConfigForSymbol,
   normalizeRestingFillMode,
@@ -134,6 +137,15 @@ function groupPresets(presets: PropFirmRules[]): Record<string, PropFirmRules[]>
     (acc[firm] ??= []).push(preset);
     return acc;
   }, {});
+}
+
+function findPresetByPropFirm(presets: PropFirmRules[], propFirm: string): PropFirmRules | null {
+  const cleanedFirm = propFirm.trim().toLowerCase();
+  if (!cleanedFirm) {
+    return null;
+  }
+
+  return presets.find((preset) => preset.name.toLowerCase().includes(cleanedFirm)) ?? null;
 }
 
 function findInterval(value: string): Interval {
@@ -287,6 +299,7 @@ export default function ReplayLabPage() {
   const params = useParams<{ id?: string }>();
   const [searchParams] = useSearchParams<{ backtestId?: string }>();
   const navigate = useNavigate();
+  const workspaceContext = createMemo(() => loadActiveWorkspaceContext());
   const [symbols] = createResource(fetchSymbols);
   const [presets] = createResource(fetchPropPresets);
   const [savedSession] = createResource(() => params.id, fetchReplaySession);
@@ -305,6 +318,7 @@ export default function ReplayLabPage() {
   const [endDate, setEndDate] = createSignal("");
   const [bannerError, setBannerError] = createSignal<string | null>(null);
   const [bannerNotice, setBannerNotice] = createSignal<string | null>(null);
+  const [workspaceSeedNotice, setWorkspaceSeedNotice] = createSignal<string | null>(null);
   const [launchConfig, setLaunchConfig] = createSignal<ReplayLaunchConfig | null>(null);
   const [isSaving, setIsSaving] = createSignal(false);
 
@@ -346,6 +360,59 @@ export default function ReplayLabPage() {
     if (!preset() && loadedPresets && loadedPresets.length > 0) {
       setPreset(loadedPresets[0]);
     }
+  });
+
+  let seededStandaloneDefaults = false;
+  createEffect(() => {
+    if (
+      seededStandaloneDefaults ||
+      params.id ||
+      sourceBacktestId() ||
+      sourceBacktest() ||
+      launchConfig()
+    ) {
+      return;
+    }
+
+    const loadedSymbols = symbols();
+    const loadedPresets = presets();
+    if (!loadedSymbols || loadedSymbols.length === 0 || !loadedPresets || loadedPresets.length === 0) {
+      return;
+    }
+
+    seededStandaloneDefaults = true;
+    const context = workspaceContext();
+    if (!context) {
+      return;
+    }
+
+    const query = context.query;
+    const preferredSymbol = query?.symbol
+      ? loadedSymbols.find((candidate) => candidate.symbol === query.symbol)
+      : null;
+    const preferredInterval = query?.interval ? findInterval(query.interval) : null;
+    const preferredPreset = context.accountProfile.propFirm
+      ? findPresetByPropFirm(loadedPresets, context.accountProfile.propFirm)
+      : null;
+
+    batch(() => {
+      if (preferredSymbol) {
+        setSymbol(preferredSymbol);
+      }
+      if (preferredInterval) {
+        setInterval(preferredInterval);
+      }
+      if (query?.mode === "historical") {
+        setStartDate(query.startDate ?? "");
+        setEndDate(query.endDate ?? "");
+      }
+      if (preferredPreset) {
+        setPreset(preferredPreset);
+      }
+      if (preferredSymbol || preferredInterval || preferredPreset || query?.mode === "historical") {
+        setWorkspaceSeedNotice(`Seeded setup defaults from ${context.workspaceName}.`);
+      }
+    });
   });
 
   createEffect(() => {
@@ -1190,6 +1257,9 @@ export default function ReplayLabPage() {
                   ? "Symbol, range, and rules come from the source run."
                   : "Name the sim and choose the market window."}
               </p>
+              <Show when={workspaceSeedNotice() && !(activeSourceBacktest() || sourceBacktestId())}>
+                <p class="text-xs text-cyan-300">{workspaceSeedNotice()}</p>
+              </Show>
             </div>
 
             <div>

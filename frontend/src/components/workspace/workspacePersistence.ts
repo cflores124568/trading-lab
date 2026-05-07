@@ -6,6 +6,7 @@ import {
   normalizeWorkspaceCollectionState,
   type ChartPanelQuery,
   type SavedWorkspace,
+  type WorkspaceAccountProfile,
   type WorkspaceCollectionState,
 } from "./chartPanelTypes";
 
@@ -20,6 +21,13 @@ export interface WorkspaceLaunchIntent {
   interval: string;
   startDate?: string;
   endDate?: string;
+}
+
+export interface ActiveWorkspaceContext {
+  workspaceId: string;
+  workspaceName: string;
+  accountProfile: WorkspaceAccountProfile;
+  query: ChartPanelQuery | null;
 }
 
 function normalizeIntervalValue(value: string): string {
@@ -42,6 +50,23 @@ function cloneSavedWorkspace(workspace: SavedWorkspace): SavedWorkspace {
     presets: nextState.presets,
     accountProfile: normalizeWorkspaceAccountProfile(workspace.accountProfile),
   };
+}
+
+function resolvePrimaryQuery(workspace: SavedWorkspace): ChartPanelQuery | null {
+  const selectedPresetPanels = workspace.presets[workspace.selectedPreset]?.panels ?? [];
+  const selectedPanelQuery = selectedPresetPanels[0]?.query;
+  if (selectedPanelQuery) {
+    return selectedPanelQuery;
+  }
+
+  for (const preset of Object.values(workspace.presets)) {
+    const query = preset.panels[0]?.query;
+    if (query) {
+      return query;
+    }
+  }
+
+  return null;
 }
 
 function buildHistoricalLaunchQuery(intent: WorkspaceLaunchIntent): ChartPanelQuery {
@@ -81,6 +106,25 @@ export function loadWorkspaceCollectionState(): WorkspaceCollectionState {
   } catch {
     return normalizeWorkspaceCollectionState(null);
   }
+}
+
+export function loadActiveWorkspaceContext(
+  preferredWorkspaceId?: string | null,
+): ActiveWorkspaceContext | null {
+  const state = loadWorkspaceCollectionState();
+  const workspaceId = resolveWorkspaceId(state, preferredWorkspaceId ?? undefined);
+  const workspace = state.workspaces.find((candidate) => candidate.id === workspaceId);
+
+  if (!workspace) {
+    return null;
+  }
+
+  return {
+    workspaceId: workspace.id,
+    workspaceName: workspace.name,
+    accountProfile: normalizeWorkspaceAccountProfile(workspace.accountProfile),
+    query: resolvePrimaryQuery(workspace),
+  };
 }
 
 export function saveWorkspaceCollectionState(state: WorkspaceCollectionState): void {
