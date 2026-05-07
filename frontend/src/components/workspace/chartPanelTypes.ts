@@ -62,9 +62,20 @@ export interface WorkspaceState {
   presets: Record<WorkspacePreset, WorkspacePresetState>;
 }
 
+export interface WorkspaceAccountProfile {
+  propFirm: string;
+  accountLabel: string;
+  accountStage: string;
+  dailyLossLimit: number | null;
+  maxDrawdown: number | null;
+  profitTarget: number | null;
+  notes: string;
+}
+
 export interface SavedWorkspace extends WorkspaceState {
   id: string;
   name: string;
+  accountProfile: WorkspaceAccountProfile;
 }
 
 export interface WorkspaceCollectionState {
@@ -84,6 +95,8 @@ export const MAX_WORKSPACE_PANELS = 6;
 export const DEFAULT_WORKSPACE_NAME = "Main Workspace";
 export const MAX_WORKSPACE_NAME_LENGTH = 36;
 export const MAX_PANEL_TITLE_LENGTH = 40;
+export const MAX_WORKSPACE_ACCOUNT_FIELD_LENGTH = 48;
+export const MAX_WORKSPACE_ACCOUNT_NOTES_LENGTH = 220;
 
 function formatDate(daysAgo: number): string {
   const date = new Date();
@@ -310,6 +323,83 @@ function cloneLayout(layout: WorkspaceLayout): WorkspaceLayout {
   };
 }
 
+function cloneWorkspaceAccountProfile(profile: WorkspaceAccountProfile): WorkspaceAccountProfile {
+  return {
+    propFirm: profile.propFirm,
+    accountLabel: profile.accountLabel,
+    accountStage: profile.accountStage,
+    dailyLossLimit: profile.dailyLossLimit,
+    maxDrawdown: profile.maxDrawdown,
+    profitTarget: profile.profitTarget,
+    notes: profile.notes,
+  };
+}
+
+function normalizeOptionalRiskNumber(value: unknown): number | null {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim()
+        ? Number(value)
+        : Number.NaN;
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+
+  return Math.round(parsed * 100) / 100;
+}
+
+function normalizeAccountText(value: unknown, fallback = ""): string {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  return value.trim().replace(/\s+/g, " ").slice(0, MAX_WORKSPACE_ACCOUNT_FIELD_LENGTH);
+}
+
+function normalizeAccountNotes(value: unknown, fallback = ""): string {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  return value.trim().replace(/\s+/g, " ").slice(0, MAX_WORKSPACE_ACCOUNT_NOTES_LENGTH);
+}
+
+export function defaultWorkspaceAccountProfile(): WorkspaceAccountProfile {
+  return {
+    propFirm: "",
+    accountLabel: "",
+    accountStage: "Evaluation",
+    dailyLossLimit: null,
+    maxDrawdown: null,
+    profitTarget: null,
+    notes: "",
+  };
+}
+
+export function normalizeWorkspaceAccountProfile(
+  value: unknown,
+  fallback: WorkspaceAccountProfile = defaultWorkspaceAccountProfile(),
+): WorkspaceAccountProfile {
+  const record = asRecord(value);
+
+  if (!record) {
+    return cloneWorkspaceAccountProfile(fallback);
+  }
+
+  return {
+    propFirm: normalizeAccountText(record.propFirm, fallback.propFirm),
+    accountLabel: normalizeAccountText(record.accountLabel, fallback.accountLabel),
+    accountStage:
+      normalizeAccountText(record.accountStage, fallback.accountStage) || fallback.accountStage,
+    dailyLossLimit: normalizeOptionalRiskNumber(record.dailyLossLimit),
+    maxDrawdown: normalizeOptionalRiskNumber(record.maxDrawdown),
+    profitTarget: normalizeOptionalRiskNumber(record.profitTarget),
+    notes: normalizeAccountNotes(record.notes, fallback.notes),
+  };
+}
+
 function clonePresetState(state: WorkspacePresetState): WorkspacePresetState {
   return {
     panels: state.panels.map((panel) => ({
@@ -454,6 +544,7 @@ export function cloneWorkspaceState(state: WorkspaceState): WorkspaceState {
 export function buildSavedWorkspace(
   name = DEFAULT_WORKSPACE_NAME,
   state: WorkspaceState = buildDefaultWorkspaceState(),
+  accountProfile: WorkspaceAccountProfile = defaultWorkspaceAccountProfile(),
 ): SavedWorkspace {
   const nextState = cloneWorkspaceState(state);
 
@@ -462,6 +553,7 @@ export function buildSavedWorkspace(
     name: normalizeWorkspaceName(name),
     selectedPreset: nextState.selectedPreset,
     presets: nextState.presets,
+    accountProfile: normalizeWorkspaceAccountProfile(accountProfile),
   };
 }
 
@@ -646,6 +738,7 @@ export function normalizeWorkspaceCollectionState(value: unknown): WorkspaceColl
         name: normalizeWorkspaceName(candidateRecord.name, `Workspace ${index + 1}`),
         selectedPreset: normalizedState.selectedPreset,
         presets: normalizedState.presets,
+        accountProfile: normalizeWorkspaceAccountProfile(candidateRecord.accountProfile),
       } satisfies SavedWorkspace;
     })
     .filter((workspace): workspace is SavedWorkspace => workspace !== null);

@@ -46,8 +46,37 @@ const DEFAULT_INDICATOR_SETTINGS: PriceChartIndicatorSettings = {
   levelTrail: false,
 };
 
-function utcSessionKey(time: number): string {
-  return new Date(time * 1000).toISOString().slice(0, 10);
+const NEW_YORK_TIMEZONE = "America/New_York";
+const SESSION_ROLLOVER_HOUR = 18;
+
+const nyTimePartsFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: NEW_YORK_TIMEZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
+function cmeSessionKey(time: number): string {
+  const parts = nyTimePartsFormatter.formatToParts(new Date(time * 1000));
+  const part = (type: Intl.DateTimeFormatPartTypes): number =>
+    Number(parts.find((entry) => entry.type === type)?.value ?? 0);
+
+  const year = part("year");
+  const month = part("month");
+  const day = part("day");
+  const hour = part("hour");
+
+  // CME ETH session rolls at 6:00 PM ET; after that we treat bars as next trading day.
+  const base = new Date(Date.UTC(year, month - 1, day));
+  if (hour >= SESSION_ROLLOVER_HOUR) {
+    base.setUTCDate(base.getUTCDate() + 1);
+  }
+
+  return base.toISOString().slice(0, 10);
 }
 
 function pushLinePoint(
@@ -100,7 +129,7 @@ function computeSessionAwareVwap(candles: Candle[]): IndicatorLinePoint[] {
   let cumulativeVolume = 0;
 
   for (const candle of candles) {
-    const sessionKey = utcSessionKey(Number(candle.time));
+    const sessionKey = cmeSessionKey(Number(candle.time));
     if (sessionKey !== currentSession) {
       currentSession = sessionKey;
       cumulativeTypicalPriceVolume = 0;
@@ -133,7 +162,7 @@ function computeSessionHighLow(candles: Candle[]): {
   let sessionLow = Number.POSITIVE_INFINITY;
 
   for (const candle of candles) {
-    const sessionKey = utcSessionKey(Number(candle.time));
+    const sessionKey = cmeSessionKey(Number(candle.time));
     if (sessionKey !== currentSession) {
       currentSession = sessionKey;
       sessionHigh = candle.high;
@@ -162,7 +191,7 @@ function computePreviousDayLevels(candles: Candle[]): {
   const orderedSessions: string[] = [];
 
   for (const candle of candles) {
-    const sessionKey = utcSessionKey(Number(candle.time));
+    const sessionKey = cmeSessionKey(Number(candle.time));
     const current = dailyRanges.get(sessionKey);
 
     if (!current) {
@@ -186,7 +215,7 @@ function computePreviousDayLevels(candles: Candle[]): {
   const low: IndicatorLinePoint[] = [];
 
   for (const candle of candles) {
-    const previousRange = previousRangeBySession.get(utcSessionKey(Number(candle.time)));
+    const previousRange = previousRangeBySession.get(cmeSessionKey(Number(candle.time)));
     if (!previousRange) {
       continue;
     }

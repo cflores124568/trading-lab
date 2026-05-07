@@ -11,12 +11,14 @@ import {
   createWorkspaceCopyName,
   createWorkspacePanel,
   normalizeWorkspaceCollectionState,
+  normalizeWorkspaceAccountProfile,
   normalizePanelTitle,
   normalizeWorkspaceName,
   MAX_WORKSPACE_PANELS,
   reconcileWorkspaceLayout,
   WORKSPACE_PRESET_OPTIONS,
   type ChartPanelQuery,
+  type WorkspaceAccountProfile,
   type WorkspaceLayout,
   type WorkspacePreset,
 } from "../components/workspace/chartPanelTypes";
@@ -109,6 +111,17 @@ export default function Dashboard() {
     );
   };
 
+  const handleWorkspaceAccountProfileChange = (nextProfile: WorkspaceAccountProfile) => {
+    const workspaceIndex = activeWorkspaceIndex();
+    const currentProfile = workspace.workspaces[workspaceIndex]?.accountProfile;
+    setWorkspace(
+      "workspaces",
+      workspaceIndex,
+      "accountProfile",
+      normalizeWorkspaceAccountProfile(nextProfile, currentProfile),
+    );
+  };
+
   const handleCreateWorkspace = () => {
     const currentWorkspace = activeWorkspace();
     const nextWorkspace = buildSavedWorkspace(
@@ -117,6 +130,7 @@ export default function Dashboard() {
         workspace.workspaces.map((candidate) => candidate.name),
       ),
       cloneWorkspaceState(currentWorkspace),
+      currentWorkspace.accountProfile,
     );
 
     batch(() => {
@@ -378,6 +392,7 @@ export default function Dashboard() {
           defaultWorkspaceId={workspace.defaultWorkspaceId}
           workspaceName={activeWorkspace().name}
           workspaceCount={workspace.workspaces.length}
+          accountProfile={activeWorkspace().accountProfile}
           workspaces={workspace.workspaces.map((candidate) => ({
             id: candidate.id,
             name: candidate.name,
@@ -391,6 +406,7 @@ export default function Dashboard() {
           onWorkspaceChange={handleWorkspaceChange}
           onDefaultWorkspaceChange={handleDefaultWorkspaceChange}
           onWorkspaceNameChange={handleWorkspaceNameChange}
+          onWorkspaceAccountProfileChange={handleWorkspaceAccountProfileChange}
           onCreateWorkspace={handleCreateWorkspace}
           onDeleteWorkspace={handleDeleteWorkspace}
           onPresetChange={handlePresetChange}
@@ -413,6 +429,48 @@ export default function Dashboard() {
 
             {showUtilityRail() ? (
               <aside class="hidden xl:flex min-h-[640px] flex-col gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
+                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/85 p-4">
+                  <div class="flex items-center gap-2 text-zinc-100">
+                    <PanelRight size={16} class="text-cyan-300" />
+                    <p class="text-sm font-semibold">Account Context</p>
+                  </div>
+                  <div class="mt-3 space-y-2 text-sm">
+                    <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2">
+                      <p class="text-xs uppercase tracking-[0.16em] text-zinc-500">Firm</p>
+                      <p class="mt-1 font-medium text-zinc-100">
+                        {activeWorkspace().accountProfile.propFirm || "Not set"}
+                      </p>
+                    </div>
+                    <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2">
+                      <p class="text-xs uppercase tracking-[0.16em] text-zinc-500">Account</p>
+                      <p class="mt-1 font-medium text-zinc-100">
+                        {activeWorkspace().accountProfile.accountLabel || "Not set"}
+                      </p>
+                      <p class="mt-1 text-xs text-zinc-500">
+                        {activeWorkspace().accountProfile.accountStage || "Stage not set"}
+                      </p>
+                    </div>
+                    <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2">
+                      <p class="text-xs uppercase tracking-[0.16em] text-zinc-500">Risk Snapshot</p>
+                      <p class="mt-1 text-xs text-zinc-300">
+                        Daily Loss: {activeWorkspace().accountProfile.dailyLossLimit?.toLocaleString() ?? "n/a"}
+                      </p>
+                      <p class="text-xs text-zinc-300">
+                        Max DD: {activeWorkspace().accountProfile.maxDrawdown?.toLocaleString() ?? "n/a"}
+                      </p>
+                      <p class="text-xs text-zinc-300">
+                        Profit Target: {activeWorkspace().accountProfile.profitTarget?.toLocaleString() ?? "n/a"}
+                      </p>
+                    </div>
+                    {activeWorkspace().accountProfile.notes ? (
+                      <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2">
+                        <p class="text-xs uppercase tracking-[0.16em] text-zinc-500">Notes</p>
+                        <p class="mt-1 text-xs text-zinc-300">{activeWorkspace().accountProfile.notes}</p>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
                 <div class="rounded-2xl border border-zinc-800 bg-zinc-950/85 p-4">
                   <div class="flex items-center gap-2 text-zinc-100">
                     <LayoutPanelTop size={16} class="text-sky-300" />

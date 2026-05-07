@@ -1,8 +1,11 @@
 import { createEffect, createSignal } from "solid-js";
 import { Check, CopyPlus, PanelRight, Plus, Star, Trash2 } from "lucide-solid";
 import {
+  MAX_WORKSPACE_ACCOUNT_FIELD_LENGTH,
+  MAX_WORKSPACE_ACCOUNT_NOTES_LENGTH,
   MAX_WORKSPACE_NAME_LENGTH,
   normalizeWorkspaceName,
+  type WorkspaceAccountProfile,
   type WorkspacePreset,
   type WorkspacePresetOption,
 } from "./chartPanelTypes";
@@ -18,6 +21,7 @@ interface Props {
   workspaceName: string;
   workspaceCount: number;
   workspaces: WorkspaceOption[];
+  accountProfile: WorkspaceAccountProfile;
   preset: WorkspacePreset;
   options: WorkspacePresetOption[];
   panelCount: number;
@@ -27,6 +31,7 @@ interface Props {
   onWorkspaceChange: (workspaceId: string) => void;
   onDefaultWorkspaceChange: (workspaceId: string) => void;
   onWorkspaceNameChange: (name: string) => void;
+  onWorkspaceAccountProfileChange: (profile: WorkspaceAccountProfile) => void;
   onCreateWorkspace: () => void;
   onDeleteWorkspace: () => void;
   onPresetChange: (preset: WorkspacePreset) => void;
@@ -68,15 +73,61 @@ function LayoutPreview(props: { preset: WorkspacePreset }) {
 
 export default function WorkspaceToolbar(props: Props) {
   const [nameDraft, setNameDraft] = createSignal(props.workspaceName);
+  const [dailyLossDraft, setDailyLossDraft] = createSignal("");
+  const [maxDrawdownDraft, setMaxDrawdownDraft] = createSignal("");
+  const [profitTargetDraft, setProfitTargetDraft] = createSignal("");
 
   createEffect(() => {
     setNameDraft(props.workspaceName);
+  });
+
+  createEffect(() => {
+    setDailyLossDraft(
+      props.accountProfile.dailyLossLimit === null ? "" : String(props.accountProfile.dailyLossLimit),
+    );
+    setMaxDrawdownDraft(
+      props.accountProfile.maxDrawdown === null ? "" : String(props.accountProfile.maxDrawdown),
+    );
+    setProfitTargetDraft(
+      props.accountProfile.profitTarget === null ? "" : String(props.accountProfile.profitTarget),
+    );
   });
 
   const commitWorkspaceName = () => {
     const nextName = normalizeWorkspaceName(nameDraft(), props.workspaceName);
     setNameDraft(nextName);
     props.onWorkspaceNameChange(nextName);
+  };
+
+  const updateAccountProfile = (patch: Partial<WorkspaceAccountProfile>) => {
+    props.onWorkspaceAccountProfileChange({
+      ...props.accountProfile,
+      ...patch,
+    });
+  };
+
+  const parseRiskInput = (value: string): number | null => {
+    const cleaned = value.trim();
+    if (!cleaned) {
+      return null;
+    }
+
+    const parsed = Number(cleaned);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return null;
+    }
+
+    return Math.round(parsed * 100) / 100;
+  };
+
+  const commitRiskInput = (
+    value: string,
+    setDraft: (value: string) => void,
+    key: "dailyLossLimit" | "maxDrawdown" | "profitTarget",
+  ) => {
+    const normalized = parseRiskInput(value);
+    setDraft(normalized === null ? "" : String(normalized));
+    updateAccountProfile({ [key]: normalized });
   };
 
   return (
@@ -227,6 +278,100 @@ export default function WorkspaceToolbar(props: Props) {
             </div>
           </div>
         </div>
+
+        <div class="grid gap-3 xl:grid-cols-3">
+          <label class="space-y-1">
+            <span class="block text-xs text-zinc-500">Prop firm</span>
+            <input
+              type="text"
+              class={field}
+              value={props.accountProfile.propFirm}
+              maxLength={MAX_WORKSPACE_ACCOUNT_FIELD_LENGTH}
+              placeholder="Apex / Topstep / MyFundedFutures"
+              onInput={(event) => updateAccountProfile({ propFirm: event.currentTarget.value })}
+            />
+          </label>
+
+          <label class="space-y-1">
+            <span class="block text-xs text-zinc-500">Account label</span>
+            <input
+              type="text"
+              class={field}
+              value={props.accountProfile.accountLabel}
+              maxLength={MAX_WORKSPACE_ACCOUNT_FIELD_LENGTH}
+              placeholder="50k Eval #2"
+              onInput={(event) => updateAccountProfile({ accountLabel: event.currentTarget.value })}
+            />
+          </label>
+
+          <label class="space-y-1">
+            <span class="block text-xs text-zinc-500">Stage</span>
+            <input
+              type="text"
+              class={field}
+              value={props.accountProfile.accountStage}
+              maxLength={MAX_WORKSPACE_ACCOUNT_FIELD_LENGTH}
+              placeholder="Evaluation / Funded / PA"
+              onInput={(event) => updateAccountProfile({ accountStage: event.currentTarget.value })}
+            />
+          </label>
+
+          <label class="space-y-1">
+            <span class="block text-xs text-zinc-500">Daily loss limit</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.01"
+              class={field}
+              value={dailyLossDraft()}
+              placeholder="1500"
+              onInput={(event) => setDailyLossDraft(event.currentTarget.value)}
+              onBlur={(event) => commitRiskInput(event.currentTarget.value, setDailyLossDraft, "dailyLossLimit")}
+            />
+          </label>
+
+          <label class="space-y-1">
+            <span class="block text-xs text-zinc-500">Max drawdown</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.01"
+              class={field}
+              value={maxDrawdownDraft()}
+              placeholder="2500"
+              onInput={(event) => setMaxDrawdownDraft(event.currentTarget.value)}
+              onBlur={(event) => commitRiskInput(event.currentTarget.value, setMaxDrawdownDraft, "maxDrawdown")}
+            />
+          </label>
+
+          <label class="space-y-1">
+            <span class="block text-xs text-zinc-500">Profit target</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.01"
+              class={field}
+              value={profitTargetDraft()}
+              placeholder="3000"
+              onInput={(event) => setProfitTargetDraft(event.currentTarget.value)}
+              onBlur={(event) => commitRiskInput(event.currentTarget.value, setProfitTargetDraft, "profitTarget")}
+            />
+          </label>
+        </div>
+
+        <label class="space-y-1">
+          <span class="block text-xs text-zinc-500">Account notes</span>
+          <textarea
+            class={`${field} min-h-16 resize-y`}
+            value={props.accountProfile.notes}
+            maxLength={MAX_WORKSPACE_ACCOUNT_NOTES_LENGTH}
+            placeholder="Rules quirks, payout milestones, personal guardrails..."
+            onInput={(event) => updateAccountProfile({ notes: event.currentTarget.value })}
+          />
+        </label>
 
         <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-800 bg-zinc-950/55 px-3 py-2 text-xs text-zinc-500">
           <span>

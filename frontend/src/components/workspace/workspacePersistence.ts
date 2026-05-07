@@ -2,6 +2,7 @@ import { BACKTEST_INTERVALS, getBackendInterval } from "../../constants";
 import {
   cloneWorkspaceState,
   createWorkspacePanel,
+  normalizeWorkspaceAccountProfile,
   normalizeWorkspaceCollectionState,
   type ChartPanelQuery,
   type SavedWorkspace,
@@ -39,6 +40,7 @@ function cloneSavedWorkspace(workspace: SavedWorkspace): SavedWorkspace {
     name: workspace.name,
     selectedPreset: nextState.selectedPreset,
     presets: nextState.presets,
+    accountProfile: normalizeWorkspaceAccountProfile(workspace.accountProfile),
   };
 }
 
