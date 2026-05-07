@@ -313,6 +313,46 @@ export default function PriceChart(props: Props) {
       ? points
       : points.filter((point) => Number(point.time) <= Number(lastVisibleTime));
 
+  const latestVisibleValue = (
+    points: IndicatorLinePoint[],
+    lastVisibleTime: Time | undefined,
+  ): number | undefined => {
+    const cutoff = lastVisibleTime === undefined ? Number.POSITIVE_INFINITY : Number(lastVisibleTime);
+
+    for (let index = points.length - 1; index >= 0; index -= 1) {
+      const point = points[index];
+      if (Number(point.time) <= cutoff && Number.isFinite(point.value)) {
+        return point.value;
+      }
+    }
+
+    return undefined;
+  };
+
+  const buildFlatLevelLine = (
+    candles: Candle[],
+    value: number | undefined,
+  ): IndicatorLinePoint[] => {
+    if (candles.length === 0 || value === undefined || !Number.isFinite(value)) {
+      return [];
+    }
+
+    const firstTime = candles[0]?.time;
+    const lastTime = candles[candles.length - 1]?.time;
+    if (firstTime === undefined || lastTime === undefined) {
+      return [];
+    }
+
+    if (Number(firstTime) === Number(lastTime)) {
+      return [{ time: firstTime, value }];
+    }
+
+    return [
+      { time: firstTime, value },
+      { time: lastTime, value },
+    ];
+  };
+
   const renderChartState = () => {
     if (!chart || !candleSeries) return;
 
@@ -352,25 +392,50 @@ export default function PriceChart(props: Props) {
     vwapSeries?.setData(
       settings.vwap ? filterVisibleLinePoints(series.vwap, lastVisibleTime) : [],
     );
-    sessionHighSeries?.setData(
-      settings.sessionHighLow
+    const sessionHighData = settings.sessionHighLow
+      ? settings.levelTrail
         ? filterVisibleLinePoints(series.sessionHigh, lastVisibleTime)
-        : [],
+        : buildFlatLevelLine(
+            nextVisibleCandles,
+            latestVisibleValue(series.sessionHigh, lastVisibleTime),
+          )
+      : [];
+    const sessionLowData = settings.sessionHighLow
+      ? settings.levelTrail
+        ? filterVisibleLinePoints(series.sessionLow, lastVisibleTime)
+        : buildFlatLevelLine(
+            nextVisibleCandles,
+            latestVisibleValue(series.sessionLow, lastVisibleTime),
+          )
+      : [];
+    const previousDayHighData = settings.previousDayHighLow
+      ? settings.levelTrail
+        ? filterVisibleLinePoints(series.previousDayHigh, lastVisibleTime)
+        : buildFlatLevelLine(
+            nextVisibleCandles,
+            latestVisibleValue(series.previousDayHigh, lastVisibleTime),
+          )
+      : [];
+    const previousDayLowData = settings.previousDayHighLow
+      ? settings.levelTrail
+        ? filterVisibleLinePoints(series.previousDayLow, lastVisibleTime)
+        : buildFlatLevelLine(
+            nextVisibleCandles,
+            latestVisibleValue(series.previousDayLow, lastVisibleTime),
+          )
+      : [];
+
+    sessionHighSeries?.setData(
+      sessionHighData,
     );
     sessionLowSeries?.setData(
-      settings.sessionHighLow
-        ? filterVisibleLinePoints(series.sessionLow, lastVisibleTime)
-        : [],
+      sessionLowData,
     );
     previousDayHighSeries?.setData(
-      settings.previousDayHighLow
-        ? filterVisibleLinePoints(series.previousDayHigh, lastVisibleTime)
-        : [],
+      previousDayHighData,
     );
     previousDayLowSeries?.setData(
-      settings.previousDayHighLow
-        ? filterVisibleLinePoints(series.previousDayLow, lastVisibleTime)
-        : [],
+      previousDayLowData,
     );
     volumeSeries?.setData(
       settings.volume ? filterVisibleVolumePoints(series.volume, lastVisibleTime) : [],

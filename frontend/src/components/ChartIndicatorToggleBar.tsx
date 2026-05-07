@@ -13,6 +13,7 @@ const indicatorOptions: { key: keyof PriceChartIndicatorSettings; label: string 
   { key: "vwap", label: "VWAP" },
   { key: "sessionHighLow", label: "Session H/L" },
   { key: "previousDayHighLow", label: "Prev Day H/L" },
+  { key: "levelTrail", label: "Level Trail" },
   { key: "volume", label: "Volume" },
 ];
 

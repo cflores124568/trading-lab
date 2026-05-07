@@ -9,6 +9,7 @@ export interface PriceChartIndicatorSettings {
   sessionHighLow: boolean;
   previousDayHighLow: boolean;
   volume: boolean;
+  levelTrail: boolean;
 }
 
 export interface IndicatorLinePoint {
@@ -42,6 +43,7 @@ const DEFAULT_INDICATOR_SETTINGS: PriceChartIndicatorSettings = {
   sessionHighLow: false,
   previousDayHighLow: false,
   volume: false,
+  levelTrail: false,
 };
 
 function utcSessionKey(time: number): string {
@@ -223,6 +225,7 @@ export function normalizePriceChartIndicatorSettings(
     previousDayHighLow:
       value?.previousDayHighLow ?? DEFAULT_INDICATOR_SETTINGS.previousDayHighLow,
     volume: value?.volume ?? DEFAULT_INDICATOR_SETTINGS.volume,
+    levelTrail: value?.levelTrail ?? DEFAULT_INDICATOR_SETTINGS.levelTrail,
   };
 }
 
