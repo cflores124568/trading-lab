@@ -41,7 +41,7 @@ const DEFAULT_INDICATOR_SETTINGS: PriceChartIndicatorSettings = {
   vwap: true,
   sessionHighLow: false,
   previousDayHighLow: false,
-  volume: true,
+  volume: false,
 };
 
 function utcSessionKey(time: number): string {

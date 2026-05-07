@@ -95,6 +95,72 @@ function buildVolumeValueMap(points: VolumeHistogramPoint[]): Map<number, number
   return new Map(points.map((point) => [Number(point.time), point.value]));
 }
 
+function median(values: number[]): number | undefined {
+  if (values.length === 0) {
+    return undefined;
+  }
+
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+
+  if (sorted.length % 2 === 0) {
+    return (sorted[middle - 1] + sorted[middle]) / 2;
+  }
+
+  return sorted[middle];
+}
+
+function sanitizeCandles(candles: Candle[]): Candle[] {
+  const structurallyValid = candles.filter((candle) => {
+    const values = [candle.open, candle.high, candle.low, candle.close, candle.volume];
+    if (values.some((value) => !Number.isFinite(value))) {
+      return false;
+    }
+
+    if (candle.open <= 0 || candle.high <= 0 || candle.low <= 0 || candle.close <= 0) {
+      return false;
+    }
+
+    if (candle.high < candle.low) {
+      return false;
+    }
+
+    return true;
+  });
+
+  if (structurallyValid.length <= 2) {
+    return structurallyValid;
+  }
+
+  const medianClose = median(structurallyValid.map((candle) => candle.close));
+  if (!medianClose || !Number.isFinite(medianClose) || medianClose <= 0) {
+    return structurallyValid;
+  }
+
+  const lowerBound = medianClose * 0.2;
+  const upperBound = medianClose * 5;
+
+  const withoutPriceSpikes = structurallyValid.filter((candle) => {
+    if (
+      candle.open < lowerBound ||
+      candle.open > upperBound ||
+      candle.high < lowerBound ||
+      candle.high > upperBound ||
+      candle.low < lowerBound ||
+      candle.low > upperBound ||
+      candle.close < lowerBound ||
+      candle.close > upperBound
+    ) {
+      return false;
+    }
+
+    // If a bar spans more than 100% of price in one step, it's almost certainly junk.
+    return (candle.high - candle.low) / candle.close <= 1;
+  });
+
+  return withoutPriceSpikes.length > 0 ? withoutPriceSpikes : structurallyValid;
+}
+
 export default function PriceChart(props: Props) {
   let container!: HTMLDivElement;
   let chart: IChartApi | undefined;
@@ -104,10 +170,12 @@ export default function PriceChart(props: Props) {
   const indicatorSettings = createMemo(() =>
     normalizePriceChartIndicatorSettings(props.indicators),
   );
-  const indicatorSeries = createMemo(() => buildPriceChartIndicatorSeries(props.candles));
+  const sanitizedCandles = createMemo(() => sanitizeCandles(props.candles));
+  const indicatorSeries = createMemo(() => buildPriceChartIndicatorSeries(sanitizedCandles()));
   const indicatorLegendMode = createMemo(() => props.indicatorLegend ?? "compact");
   const visibleCandles = createMemo(() => {
-    const totalCandles = props.candles.length;
+    const candles = sanitizedCandles();
+    const totalCandles = candles.length;
     if (totalCandles === 0) {
       return [];
     }
@@ -117,7 +185,7 @@ export default function PriceChart(props: Props) {
         ? totalCandles - 1
         : Math.min(Math.max(props.visibleIndex, 0), totalCandles - 1);
 
-    return props.candles.slice(0, endIndex + 1);
+    return candles.slice(0, endIndex + 1);
   });
   const activeCandle = createMemo(() => {
     const candles = visibleCandles();
@@ -334,6 +402,7 @@ export default function PriceChart(props: Props) {
     });
 
     candleSeries = chart.addSeries(CandlestickSeries, {
+      priceScaleId: "right",
       upColor: "#22c55e",
       downColor: "#ef4444",
       borderVisible: false,
@@ -347,48 +416,56 @@ export default function PriceChart(props: Props) {
       },
     });
     ema9Series = chart.addSeries(LineSeries, {
+      priceScaleId: "right",
       color: "#38bdf8",
       lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: true,
     });
     ema20Series = chart.addSeries(LineSeries, {
+      priceScaleId: "right",
       color: "#f59e0b",
       lineWidth: 2,
       priceLineVisible: false,
       lastValueVisible: true,
     });
     ema50Series = chart.addSeries(LineSeries, {
+      priceScaleId: "right",
       color: "#f97316",
       lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: true,
     });
     vwapSeries = chart.addSeries(LineSeries, {
+      priceScaleId: "right",
       color: "#a78bfa",
       lineWidth: 2,
       priceLineVisible: false,
       lastValueVisible: true,
     });
     sessionHighSeries = chart.addSeries(LineSeries, {
+      priceScaleId: "right",
       color: "#22c55e",
       lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: true,
     });
     sessionLowSeries = chart.addSeries(LineSeries, {
+      priceScaleId: "right",
       color: "#f43f5e",
       lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: true,
     });
     previousDayHighSeries = chart.addSeries(LineSeries, {
+      priceScaleId: "right",
       color: "#14b8a6",
       lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: true,
     });
     previousDayLowSeries = chart.addSeries(LineSeries, {
+      priceScaleId: "right",
       color: "#ec4899",
       lineWidth: 1,
       priceLineVisible: false,
@@ -396,6 +473,7 @@ export default function PriceChart(props: Props) {
     });
     volumeSeries = chart.addSeries(HistogramSeries, {
       priceFormat: { type: "volume" },
+      priceScaleId: "volume",
       priceLineVisible: false,
       lastValueVisible: false,
     });
