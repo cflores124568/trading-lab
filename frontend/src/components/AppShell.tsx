@@ -59,10 +59,7 @@ export default function AppShell(props: AppShellProps) {
               <span class="flex h-8 w-8 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900/80 text-sky-300 transition-colors group-hover:border-zinc-700 group-hover:text-sky-200">
                 <CandlestickChart size={17} />
               </span>
-              <span class="app-brand leading-tight">
-                Trading
-                <span class="block text-zinc-400">Lab</span>
-              </span>
+              <span class="app-brand text-lg leading-none text-[#b7ebe5]">Trading Lab</span>
             </A>
 
             <nav class="flex max-w-[calc(100vw-3rem)] flex-nowrap items-center gap-1.5 overflow-x-auto rounded-md border border-zinc-800/80 bg-zinc-950/80 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:max-w-none">
