@@ -48,9 +48,9 @@ export default function AppShell(props: AppShellProps) {
   };
 
   return (
-    <div class="min-h-screen bg-zinc-950 text-zinc-100">
+    <div class="flex min-h-screen flex-col bg-zinc-950 text-zinc-100">
       <header class="sticky top-0 z-40 border-b border-zinc-800/80 bg-zinc-950/92 backdrop-blur-xl">
-        <div class="mx-auto flex max-w-7xl items-center justify-between gap-6 px-6 py-3">
+        <div class="mx-auto flex max-w-screen-2xl items-center justify-between gap-6 px-6 py-3">
           <div class="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:gap-7">
             <A
               href="/"
@@ -104,7 +104,7 @@ export default function AppShell(props: AppShellProps) {
         </div>
       </header>
 
-      <main class="mx-auto flex max-w-7xl flex-col gap-6 px-6 py-8">
+      <main class="mx-auto flex min-h-0 flex-1 min-w-0 max-w-screen-2xl flex-col gap-6 overflow-x-hidden px-6 py-8">
         {(props.title || props.subtitle || props.actions) && (
           <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div class="space-y-2">

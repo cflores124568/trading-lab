@@ -64,10 +64,6 @@ function getBoundaryOffsets(weights: number[]): number[] {
   });
 }
 
-function getDesktopMinHeight(rowCount: number): string {
-  return `${Math.max(640, rowCount * 360)}px`;
-}
-
 function ResizeHandle(props: ResizeHandleProps) {
   const isVertical = props.axis === "x";
 
@@ -75,16 +71,18 @@ function ResizeHandle(props: ResizeHandleProps) {
     <button
       type="button"
       aria-label={isVertical ? "Resize chart columns" : "Resize chart rows"}
-      class={`absolute z-20 hidden rounded-full border border-zinc-600 bg-zinc-950/95 shadow-[0_0_0_1px_rgba(24,24,27,0.65)] transition-colors hover:border-zinc-400 hover:bg-zinc-900 xl:flex ${
+      class={`absolute z-20 hidden items-center justify-center bg-transparent transition-colors hover:bg-zinc-800/20 xl:flex ${
         isVertical
-          ? "top-6 bottom-6 w-3 -translate-x-1/2 cursor-col-resize items-center justify-center"
-          : "left-6 right-6 h-3 -translate-y-1/2 cursor-row-resize items-center justify-center"
+          ? "top-0 bottom-0 w-5 -translate-x-1/2 cursor-col-resize"
+          : "left-0 right-0 h-5 -translate-y-1/2 cursor-row-resize"
       }`}
       style={props.style}
       onPointerDown={props.onPointerDown}
     >
       <span
-        class={`rounded-full bg-zinc-500/80 ${isVertical ? "h-16 w-[3px]" : "h-[3px] w-16"}`}
+        class={`pointer-events-none rounded-full bg-zinc-500/80 shadow-[0_0_0_1px_rgba(24,24,27,0.65)] ${
+          isVertical ? "h-16 w-[2px]" : "h-[2px] w-16"
+        }`}
       />
     </button>
   );
@@ -268,8 +266,8 @@ function DesktopRow(props: {
   const rightPanel = () => props.panels[1];
 
   return (
-    <div class="relative h-full">
-      <div ref={container} class="flex h-full gap-3">
+    <div class="relative h-full min-w-0">
+      <div ref={container} class="flex h-full min-w-0 gap-3">
         <div
           class="min-h-0 min-w-0"
           style={{ flex: `${props.columnRatio ?? 1} 1 0%` }}
@@ -352,11 +350,10 @@ function ThreePanelDesktopLayout(props: {
   const secondaryOffsets = () => getBoundaryOffsets(secondaryWeights());
 
   return (
-    <div class="relative hidden xl:block">
+    <div class="relative hidden h-full w-full min-w-0 xl:block">
       <div
         ref={container}
-        class="flex gap-3"
-        style={{ "min-height": getDesktopMinHeight(2) }}
+        class="flex h-full min-w-0 gap-3"
       >
         <div class="min-h-0 min-w-0" style={{ flex: `${primaryRatio()} 1 0%` }}>
           <PanelSlot
@@ -465,11 +462,10 @@ function FocusDesktopLayout(props: {
   const rowOffsets = getBoundaryOffsets(props.layout.rowWeights);
 
   return (
-    <div class="relative hidden xl:block">
+    <div class="relative hidden h-full w-full min-w-0 xl:block">
       <div
         ref={container}
-        class="flex flex-col gap-3"
-        style={{ "min-height": getDesktopMinHeight(props.panels.length) }}
+        class="flex h-full min-w-0 flex-col gap-3"
       >
         {props.panels.map((panel, index) => (
           <div class="min-h-0" style={{ flex: `${props.layout.rowWeights[index] ?? 1} 1 0%` }}>
@@ -527,11 +523,10 @@ function TiledDesktopLayout(props: {
   const rowOffsets = getBoundaryOffsets(props.layout.rowWeights);
 
   return (
-    <div class="relative hidden xl:block">
+    <div class="relative hidden h-full w-full min-w-0 xl:block">
       <div
         ref={container}
-        class="flex flex-col gap-3"
-        style={{ "min-height": getDesktopMinHeight(rows.length) }}
+        class="flex h-full min-w-0 flex-col gap-3"
       >
         {rows.map((row, index) => (
           <div class="min-h-0" style={{ flex: `${props.layout.rowWeights[index] ?? 1} 1 0%` }}>

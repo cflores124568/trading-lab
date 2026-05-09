@@ -386,7 +386,8 @@ export default function Dashboard() {
         </div>
       ) : null}
 
-      <section class="app-panel overflow-hidden">
+      <div class="flex min-h-0 flex-1 flex-col gap-6">
+        <section class="app-panel flex min-h-0 flex-1 flex-col overflow-hidden">
         <WorkspaceToolbar
           workspaceId={activeWorkspace().id}
           defaultWorkspaceId={workspace.defaultWorkspaceId}
@@ -413,8 +414,8 @@ export default function Dashboard() {
           onAddChart={handleAddChart}
           onToggleUtilityRail={() => setShowUtilityRail((current) => !current)}
         />
-        <div class="p-3 lg:p-4">
-          <div class={`grid gap-3 ${showUtilityRail() ? "xl:grid-cols-[minmax(0,1fr)_280px]" : ""}`}>
+          <div class="min-h-0 flex-1 p-3 lg:p-4">
+            <div class={`grid h-full min-w-0 gap-3 ${showUtilityRail() ? "xl:grid-cols-[minmax(0,1fr)_280px]" : ""}`}>
             <WorkspaceGrid
               preset={activeWorkspace().selectedPreset}
               panels={activePresetState().panels}
@@ -427,8 +428,8 @@ export default function Dashboard() {
               onPanelMove={handlePanelMove}
             />
 
-            {showUtilityRail() ? (
-              <aside class="hidden xl:flex min-h-[640px] flex-col gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
+              {showUtilityRail() ? (
+                <aside class="hidden min-h-0 xl:flex flex-col gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
                 <div class="rounded-2xl border border-zinc-800 bg-zinc-950/85 p-4">
                   <div class="flex items-center gap-2 text-zinc-100">
                     <PanelRight size={16} class="text-cyan-300" />
@@ -557,10 +558,11 @@ export default function Dashboard() {
                   </div>
                 </div>
               </aside>
-            ) : null}
+              ) : null}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </AppShell>
   );
 }
