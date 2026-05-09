@@ -1207,7 +1207,7 @@ export default function ReplayLabPage() {
           </div>
         </Show>
 
-        <section class={section}>
+        <section class={`${section} app-panel-selected`}>
           <div class="space-y-2">
             <p class="app-kicker">
               {activeSourceBacktest() || sourceBacktestId() ? "Saved Backtest Source" : "Standalone Session"}
@@ -1229,8 +1229,8 @@ export default function ReplayLabPage() {
           <div class="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
             <For each={sessionSummary()}>
               {([key, value]) => (
-                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">{key}</p>
+                <div class="rounded-2xl border border-zinc-700/80 bg-zinc-950/65 px-4 py-3">
+                  <p class="app-metric-label">{key}</p>
                   <p class="mt-2 text-sm font-medium text-zinc-100">{value}</p>
                 </div>
               )}
@@ -1501,7 +1501,7 @@ export default function ReplayLabPage() {
                 <div class="space-y-6">
                   <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
                     <div class="space-y-2">
-                      <p class="text-xs uppercase tracking-[0.18em] text-sky-300">Replay In Progress</p>
+                      <p class="text-xs uppercase tracking-[0.18em] text-sky-300">Current Session</p>
                       <h2 class="text-2xl font-semibold text-zinc-100">
                         {sessionName() || defaultSessionName(config())}
                       </h2>
@@ -1520,7 +1520,7 @@ export default function ReplayLabPage() {
                           </div>
                         )}
                       </Show>
-                      <div class="rounded-full border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs font-medium uppercase tracking-[0.16em] text-zinc-400">
+                      <div class="rounded-full border border-sky-400/75 bg-sky-400/12 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-sky-100">
                         {formatReplaySessionStatus(replayStatus())}
                       </div>
                       <Show when={canUnlockReview()}>
@@ -1545,7 +1545,7 @@ export default function ReplayLabPage() {
                         onToggle={toggleIndicator}
                       />
 
-                      <div class="overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-950/70 p-3">
+                      <div class="overflow-hidden rounded-3xl border border-zinc-700/80 bg-zinc-950/76 p-4">
                         <Show
                           when={candles.error}
                           fallback={
@@ -1661,7 +1661,7 @@ export default function ReplayLabPage() {
                     </div>
 
                     <div class="space-y-4">
-                      <div class="rounded-3xl border border-zinc-800 bg-zinc-950/60 p-5">
+                      <div class="rounded-3xl border border-zinc-700/80 bg-zinc-950/65 p-5">
                         <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Session Pulse</p>
                         <div class="mt-4 grid gap-3">
                           <ReplayStatCard
@@ -1683,7 +1683,7 @@ export default function ReplayLabPage() {
                         </div>
                       </div>
 
-                      <div class="rounded-3xl border border-zinc-800 bg-zinc-950/60 p-5">
+                      <div class="rounded-3xl border border-zinc-700/80 bg-zinc-950/65 p-5">
                         <div class="flex items-center justify-between gap-3">
                           <div>
                             <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Bracket Builder</p>
@@ -1746,18 +1746,18 @@ export default function ReplayLabPage() {
                         </div>
                       </div>
 
-                      <div class="rounded-3xl border border-zinc-800 bg-zinc-950/60 p-5">
+                      <div class="rounded-3xl border border-zinc-700/80 bg-zinc-950/65 p-5">
                         <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Run Context</p>
                         <div class="mt-4 grid gap-3">
                           <div class="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-3">
                             <p class="text-xs text-zinc-500">Commission</p>
-                            <p class="mt-1 font-mono text-sm font-semibold text-zinc-100">
+                            <p class="app-data mt-1 text-sm font-semibold text-zinc-100">
                               ${config().commission.toFixed(2)}
                             </p>
                           </div>
                           <div class="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-3">
                             <p class="text-xs text-zinc-500">Tick Value</p>
-                            <p class="mt-1 font-mono text-sm font-semibold text-zinc-100">
+                            <p class="app-data mt-1 text-sm font-semibold text-zinc-100">
                               ${config().tickValue.toFixed(2)}
                             </p>
                           </div>
@@ -1771,7 +1771,7 @@ export default function ReplayLabPage() {
                             {(source) => (
                               <div class="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-3">
                                 <p class="text-xs text-zinc-500">Source Backtest</p>
-                                <p class="mt-1 font-mono text-sm font-semibold text-zinc-100">
+                                <p class="app-data mt-1 text-sm font-semibold text-zinc-100">
                                   {source().backtest_id}
                                 </p>
                                 <p class="mt-1 text-xs text-zinc-500">
@@ -1916,29 +1916,29 @@ export default function ReplayLabPage() {
                     </div>
 
                     <div class="app-panel overflow-hidden">
-                      <div class="border-b border-zinc-800 p-4">
+                      <div class="border-b border-zinc-700/80 px-4 py-3">
                         <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Execution Tape</p>
                         <p class="mt-1 text-sm text-zinc-400">
                           Synthetic order lifecycle, fills, and ignores ({session().executionEvents.length})
                         </p>
                       </div>
-                      <table class="w-full text-sm">
-                        <thead class="text-xs text-zinc-400">
+                      <table class="app-table">
+                        <thead>
                           <tr>
-                            <th class="p-3 text-left">Time</th>
-                            <th class="p-3 text-left">Action</th>
-                            <th class="p-3 text-left">Role</th>
-                            <th class="p-3 text-right">Price</th>
-                            <th class="p-3 text-right">Slip</th>
-                            <th class="p-3 text-left">Note</th>
+                            <th>Time</th>
+                            <th>Action</th>
+                            <th>Role</th>
+                            <th class="text-right">Price</th>
+                            <th class="text-right">Slip</th>
+                            <th>Note</th>
                           </tr>
                         </thead>
                         <tbody>
                           <Show
                             when={(executionAnalytics()?.tape.length ?? 0) > 0}
                             fallback={
-                              <tr class="border-t border-zinc-800">
-                                <td class="p-4 text-zinc-500" colSpan={6}>
+                              <tr>
+                                <td class="px-3 py-3 text-zinc-500" colSpan={6}>
                                   No execution events yet. The tape fills in once you start placing actions.
                                 </td>
                               </tr>
@@ -1946,9 +1946,9 @@ export default function ReplayLabPage() {
                           >
                             <For each={[...(executionAnalytics()?.tape ?? [])].reverse().slice(0, 14)}>
                               {(row) => (
-                                <tr class="border-t border-zinc-800 transition-colors hover:bg-zinc-800">
-                                  <td class="p-3 font-mono text-xs text-zinc-400">{row.time}</td>
-                                  <td class="p-3 text-zinc-200">
+                                <tr>
+                                  <td class="app-data text-xs text-zinc-500">{row.time}</td>
+                                  <td class="text-zinc-200">
                                     {row.action}
                                     <Show when={row.side}>
                                       <span class="ml-2 text-xs uppercase tracking-[0.18em] text-zinc-500">
@@ -1956,14 +1956,14 @@ export default function ReplayLabPage() {
                                       </span>
                                     </Show>
                                   </td>
-                                  <td class="p-3 text-zinc-400">
+                                  <td class="text-zinc-400">
                                     {row.role === "n/a" ? row.category : `${row.role} ${row.liquidity}`}
                                   </td>
-                                  <td class="p-3 text-right font-mono text-zinc-200">
+                                  <td class="app-data text-right text-zinc-200">
                                     {row.price === null ? "n/a" : row.price.toFixed(2)}
                                   </td>
                                   <td
-                                    class={`p-3 text-right font-mono ${
+                                    class={`app-data text-right ${
                                       row.slippageTicks === null
                                         ? "text-zinc-500"
                                         : row.slippageTicks < 0
@@ -1975,7 +1975,7 @@ export default function ReplayLabPage() {
                                   >
                                     {formatTicks(row.slippageTicks)}
                                   </td>
-                                  <td class="p-3 text-zinc-400">{row.note ?? " "}</td>
+                                  <td class="text-zinc-400">{row.note ?? " "}</td>
                                 </tr>
                               )}
                             </For>
@@ -1985,30 +1985,30 @@ export default function ReplayLabPage() {
                     </div>
 
                     <div class="app-panel overflow-hidden">
-                      <div class="border-b border-zinc-800 p-4">
+                      <div class="border-b border-zinc-700/80 px-4 py-3">
                         <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Trade Log</p>
                         <p class="mt-1 text-sm text-zinc-400">
                           Replay Trades ({session().trades.length})
                         </p>
                       </div>
-                      <table class="w-full text-sm">
-                        <thead class="text-xs text-zinc-400">
+                      <table class="app-table">
+                        <thead>
                           <tr>
-                            <th class="p-3 text-left">#</th>
-                            <th class="p-3 text-left">Side</th>
-                            <th class="p-3 text-left">Entry Time</th>
-                            <th class="p-3 text-left">Exit Time</th>
-                            <th class="p-3 text-right">Entry $</th>
-                            <th class="p-3 text-right">Exit $</th>
-                            <th class="p-3 text-right">PnL</th>
+                            <th>#</th>
+                            <th>Side</th>
+                            <th>Entry Time</th>
+                            <th>Exit Time</th>
+                            <th class="text-right">Entry $</th>
+                            <th class="text-right">Exit $</th>
+                            <th class="text-right">PnL</th>
                           </tr>
                         </thead>
                         <tbody>
                           <Show
                             when={session().trades.length > 0}
                             fallback={
-                              <tr class="border-t border-zinc-800">
-                                <td class="p-4 text-zinc-500" colSpan={7}>
+                              <tr>
+                                <td class="px-3 py-3 text-zinc-500" colSpan={7}>
                                   No replay trades yet. Use the controls above to place manual
                                   decisions.
                                 </td>
@@ -2017,29 +2017,29 @@ export default function ReplayLabPage() {
                           >
                             <For each={session().trades}>
                               {(trade: Trade) => (
-                                <tr class="border-t border-zinc-800 transition-colors hover:bg-zinc-800">
-                                  <td class="p-3 text-zinc-400">{trade.trade_id}</td>
+                                <tr>
+                                  <td class="app-data text-zinc-500">{trade.trade_id}</td>
                                   <td
-                                    class={`p-3 font-medium ${
+                                    class={`font-medium ${
                                       trade.side === "buy" ? "text-green-400" : "text-red-400"
                                     }`}
                                   >
                                     {trade.side}
                                   </td>
-                                  <td class="p-3 font-mono text-xs text-zinc-400">
+                                  <td class="app-data text-xs text-zinc-500">
                                     {trade.entry_time}
                                   </td>
-                                  <td class="p-3 font-mono text-xs text-zinc-400">
+                                  <td class="app-data text-xs text-zinc-500">
                                     {trade.exit_time}
                                   </td>
-                                  <td class="p-3 text-right font-mono">
+                                  <td class="app-data text-right">
                                     {trade.entry_price.toFixed(2)}
                                   </td>
-                                  <td class="p-3 text-right font-mono">
+                                  <td class="app-data text-right">
                                     {(trade.exit_price ?? 0).toFixed(2)}
                                   </td>
                                   <td
-                                    class={`p-3 text-right font-mono font-semibold ${
+                                    class={`app-data text-right font-semibold ${
                                       trade.pnl >= 0 ? "text-green-400" : "text-red-400"
                                     }`}
                                   >

@@ -35,10 +35,10 @@ function InsightCard(props: {
   tone?: "default" | "good" | "bad";
 }) {
   return (
-    <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-      <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">{props.label}</p>
+    <div class="app-panel rounded-2xl px-4 py-3">
+      <p class="app-metric-label">{props.label}</p>
       <p
-        class={`mt-2 font-mono text-2xl font-semibold ${
+        class={`app-data mt-2 text-3xl font-semibold leading-none ${
           props.tone === "good"
             ? "text-emerald-300"
             : props.tone === "bad"
@@ -48,7 +48,7 @@ function InsightCard(props: {
       >
         {props.value}
       </p>
-      <p class="mt-2 text-sm text-zinc-400">{props.detail}</p>
+      <p class="mt-2 text-sm text-zinc-500">{props.detail}</p>
     </div>
   );
 }
@@ -60,25 +60,25 @@ function TradeTable(props: {
 }) {
   return (
     <div class="app-panel overflow-hidden">
-      <p class="border-b border-zinc-800 p-4 text-sm text-zinc-400">
+      <p class="border-b border-zinc-700/80 px-4 py-3 text-sm text-zinc-400">
         {props.title} ({props.trades.length})
       </p>
-      <table class="w-full text-sm">
-        <thead class="text-xs text-zinc-400">
+      <table class="app-table">
+        <thead>
           <tr>
-            <th class="p-3 text-left">#</th>
-            <th class="p-3 text-left">Side</th>
-            <th class="p-3 text-left">Entry</th>
-            <th class="p-3 text-left">Exit</th>
-            <th class="p-3 text-right">PnL</th>
+            <th>#</th>
+            <th>Side</th>
+            <th>Entry</th>
+            <th>Exit</th>
+            <th class="text-right">PnL</th>
           </tr>
         </thead>
         <tbody>
           <Show
             when={props.trades.length > 0}
             fallback={
-              <tr class="border-t border-zinc-800">
-                <td class="p-4 text-zinc-500" colSpan={5}>
+              <tr>
+                <td class="px-3 py-3 text-zinc-500" colSpan={5}>
                   {props.emptyLabel}
                 </td>
               </tr>
@@ -86,18 +86,18 @@ function TradeTable(props: {
           >
             <For each={props.trades}>
               {(trade) => (
-                <tr class="border-t border-zinc-800 transition-colors hover:bg-zinc-800">
-                  <td class="p-3 text-zinc-400">{trade.trade_id}</td>
+                <tr>
+                  <td class="app-data text-zinc-400">{trade.trade_id}</td>
                   <td
-                    class={`p-3 font-medium ${
+                    class={`font-medium ${
                       trade.side === "buy" ? "text-green-400" : "text-red-400"
                     }`}
                   >
                     {trade.side}
                   </td>
-                  <td class="p-3 text-xs text-zinc-400">{formatTradeTime(trade.entry_time)}</td>
-                  <td class="p-3 text-xs text-zinc-400">{formatTradeTime(trade.exit_time)}</td>
-                  <td class={`p-3 text-right font-mono font-semibold ${tradeTone(trade.pnl)}`}>
+                  <td class="app-data text-xs text-zinc-500">{formatTradeTime(trade.entry_time)}</td>
+                  <td class="app-data text-xs text-zinc-500">{formatTradeTime(trade.exit_time)}</td>
+                  <td class={`app-data text-right font-semibold ${tradeTone(trade.pnl)}`}>
                     {formatMoney(trade.pnl)}
                   </td>
                 </tr>
@@ -197,12 +197,12 @@ export default function ReplayComparePage() {
                         return (
                           <>
                           <section class="grid gap-4 lg:grid-cols-2">
-                            <div class="app-panel app-panel-section space-y-3">
+                            <div class="app-panel app-panel-section app-panel-selected space-y-3">
                               <p class="text-xs uppercase tracking-[0.18em] text-emerald-300">
                                 Manual Session
                               </p>
                               <h2 class="text-xl font-semibold text-zinc-100">{replay.name}</h2>
-                              <p class="font-mono text-xs text-zinc-500">
+                              <p class="app-data text-xs text-zinc-500">
                                 {replay.replay_session_id}
                               </p>
                               <p class="text-sm text-zinc-400">
@@ -217,7 +217,7 @@ export default function ReplayComparePage() {
                               <h2 class="text-xl font-semibold text-zinc-100">
                                 {system.symbol} • {system.strategy.type.replace(/_/g, " ")}
                               </h2>
-                              <p class="font-mono text-xs text-zinc-500">{system.backtest_id}</p>
+                              <p class="app-data text-xs text-zinc-500">{system.backtest_id}</p>
                               <p class="text-sm text-zinc-400">
                                 {system.trades.length} system trades in the saved run
                               </p>
@@ -270,32 +270,32 @@ export default function ReplayComparePage() {
                                     : "Manual session landed on the same prop outcome"}
                               </p>
                               <div class="mt-4 grid gap-3 md:grid-cols-2">
-                                <div class="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                                <div class="rounded-xl border border-zinc-700/80 bg-zinc-950/65 px-4 py-3">
                                   <p class="text-xs text-zinc-500">Manual Pass</p>
                                   <p class="mt-1 text-sm font-semibold text-zinc-100">
                                     {replay.prop_firm_eval.passed ? "Passed" : "Failed"}
                                   </p>
                                 </div>
-                                <div class="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                                <div class="rounded-xl border border-zinc-700/80 bg-zinc-950/65 px-4 py-3">
                                   <p class="text-xs text-zinc-500">System Pass</p>
                                   <p class="mt-1 text-sm font-semibold text-zinc-100">
                                     {system.prop_firm_eval.passed ? "Passed" : "Failed"}
                                   </p>
                                 </div>
-                                <div class="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                                <div class="rounded-xl border border-zinc-700/80 bg-zinc-950/65 px-4 py-3">
                                   <p class="text-xs text-zinc-500">Profit % Delta</p>
                                   <p
-                                    class={`mt-1 font-mono text-sm font-semibold ${tradeTone(
+                                    class={`app-data mt-1 text-sm font-semibold ${tradeTone(
                                       comparison.propComparison.actualProfitPctDiff,
                                     )}`}
                                   >
                                     {formatPercent(comparison.propComparison.actualProfitPctDiff)}
                                   </p>
                                 </div>
-                                <div class="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                                <div class="rounded-xl border border-zinc-700/80 bg-zinc-950/65 px-4 py-3">
                                   <p class="text-xs text-zinc-500">Drawdown % Delta</p>
                                   <p
-                                    class={`mt-1 font-mono text-sm font-semibold ${tradeTone(
+                                    class={`app-data mt-1 text-sm font-semibold ${tradeTone(
                                       -comparison.propComparison.actualDrawdownPctDiff,
                                     )}`}
                                   >
@@ -320,7 +320,7 @@ export default function ReplayComparePage() {
                                 >
                                   <For each={comparison.matchedTrades}>
                                     {(match) => (
-                                      <div class="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                                      <div class="rounded-xl border border-zinc-700/80 bg-zinc-950/65 px-4 py-3">
                                         <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                                           <div>
                                             <p class="text-sm font-semibold text-zinc-100">
@@ -333,7 +333,7 @@ export default function ReplayComparePage() {
                                               {match.exitDiffMinutes} min
                                             </p>
                                           </div>
-                                          <p class={`font-mono text-sm font-semibold ${tradeTone(match.pnlDiff)}`}>
+                                          <p class={`app-data text-sm font-semibold ${tradeTone(match.pnlDiff)}`}>
                                             {formatMoney(match.pnlDiff)}
                                           </p>
                                         </div>

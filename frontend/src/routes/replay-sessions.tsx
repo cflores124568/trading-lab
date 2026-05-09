@@ -52,53 +52,54 @@ export default function ReplaySessionListPage() {
             <div class="space-y-3">
               <For each={sessions()}>
                 {(session) => (
-                  <div class="app-panel px-5 py-4">
+                  <div class="app-panel app-panel-interactive px-5 py-4">
                     <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div class="space-y-2">
                         <p class="text-sm font-semibold text-zinc-100">{session.name}</p>
                         <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                          {session.symbol} · {session.interval} · {formatReplaySessionStatus(session.status)}
+                          {session.symbol} · <span class="app-data">{session.interval}</span> ·{" "}
+                          <span class="text-sky-200">{formatReplaySessionStatus(session.status)}</span>
                         </p>
                         <p class="text-sm text-zinc-400">{formatRange(session)}</p>
                         <Show when={session.source_backtest}>
                           {(source) => (
-                            <p class="text-xs text-zinc-500">
+                            <p class="app-meta-text">
                               Linked to `{source().backtest_id.slice(0, 8)}`.
                             </p>
                           )}
                         </Show>
-                        <p class="text-xs text-zinc-500">
+                        <p class="app-data text-xs text-zinc-500">
                           Updated {new Date(session.updated_at).toLocaleString()}
                         </p>
                       </div>
 
                       <div class="grid grid-cols-3 gap-3 text-right">
-                        <div class="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2">
-                          <p class="text-xs text-zinc-500">Total PnL</p>
+                        <div class="rounded-xl border border-zinc-700/80 bg-zinc-950/70 px-3 py-2">
+                          <p class="app-metric-label">Total PnL</p>
                           <p
-                            class={`mt-1 font-mono text-sm font-semibold ${
+                            class={`app-data mt-1 text-2xl font-semibold ${
                               session.total_pnl >= 0 ? "text-green-400" : "text-red-400"
                             }`}
                           >
                             {formatMoney(session.total_pnl)}
                           </p>
                         </div>
-                        <div class="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2">
-                          <p class="text-xs text-zinc-500">Trades</p>
-                          <p class="mt-1 font-mono text-sm font-semibold text-zinc-100">
+                        <div class="rounded-xl border border-zinc-700/80 bg-zinc-950/70 px-3 py-2">
+                          <p class="app-metric-label">Trades</p>
+                          <p class="app-data mt-1 text-xl font-semibold text-zinc-100">
                             {session.total_trades}
                           </p>
                         </div>
-                        <div class="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2">
-                          <p class="text-xs text-zinc-500">Saved Bar</p>
-                          <p class="mt-1 font-mono text-sm font-semibold text-zinc-100">
+                        <div class="rounded-xl border border-zinc-700/80 bg-zinc-950/70 px-3 py-2">
+                          <p class="app-metric-label">Saved Bar</p>
+                          <p class="app-data mt-1 text-xl font-semibold text-zinc-100">
                             {session.current_bar_index + 1}
                           </p>
                         </div>
                       </div>
                     </div>
 
-                    <div class="mt-4 flex items-center justify-end gap-2 border-t border-zinc-800 pt-4">
+                    <div class="mt-4 flex items-center justify-end gap-2 border-t border-zinc-700/80 pt-4">
                       <WorkspaceLaunchControl
                         intent={{
                           source: "replay-session",

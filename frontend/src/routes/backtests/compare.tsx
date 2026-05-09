@@ -22,7 +22,7 @@ function formatPercent(value: number | undefined): string {
 }
 
 function winnerTone(isWinner: boolean): string {
-  return isWinner ? "border-sky-500 bg-sky-500/10" : "border-zinc-800 bg-zinc-950/60";
+  return isWinner ? "app-panel-selected border-sky-400/85" : "border-zinc-700/80 bg-zinc-950/70";
 }
 
 function formatExecutionMode(value: "bar" | "synthetic_quotes" | undefined): string {
@@ -170,21 +170,21 @@ export default function BacktestComparePage() {
               return (
                 <div class="space-y-6">
                   <section class="grid gap-4 md:grid-cols-3">
-                    <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-4">
-                      <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">PnL Delta</p>
-                      <p class="mt-2 font-mono text-2xl font-semibold text-zinc-100">
+                    <div class="app-panel rounded-md px-4 py-4">
+                      <p class="app-metric-label">PnL Delta</p>
+                      <p class="app-metric-value">
                         {formatMoney((a.metrics.total_pnl ?? 0) - (b.metrics.total_pnl ?? 0))}
                       </p>
                     </div>
-                    <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-4">
-                      <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Win Rate Delta</p>
-                      <p class="mt-2 font-mono text-2xl font-semibold text-zinc-100">
+                    <div class="app-panel rounded-md px-4 py-4">
+                      <p class="app-metric-label">Win Rate Delta</p>
+                      <p class="app-metric-value">
                         {formatPercent((a.metrics.win_rate ?? 0) - (b.metrics.win_rate ?? 0))}
                       </p>
                     </div>
-                    <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-4">
-                      <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Drawdown Delta</p>
-                      <p class="mt-2 font-mono text-2xl font-semibold text-zinc-100">
+                    <div class="app-panel rounded-md px-4 py-4">
+                      <p class="app-metric-label">Drawdown Delta</p>
+                      <p class="app-metric-value">
                         {formatPercent((a.metrics.max_drawdown ?? 0) - (b.metrics.max_drawdown ?? 0))}
                       </p>
                     </div>
@@ -192,17 +192,17 @@ export default function BacktestComparePage() {
 
                   <section class="app-panel overflow-x-auto">
                     <div class="min-w-[720px]">
-                      <div class="grid grid-cols-[minmax(0,1fr)_180px_180px_120px] border-b border-zinc-800 bg-zinc-950/60">
-                      <div class="p-4 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                      <div class="grid grid-cols-[minmax(0,1fr)_180px_180px_120px] border-b border-zinc-700/80 bg-zinc-950/80">
+                      <div class="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
                         Execution Assumption
                       </div>
-                      <div class="border-l border-zinc-800 p-4 text-sm font-semibold font-mono">
+                      <div class="app-data border-l border-zinc-700/80 px-3 py-2.5 text-sm font-semibold text-zinc-200">
                         {a.backtest_id}
                       </div>
-                      <div class="border-l border-zinc-800 p-4 text-sm font-semibold font-mono">
+                      <div class="app-data border-l border-zinc-700/80 px-3 py-2.5 text-sm font-semibold text-zinc-200">
                         {b.backtest_id}
                       </div>
-                      <div class="border-l border-zinc-800 p-4 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                      <div class="border-l border-zinc-700/80 px-3 py-2.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
                         Diff
                       </div>
                       </div>
@@ -211,15 +211,15 @@ export default function BacktestComparePage() {
                         {(row) => {
                           const isSame = row.valueA === row.valueB;
                           return (
-                            <div class="grid grid-cols-[minmax(0,1fr)_180px_180px_120px] border-b border-zinc-800 last:border-b-0">
-                              <div class="p-4 text-sm text-zinc-400">{row.label}</div>
-                              <div class="border-l border-zinc-800 p-4 text-sm font-mono">
+                            <div class="grid grid-cols-[minmax(0,1fr)_180px_180px_120px] border-b border-zinc-800/90 last:border-b-0 hover:bg-zinc-900/70">
+                              <div class="px-3 py-2.5 text-sm text-zinc-400">{row.label}</div>
+                              <div class="app-data border-l border-zinc-700/80 px-3 py-2.5 text-sm text-zinc-200">
                                 {row.valueA}
                               </div>
-                              <div class="border-l border-zinc-800 p-4 text-sm font-mono">
+                              <div class="app-data border-l border-zinc-700/80 px-3 py-2.5 text-sm text-zinc-200">
                                 {row.valueB}
                               </div>
-                              <div class="border-l border-zinc-800 p-4">
+                              <div class="border-l border-zinc-700/80 px-3 py-2.5">
                                 <span
                                   class={`rounded-full px-2 py-1 text-[11px] font-semibold uppercase tracking-wide ${
                                     isSame
@@ -263,7 +263,7 @@ export default function BacktestComparePage() {
                               <h2 class="text-xl font-semibold text-zinc-100">
                                 {backtest.symbol} • {backtest.strategy.type.replace(/_/g, " ")}
                               </h2>
-                              <p class="font-mono text-xs text-zinc-500">{backtest.backtest_id}</p>
+                              <p class="app-data text-xs text-zinc-500">{backtest.backtest_id}</p>
                             </div>
 
                             <Show when={workspaceIntent}>
@@ -279,26 +279,26 @@ export default function BacktestComparePage() {
 
                           <div class="grid grid-cols-2 gap-3">
                             <div class={`rounded-md border px-4 py-3 ${winnerTone(totalPnlWinner === key)}`}>
-                              <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Total PnL</p>
-                              <p class={`mt-2 font-mono text-lg font-semibold ${backtest.metrics.total_pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+                              <p class="app-metric-label">Total PnL</p>
+                              <p class={`app-data mt-2 text-2xl font-semibold ${backtest.metrics.total_pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
                                 {formatMoney(backtest.metrics.total_pnl)}
                               </p>
                             </div>
                             <div class={`rounded-md border px-4 py-3 ${winnerTone(winRateWinner === key)}`}>
-                              <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Win Rate</p>
-                              <p class="mt-2 font-mono text-lg font-semibold text-zinc-100">
+                              <p class="app-metric-label">Win Rate</p>
+                              <p class="app-data mt-2 text-2xl font-semibold text-zinc-100">
                                 {formatPercent(backtest.metrics.win_rate)}
                               </p>
                             </div>
                             <div class={`rounded-md border px-4 py-3 ${winnerTone(drawdownWinner === key)}`}>
-                              <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Max Drawdown</p>
-                              <p class="mt-2 font-mono text-sm font-semibold text-zinc-100">
+                              <p class="app-metric-label">Max Drawdown</p>
+                              <p class="app-data mt-2 text-xl font-semibold text-zinc-100">
                                 {formatPercent(backtest.metrics.max_drawdown)}
                               </p>
                             </div>
-                            <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                              <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Created</p>
-                              <p class="mt-2 text-sm font-medium text-zinc-100">
+                            <div class="rounded-md border border-zinc-700/80 bg-zinc-950/60 px-4 py-3">
+                              <p class="app-metric-label">Created</p>
+                              <p class="mt-2 text-sm font-medium text-zinc-200">
                                 {backtest.created_at.slice(0, 10)}
                               </p>
                             </div>
@@ -309,26 +309,26 @@ export default function BacktestComparePage() {
                   </section>
 
                   <div class="app-panel overflow-hidden">
-                    <div class="grid grid-cols-3 border-b border-zinc-800 bg-zinc-950/60">
-                      <div class="p-4 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                    <div class="grid grid-cols-3 border-b border-zinc-700/80 bg-zinc-950/80">
+                      <div class="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
                         Metric
                       </div>
-                      <div class="border-l border-zinc-800 p-4 text-sm font-semibold font-mono">
+                      <div class="app-data border-l border-zinc-700/80 px-3 py-2.5 text-sm font-semibold text-zinc-200">
                         {a.backtest_id}
                       </div>
-                      <div class="border-l border-zinc-800 p-4 text-sm font-semibold font-mono">
+                      <div class="app-data border-l border-zinc-700/80 px-3 py-2.5 text-sm font-semibold text-zinc-200">
                         {b.backtest_id}
                       </div>
                     </div>
 
                     <For each={metricRows}>
                       {(row) => (
-                        <div class="grid grid-cols-3 border-b border-zinc-800 last:border-b-0">
-                          <div class="p-4 text-sm text-zinc-400">{row.label}</div>
-                          <div class="border-l border-zinc-800 p-4 text-sm font-mono">
+                        <div class="grid grid-cols-3 border-b border-zinc-800/90 last:border-b-0 hover:bg-zinc-900/70">
+                          <div class="px-3 py-2.5 text-sm text-zinc-400">{row.label}</div>
+                          <div class="app-data border-l border-zinc-700/80 px-3 py-2.5 text-sm text-zinc-200">
                             {row.getValue(a)}
                           </div>
-                          <div class="border-l border-zinc-800 p-4 text-sm font-mono">
+                          <div class="app-data border-l border-zinc-700/80 px-3 py-2.5 text-sm text-zinc-200">
                             {row.getValue(b)}
                           </div>
                         </div>
