@@ -76,6 +76,22 @@ export default function Dashboard() {
 
     return Array.from(counts.entries()).sort((left, right) => right[1] - left[1]);
   });
+  const primarySymbol = createMemo(() => symbolMix()[0]?.[0] ?? "n/a");
+  const primaryInterval = createMemo(() => intervalMix()[0]?.[0] ?? "n/a");
+  const workspaceMode = createMemo(() => {
+    const live = livePanelCount();
+    const historical = historicalPanelCount();
+
+    if (live > historical) {
+      return "live leaning";
+    }
+
+    if (historical > live) {
+      return "historical leaning";
+    }
+
+    return "balanced";
+  });
   const layoutRead = createMemo(() => {
     const panelCount = activePanels().length;
     if (panelCount === 3) {
@@ -356,7 +372,7 @@ export default function Dashboard() {
   return (
     <AppShell
       title="Dashboard"
-      subtitle="Live and historical chart workspaces."
+      subtitle="Live and historical chart workspaces tuned for fast setup, replay, and screenshot-worthy analysis."
       actions={
         <>
           <A
@@ -380,42 +396,82 @@ export default function Dashboard() {
         </>
       }
     >
+      <div class="rounded-[1.5rem] border border-zinc-800/80 bg-[radial-gradient(circle_at_top_left,rgba(183,235,229,0.12),transparent_38%),linear-gradient(180deg,rgba(9,9,11,0.98),rgba(9,9,11,0.86))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.28)] lg:p-6">
+        <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div class="max-w-3xl space-y-3">
+            <p class="app-kicker text-[#b7ebe5]">Current Setup</p>
+            <div class="space-y-2">
+              <h2 class="text-2xl font-semibold tracking-tight text-zinc-50 lg:text-3xl">
+                One workspace for charts, replay, and evaluation.
+              </h2>
+              <p class="max-w-2xl text-sm leading-6 text-zinc-400">
+                This is the main place to see what you’re working on right now:
+                active charts, account context, and the live-versus-historical mix.
+              </p>
+            </div>
+          </div>
+
+          <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div class="app-panel app-panel-selected rounded-2xl px-4 py-3">
+              <p class="app-metric-label">Current Workspace</p>
+              <p class="mt-2 truncate text-sm font-semibold text-zinc-100">{activeWorkspace().name}</p>
+            </div>
+            <div class="app-panel rounded-2xl px-4 py-3">
+              <p class="app-metric-label">Panel Count</p>
+              <p class="app-metric-value">{activePanels().length}</p>
+            </div>
+            <div class="app-panel rounded-2xl px-4 py-3">
+              <p class="app-metric-label">Primary Mix</p>
+              <p class="mt-2 text-sm font-semibold text-zinc-100">{primarySymbol()} / {primaryInterval()}</p>
+            </div>
+            <div class="app-panel rounded-2xl px-4 py-3">
+              <p class="app-metric-label">Workspace Mode</p>
+              <p class="mt-2 text-sm font-semibold capitalize text-sky-200">{workspaceMode()}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {launchNotice() ? (
-        <div class="rounded-lg border border-emerald-700 bg-emerald-950 px-4 py-3 text-sm text-emerald-300">
+        <div class="rounded-2xl border border-emerald-700/70 bg-emerald-950/70 px-4 py-3 text-sm text-emerald-200 shadow-[0_12px_30px_rgba(0,0,0,0.2)]">
           {launchNotice()}
         </div>
       ) : null}
 
       <div class="flex min-h-0 flex-1 flex-col gap-6">
-        <section class="app-panel flex min-h-0 flex-1 flex-col overflow-hidden">
-        <WorkspaceToolbar
-          workspaceId={activeWorkspace().id}
-          defaultWorkspaceId={workspace.defaultWorkspaceId}
-          workspaceName={activeWorkspace().name}
-          workspaceCount={workspace.workspaces.length}
-          accountProfile={activeWorkspace().accountProfile}
-          workspaces={workspace.workspaces.map((candidate) => ({
-            id: candidate.id,
-            name: candidate.name,
-          }))}
-          preset={activeWorkspace().selectedPreset}
-          options={WORKSPACE_PRESET_OPTIONS}
-          panelCount={activePresetState().panels.length}
-          canAddChart={canAddChart()}
-          canDeleteWorkspace={canDeleteWorkspace()}
-          showUtilityRail={showUtilityRail()}
-          onWorkspaceChange={handleWorkspaceChange}
-          onDefaultWorkspaceChange={handleDefaultWorkspaceChange}
-          onWorkspaceNameChange={handleWorkspaceNameChange}
-          onWorkspaceAccountProfileChange={handleWorkspaceAccountProfileChange}
-          onCreateWorkspace={handleCreateWorkspace}
-          onDeleteWorkspace={handleDeleteWorkspace}
-          onPresetChange={handlePresetChange}
-          onAddChart={handleAddChart}
-          onToggleUtilityRail={() => setShowUtilityRail((current) => !current)}
-        />
-          <div class="min-h-0 flex-1 p-3 lg:p-4">
-            <div class={`grid h-full min-w-0 gap-3 ${showUtilityRail() ? "xl:grid-cols-[minmax(0,1fr)_280px]" : ""}`}>
+        <section class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[1.5rem] border border-zinc-800/80 bg-zinc-950/60 shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
+          <WorkspaceToolbar
+            workspaceId={activeWorkspace().id}
+            defaultWorkspaceId={workspace.defaultWorkspaceId}
+            workspaceName={activeWorkspace().name}
+            workspaceCount={workspace.workspaces.length}
+            accountProfile={activeWorkspace().accountProfile}
+            workspaces={workspace.workspaces.map((candidate) => ({
+              id: candidate.id,
+              name: candidate.name,
+            }))}
+            preset={activeWorkspace().selectedPreset}
+            options={WORKSPACE_PRESET_OPTIONS}
+            panelCount={activePresetState().panels.length}
+            canAddChart={canAddChart()}
+            canDeleteWorkspace={canDeleteWorkspace()}
+            showUtilityRail={showUtilityRail()}
+            onWorkspaceChange={handleWorkspaceChange}
+            onDefaultWorkspaceChange={handleDefaultWorkspaceChange}
+            onWorkspaceNameChange={handleWorkspaceNameChange}
+            onWorkspaceAccountProfileChange={handleWorkspaceAccountProfileChange}
+            onCreateWorkspace={handleCreateWorkspace}
+            onDeleteWorkspace={handleDeleteWorkspace}
+            onPresetChange={handlePresetChange}
+            onAddChart={handleAddChart}
+            onToggleUtilityRail={() => setShowUtilityRail((current) => !current)}
+          />
+          <div class="min-h-0 flex-1 p-4 lg:p-5">
+            <div
+              class={`grid h-full min-w-0 gap-4 ${
+                showUtilityRail() ? "xl:grid-cols-[minmax(0,1fr)_280px]" : ""
+              }`}
+            >
             <WorkspaceGrid
               preset={activeWorkspace().selectedPreset}
               panels={activePresetState().panels}
@@ -429,10 +485,10 @@ export default function Dashboard() {
             />
 
               {showUtilityRail() ? (
-                <aside class="hidden min-h-0 xl:flex flex-col gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
-                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/85 p-4">
+                <aside class="hidden min-h-0 flex-col gap-3 rounded-2xl border border-zinc-700/80 bg-zinc-950/55 p-4 xl:flex">
+                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/85 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                   <div class="flex items-center gap-2 text-zinc-100">
-                    <PanelRight size={16} class="text-cyan-300" />
+                    <PanelRight size={16} class="text-[#b7ebe5]" />
                     <p class="text-sm font-semibold">Account Context</p>
                   </div>
                   <div class="mt-3 space-y-2 text-sm">
@@ -472,9 +528,9 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/85 p-4">
+                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/85 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                   <div class="flex items-center gap-2 text-zinc-100">
-                    <LayoutPanelTop size={16} class="text-sky-300" />
+                    <LayoutPanelTop size={16} class="text-[#b7ebe5]" />
                     <p class="text-sm font-semibold">Layout Read</p>
                   </div>
                   <p class="mt-3 text-sm text-zinc-300">{layoutRead()}</p>
@@ -483,7 +539,7 @@ export default function Dashboard() {
                   </p>
                 </div>
 
-                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/85 p-4">
+                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/85 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                   <div class="flex items-center gap-2 text-zinc-100">
                     <Radio size={16} class="text-emerald-300" />
                     <p class="text-sm font-semibold">Workspace Pulse</p>
@@ -508,9 +564,9 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/85 p-4">
+                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/85 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                   <div class="flex items-center gap-2 text-zinc-100">
-                    <SquareChartGantt size={16} class="text-amber-300" />
+                    <SquareChartGantt size={16} class="text-[#b7ebe5]" />
                     <p class="text-sm font-semibold">Panel Stack</p>
                   </div>
                   <div class="mt-3 space-y-2">
@@ -531,9 +587,9 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/85 p-4">
+                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/85 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                   <div class="flex items-center gap-2 text-zinc-100">
-                    <PanelRight size={16} class="text-fuchsia-300" />
+                    <PanelRight size={16} class="text-[#b7ebe5]" />
                     <p class="text-sm font-semibold">Mix Read</p>
                   </div>
                   <div class="mt-3">

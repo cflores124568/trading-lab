@@ -131,13 +131,13 @@ export default function WorkspaceToolbar(props: Props) {
   };
 
   return (
-    <div class="border-b border-zinc-800 bg-zinc-950/60 px-4 py-3 lg:px-5">
-      <div class="flex flex-col gap-3">
-        <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+    <div class="border-b border-zinc-700/80 bg-zinc-950/82 px-4 py-4 lg:px-5">
+      <div class="flex flex-col gap-2.5">
+        <div class="app-panel app-panel-selected flex flex-col gap-3 rounded-2xl p-4 xl:flex-row xl:items-center xl:justify-between">
           <div class="flex flex-wrap items-center gap-3">
             <div class="min-w-0">
-              <p class="app-kicker">Active Workspace</p>
-              <p class="truncate text-sm font-semibold text-zinc-100">{props.workspaceName}</p>
+              <p class="app-kicker text-sky-300">Current Workspace</p>
+              <p class="truncate text-sm font-semibold text-zinc-50">{props.workspaceName}</p>
             </div>
             <div class="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-400">
               {props.workspaceCount} {props.workspaceCount === 1 ? "Workspace" : "Workspaces"}
@@ -146,9 +146,9 @@ export default function WorkspaceToolbar(props: Props) {
               {props.panelCount} {props.panelCount === 1 ? "Panel" : "Panels"}
             </div>
             <div
-              class={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] ${
+              class={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] ${
                 props.workspaceId === props.defaultWorkspaceId
-                  ? "border-amber-700/70 bg-amber-950/45 text-amber-300"
+                  ? "border-sky-400/80 bg-sky-400/15 text-sky-100"
                   : "border-zinc-800 bg-zinc-950 text-zinc-500"
               }`}
             >
@@ -159,13 +159,13 @@ export default function WorkspaceToolbar(props: Props) {
               )}
               {props.workspaceId === props.defaultWorkspaceId ? "Default" : "Not Default"}
             </div>
-            <p class="text-xs text-zinc-500">Auto-saves changes to this workspace.</p>
+            <p class="app-meta-text">Auto-saves changes to this workspace.</p>
           </div>
 
           <div class="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              class="inline-flex items-center gap-2 rounded-xl bg-zinc-100 px-3 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-600"
+              class="inline-flex items-center gap-2 rounded-xl bg-[#b7ebe5] px-3 py-2 text-sm font-semibold text-zinc-950 shadow-[0_10px_24px_rgba(183,235,229,0.16)] transition-colors hover:bg-[#d8fffb] disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-600"
               onClick={props.onAddChart}
               disabled={!props.canAddChart}
             >
@@ -201,7 +201,7 @@ export default function WorkspaceToolbar(props: Props) {
           </div>
         </div>
 
-        <div class="grid gap-3 xl:grid-cols-[minmax(220px,0.85fr)_minmax(220px,0.85fr)_auto]">
+        <div class="grid gap-2.5 xl:grid-cols-[minmax(220px,0.85fr)_minmax(220px,0.85fr)_auto]">
           <label class="space-y-1">
             <span class="block text-xs text-zinc-500">Switch workspace</span>
             <select
@@ -241,34 +241,28 @@ export default function WorkspaceToolbar(props: Props) {
 
           <div class="space-y-1">
             <span class="block text-xs text-zinc-500">Layout</span>
-            <div class="grid gap-2 rounded-xl border border-zinc-800 bg-zinc-950/70 p-2 sm:grid-cols-3">
+            <div class="grid gap-2 rounded-xl border border-zinc-700/80 bg-zinc-950/78 p-2 sm:grid-cols-3">
               {props.options.map((option) => {
                 const active = props.preset === option.value;
                 return (
                   <button
                     type="button"
-                    class={`flex min-w-[116px] items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
+                    class={`flex min-w-[124px] items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors ${
                       active
-                        ? "bg-zinc-100 text-zinc-950"
-                        : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+                        ? "app-card-selected border-sky-400/70 text-zinc-50"
+                        : "border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-zinc-700 hover:bg-zinc-800 hover:text-zinc-100"
                     }`}
                     title={option.description}
                     onClick={() => props.onPresetChange(option.value)}
                   >
-                    <span class={active ? "text-zinc-950" : "text-zinc-500"}>
+                    <span class={active ? "text-sky-200" : "text-zinc-500"}>
                       <LayoutPreview preset={option.value} />
                     </span>
                     <span>
                       <span class="block text-xs font-semibold uppercase tracking-[0.14em]">
                         {option.label}
                       </span>
-                      <span
-                        class={
-                          active
-                            ? "block text-[11px] text-zinc-600"
-                            : "block text-[11px] text-zinc-500"
-                        }
-                      >
+                      <span class={active ? "block text-[11px] text-sky-100" : "block text-[11px] text-zinc-500"}>
                         {active ? "Active" : "Switch"}
                       </span>
                     </span>

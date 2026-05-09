@@ -267,7 +267,7 @@ function DesktopRow(props: {
 
   return (
     <div class="relative h-full min-w-0">
-      <div ref={container} class="flex h-full min-w-0 gap-3">
+      <div ref={container} class="flex h-full min-w-0 gap-4">
         <div
           class="min-h-0 min-w-0"
           style={{ flex: `${props.columnRatio ?? 1} 1 0%` }}
@@ -353,7 +353,7 @@ function ThreePanelDesktopLayout(props: {
     <div class="relative hidden h-full w-full min-w-0 xl:block">
       <div
         ref={container}
-        class="flex h-full min-w-0 gap-3"
+        class="flex h-full min-w-0 gap-4"
       >
         <div class="min-h-0 min-w-0" style={{ flex: `${primaryRatio()} 1 0%` }}>
           <PanelSlot
@@ -378,7 +378,7 @@ function ThreePanelDesktopLayout(props: {
 
         <div
           ref={secondaryColumn}
-          class="flex min-h-0 min-w-0 flex-col gap-3"
+          class="flex min-h-0 min-w-0 flex-col gap-4"
           style={{ flex: `${1 - primaryRatio()} 1 0%` }}
         >
           {props.panels.slice(1).map((panel, index) => (
@@ -465,7 +465,7 @@ function FocusDesktopLayout(props: {
     <div class="relative hidden h-full w-full min-w-0 xl:block">
       <div
         ref={container}
-        class="flex h-full min-w-0 flex-col gap-3"
+        class="flex h-full min-w-0 flex-col gap-4"
       >
         {props.panels.map((panel, index) => (
           <div class="min-h-0" style={{ flex: `${props.layout.rowWeights[index] ?? 1} 1 0%` }}>
@@ -526,7 +526,7 @@ function TiledDesktopLayout(props: {
     <div class="relative hidden h-full w-full min-w-0 xl:block">
       <div
         ref={container}
-        class="flex h-full min-w-0 flex-col gap-3"
+        class="flex h-full min-w-0 flex-col gap-4"
       >
         {rows.map((row, index) => (
           <div class="min-h-0" style={{ flex: `${props.layout.rowWeights[index] ?? 1} 1 0%` }}>
@@ -614,7 +614,7 @@ export default function WorkspaceGrid(props: Props) {
   return (
     <>
       {expandedPanel() ? (
-        <div class="mb-3 rounded-2xl border border-zinc-800 bg-zinc-950/45 p-1">
+        <div class="mb-4 rounded-2xl border border-zinc-700/80 bg-zinc-950/55 p-2">
           <PanelSlot
             panel={expandedPanel()!}
             canRemove={props.panels.length > 1}
@@ -637,7 +637,7 @@ export default function WorkspaceGrid(props: Props) {
       ) : null}
 
       {expandedPanel() ? null : (
-        <div class="grid gap-3 xl:hidden">
+        <div class="grid gap-4 xl:hidden">
           {props.panels.map((panel) => (
             <PanelSlot
               panel={panel}

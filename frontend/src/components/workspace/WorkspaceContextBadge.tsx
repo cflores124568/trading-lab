@@ -23,9 +23,9 @@ export default function WorkspaceContextBadge(props: Props) {
   return (
     <Show when={context()}>
       {(activeContext) => (
-        <div class={`rounded-lg border border-zinc-800 bg-zinc-950/55 ${props.compact ? "px-3 py-2" : "px-4 py-3"}`}>
-          <p class="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-            Active Workspace Context
+        <div class={`app-panel app-panel-selected rounded-lg ${props.compact ? "px-3 py-2" : "px-4 py-3"}`}>
+          <p class="text-[11px] uppercase tracking-[0.18em] text-sky-300">
+            Current Workspace Context
           </p>
           <p class="mt-1 text-sm font-semibold text-zinc-100">{activeContext().workspaceName}</p>
           <p class="mt-1 text-xs text-zinc-400">{queryLabel()}</p>

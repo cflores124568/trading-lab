@@ -1,10 +1,10 @@
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Share+Tech+Mono&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Major+Mono+Display&family=Share+Tech+Mono&family=Tilt+Prism&display=swap");
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Major Mono Display", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  --font-brand: "Share Tech Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-brand: "Tilt Prism", "Share Tech Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 @layer base {
@@ -25,7 +25,7 @@
 @layer components {
   .app-brand {
     font-family: var(--font-brand);
-    letter-spacing: 0.08em;
+    letter-spacing: 0.02em;
   }
 
   .app-data {
@@ -66,11 +66,15 @@
   }
 
   .app-card-selected {
-    @apply border-sky-500 ring-1 ring-sky-500/70;
+    @apply border-sky-400/90 bg-sky-400/10 ring-1 ring-sky-400/70;
+    box-shadow:
+      0 0 0 1px rgba(56, 189, 248, 0.35),
+      0 10px 22px rgba(14, 165, 233, 0.14);
   }
 
   .app-panel {
-    @apply rounded-lg border border-zinc-800 bg-zinc-900/75;
+    @apply rounded-lg border border-zinc-700/80 bg-zinc-900/88;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
   }
 
   .app-panel-elevated {
@@ -86,7 +90,56 @@
   }
 
   .app-subpanel {
-    @apply rounded-sm border border-zinc-800 bg-zinc-950/60;
+    @apply rounded-sm border border-zinc-700/80 bg-zinc-950/70;
+  }
+
+  .app-panel-interactive {
+    @apply transition-colors;
+  }
+
+  .app-panel-interactive:hover {
+    @apply border-zinc-600 bg-zinc-900/94;
+  }
+
+  .app-panel-selected {
+    @apply border-sky-400/90 bg-sky-400/10 ring-1 ring-sky-400/65;
+    box-shadow:
+      0 0 0 1px rgba(56, 189, 248, 0.32),
+      0 10px 26px rgba(14, 165, 233, 0.18);
+  }
+
+  .app-metric-label {
+    @apply text-[11px] uppercase tracking-[0.18em] text-zinc-500;
+  }
+
+  .app-metric-value {
+    @apply mt-1.5 text-2xl font-semibold leading-none text-zinc-100;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .app-meta-text {
+    @apply text-xs text-zinc-500;
+  }
+
+  .app-table {
+    @apply w-full text-sm;
+  }
+
+  .app-table thead {
+    @apply bg-zinc-950/80 text-[11px] uppercase tracking-[0.16em] text-zinc-500;
+  }
+
+  .app-table th {
+    @apply px-3 py-2.5 text-left font-medium;
+  }
+
+  .app-table td {
+    @apply px-3 py-2.5 align-middle;
+  }
+
+  .app-table tbody tr {
+    @apply border-t border-zinc-800 transition-colors hover:bg-zinc-900/80;
   }
 
   .app-kicker {
