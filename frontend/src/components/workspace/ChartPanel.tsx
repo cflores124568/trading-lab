@@ -218,18 +218,22 @@ export default function ChartPanel(props: Props) {
   };
 
   return (
-    <section class="flex h-full min-h-[440px] flex-col overflow-hidden rounded-md border border-zinc-800 bg-zinc-950/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-      <div class="border-b border-zinc-800 bg-zinc-950/90 px-3 py-2">
-        <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+    <section
+      class={`app-panel app-panel-interactive flex h-full min-h-[460px] flex-col overflow-hidden rounded-xl ${
+        props.expanded ? "app-panel-selected" : ""
+      }`}
+    >
+      <div class="border-b border-zinc-700/80 bg-zinc-950/92 px-4 py-3">
+        <div class="flex flex-col gap-2.5 xl:flex-row xl:items-center xl:justify-between">
           <div class="min-w-0 flex-1">
-            <div class="flex min-w-0 flex-wrap items-center gap-2">
+            <div class="flex min-w-0 flex-wrap items-center gap-1.5">
               <Show when={props.canReorder}>
                 <button
                   type="button"
                   draggable
                   title="Drag to reorder panel"
                   aria-label="Drag to reorder panel"
-                  class="inline-flex h-7 w-7 cursor-grab items-center justify-center rounded-sm border border-zinc-800 bg-zinc-950 text-zinc-500 transition-colors hover:border-zinc-700 hover:text-zinc-200 active:cursor-grabbing"
+                  class="inline-flex h-7 w-7 cursor-grab items-center justify-center rounded-sm border border-zinc-700 bg-zinc-950 text-zinc-500 transition-colors hover:border-zinc-600 hover:text-zinc-200 active:cursor-grabbing"
                   onDragStart={props.onReorderDragStart}
                   onDragEnd={props.onReorderDragEnd}
                 >
@@ -237,31 +241,30 @@ export default function ChartPanel(props: Props) {
                 </button>
               </Show>
               <h3 class="truncate text-sm font-semibold text-zinc-100">{props.panel.title}</h3>
-              <span class="rounded-sm border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-300">
+              <span class="rounded-sm border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-200">
                 {query().symbol}
               </span>
-              <span class="text-xs text-zinc-500">{query().interval}</span>
-              <span class="rounded-sm border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
-                {modeLabel()}
+              <span class="rounded-sm border border-zinc-700/80 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-400">
+                <span class="app-data">{query().interval}</span> · {modeLabel()}
               </span>
               <span class={`rounded-sm border px-2 py-1 text-[11px] font-medium ${panelStateTone()}`}>
                 {panelStateLabel()}
               </span>
-              <span class="rounded-sm border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+              <span class="text-xs text-zinc-500">
                 {enabledStudyCount()} studies
               </span>
             </div>
             <p class="mt-1 truncate text-xs text-zinc-500">{panelSummary()}</p>
           </div>
 
-          <div class="flex flex-wrap items-center gap-2">
+          <div class="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
               title="Switch to live mode"
-              class={`inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-xs font-medium transition-colors ${
+              class={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-xs font-medium transition-colors ${
                 query().mode === "live"
-                  ? "bg-zinc-100 text-zinc-950"
-                  : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+                  ? "app-card-selected border-sky-400/80 text-sky-100"
+                  : "border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-600 hover:bg-zinc-800 hover:text-zinc-100"
               }`}
               onClick={() => setMode("live")}
             >
@@ -271,10 +274,10 @@ export default function ChartPanel(props: Props) {
             <button
               type="button"
               title="Switch to historical mode"
-              class={`inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-xs font-medium transition-colors ${
+              class={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-xs font-medium transition-colors ${
               query().mode === "historical"
-                ? "bg-zinc-100 text-zinc-950"
-                : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+                ? "app-card-selected border-sky-400/80 text-sky-100"
+                : "border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-600 hover:bg-zinc-800 hover:text-zinc-100"
               }`}
               onClick={() => setMode("historical")}
             >
@@ -284,7 +287,11 @@ export default function ChartPanel(props: Props) {
             <button
               type="button"
               title={showControls() ? "Hide panel controls" : "Show panel controls"}
-              class="inline-flex items-center gap-1.5 rounded-sm border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100"
+              class={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                showControls()
+                  ? "border-sky-400/75 bg-sky-400/10 text-sky-100"
+                  : "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100"
+              }`}
               onClick={() => setShowControls((current) => !current)}
             >
               <SlidersHorizontal size={14} />
@@ -296,7 +303,7 @@ export default function ChartPanel(props: Props) {
                 type="button"
                 title="Panel actions"
                 aria-label="Panel actions"
-                class="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:border-zinc-700 hover:text-zinc-200"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200"
                 onClick={() => setShowMenu((current) => !current)}
               >
                 <Ellipsis size={15} />
@@ -348,7 +355,7 @@ export default function ChartPanel(props: Props) {
       </div>
 
       <Show when={showControls()}>
-        <div class="border-b border-zinc-800 bg-zinc-950/75 px-3 py-3">
+        <div class="border-b border-zinc-700/80 bg-zinc-950/78 px-4 py-3">
           <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <label class="space-y-1 xl:col-span-2">
               <span class="block text-xs text-zinc-500">Panel title</span>

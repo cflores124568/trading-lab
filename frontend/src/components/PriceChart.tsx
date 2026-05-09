@@ -449,20 +449,24 @@ export default function PriceChart(props: Props) {
       autoSize: true,
       height: props.height ?? 500,
       layout: {
-        background: { color: "#09090b" },
-        textColor: "#a1a1aa",
+        background: { color: "#0a0a0c" },
+        textColor: "#9f9fa9",
       },
       grid: {
-        vertLines: { color: "#27272a" },
-        horzLines: { color: "#27272a" },
+        vertLines: { color: "#1f1f24" },
+        horzLines: { color: "#1f1f24" },
+      },
+      crosshair: {
+        vertLine: { color: "#3f3f46", labelBackgroundColor: "#18181b" },
+        horzLine: { color: "#3f3f46", labelBackgroundColor: "#18181b" },
       },
       timeScale: {
         timeVisible: true,
         secondsVisible: false,
-        borderColor: "#27272a",
+        borderColor: "#313138",
       },
       rightPriceScale: {
-        borderColor: "#27272a",
+        borderColor: "#313138",
       },
     });
 
@@ -577,7 +581,7 @@ export default function PriceChart(props: Props) {
 
   return (
     <div
-      class={`relative w-full overflow-hidden rounded-sm border border-zinc-800 bg-zinc-950 ${props.class ?? ""}`}
+      class={`relative w-full overflow-hidden rounded-sm border border-zinc-700/80 bg-zinc-950 ${props.class ?? ""}`}
       style={props.height ? { height: `${props.height}px` } : undefined}
     >
       <div ref={container} class="h-full w-full" />
