@@ -397,36 +397,34 @@ export default function Dashboard() {
       }
     >
       <div class="rounded-[1.5rem] border border-zinc-800/80 bg-[radial-gradient(circle_at_top_left,rgba(183,235,229,0.12),transparent_38%),linear-gradient(180deg,rgba(9,9,11,0.98),rgba(9,9,11,0.86))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.28)] lg:p-6">
-        <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <div class="flex flex-col gap-6">
           <div class="max-w-3xl space-y-3">
             <p class="app-kicker text-[#b7ebe5]">Current Setup</p>
-            <div class="space-y-2">
-              <h2 class="text-2xl font-semibold tracking-tight text-zinc-50 lg:text-3xl">
-                One workspace for charts, replay, and evaluation.
-              </h2>
-              <p class="max-w-2xl text-sm leading-6 text-zinc-400">
-                This is the main place to see what you’re working on right now:
-                active charts, account context, and the live-versus-historical mix.
-              </p>
-            </div>
+            <h2 class="text-2xl font-semibold tracking-tight text-zinc-50 lg:text-[28px] lg:leading-[1.15]">
+              Charts, replay, evaluation — one workspace.
+            </h2>
+            <p class="max-w-2xl text-sm leading-6 text-zinc-400">
+              Active charts, account context, and the live-versus-historical mix
+              for whatever you’re working on right now.
+            </p>
           </div>
 
-          <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div class="app-panel app-panel-selected rounded-2xl px-4 py-3">
               <p class="app-metric-label">Current Workspace</p>
-              <p class="mt-2 truncate text-sm font-semibold text-zinc-100">{activeWorkspace().name}</p>
+              <p class="mt-2 truncate text-base font-semibold text-zinc-100">{activeWorkspace().name}</p>
             </div>
             <div class="app-panel rounded-2xl px-4 py-3">
               <p class="app-metric-label">Panel Count</p>
-              <p class="app-metric-value">{activePanels().length}</p>
+              <p class="app-data mt-2 text-2xl font-semibold leading-none text-zinc-100">{activePanels().length}</p>
             </div>
             <div class="app-panel rounded-2xl px-4 py-3">
               <p class="app-metric-label">Primary Mix</p>
-              <p class="mt-2 text-sm font-semibold text-zinc-100">{primarySymbol()} / {primaryInterval()}</p>
+              <p class="app-data mt-2 text-base font-semibold text-zinc-100">{primarySymbol()} <span class="text-zinc-500">/</span> {primaryInterval()}</p>
             </div>
             <div class="app-panel rounded-2xl px-4 py-3">
               <p class="app-metric-label">Workspace Mode</p>
-              <p class="mt-2 text-sm font-semibold capitalize text-sky-200">{workspaceMode()}</p>
+              <p class="mt-2 text-base font-semibold capitalize text-sky-200">{workspaceMode()}</p>
             </div>
           </div>
         </div>

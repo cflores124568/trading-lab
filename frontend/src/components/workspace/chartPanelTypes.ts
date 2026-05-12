@@ -1,7 +1,7 @@
 import {
   normalizePriceChartIndicatorSettings,
   type PriceChartIndicatorSettings,
-} from "../../services/chartIndicators";
+} from "../../services/chartIndicators.ts";
 
 export type WorkspacePreset = "focus" | "split" | "grid";
 
@@ -609,14 +609,16 @@ function normalizeQuery(query: unknown, fallback: ChartPanelQuery): ChartPanelQu
 }
 
 function normalizePanels(value: unknown, preset: WorkspacePreset): ChartPanelConfig[] {
+  const templates = buildWorkspacePanels(preset);
+
   if (!Array.isArray(value) || value.length === 0) {
-    return buildWorkspacePanels(preset);
+    return templates;
   }
 
-  const rawPanels = value.slice(0, MAX_WORKSPACE_PANELS);
-
-  return rawPanels.map((candidate, index) => {
-    const template = buildTemplatePanel(preset, index);
+  // Old saves can carry extra panels from earlier layouts, so we only keep the
+  // preset's canonical slots here and let the current template fill any gaps.
+  return templates.map((template, index) => {
+    const candidate = value[index];
     const record = asRecord(candidate);
 
     if (!record) {

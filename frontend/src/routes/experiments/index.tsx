@@ -1224,29 +1224,29 @@ export default function ExperimentsIndexPage() {
                     : "border-sky-900/70 bg-gradient-to-br from-sky-400/14 via-zinc-950 to-zinc-950"
                 }`}
               >
-                <p class="text-xs uppercase tracking-[0.22em] text-zinc-500">Live Scope Preview</p>
-                <div class="mt-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                  <div class="space-y-2">
-                    <p class="text-sm text-zinc-300">
-                      Ready to test:{" "}
-                      <span class="app-data text-zinc-100">{selectedSymbols().length}</span> symbols x{" "}
-                      <span class="app-data text-zinc-100">{selectedIntervals().length}</span> intervals x{" "}
-                      <span class="app-data text-zinc-100">1</span> strategy x{" "}
-                      <span class="app-data text-zinc-100">{parameterComboCount()}</span> param combos
-                    </p>
-                    <div class="flex items-baseline gap-3">
-                      <span class="app-data animate-pulse text-4xl font-semibold text-white">
-                        {formatCount(estimatedRunCount())}
-                      </span>
-                      <span class="text-sm text-zinc-400">total backtests</span>
-                    </div>
-                  </div>
+                <div class="flex items-center justify-between gap-3">
+                  <p class="text-xs uppercase tracking-[0.22em] text-zinc-500">Live Scope Preview</p>
                   <span
-                    class={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${complexity().tone}`}
+                    class={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold ${complexity().tone}`}
                   >
                     {complexity().label} complexity
                   </span>
                 </div>
+                <div class="mt-3 flex items-baseline gap-3">
+                  <span class="app-data animate-pulse text-4xl font-semibold text-white">
+                    {formatCount(estimatedRunCount())}
+                  </span>
+                  <span class="text-sm text-zinc-400">total backtests</span>
+                </div>
+                <p class="app-data mt-2 text-xs text-zinc-400">
+                  <span class="text-zinc-100">{selectedSymbols().length}</span> sym
+                  <span class="text-zinc-600"> · </span>
+                  <span class="text-zinc-100">{selectedIntervals().length}</span> int
+                  <span class="text-zinc-600"> · </span>
+                  <span class="text-zinc-100">1</span> strat
+                  <span class="text-zinc-600"> · </span>
+                  <span class="text-zinc-100">{parameterComboCount()}</span> params
+                </p>
                 <p class="mt-3 max-w-2xl text-sm text-zinc-400">{complexity().note}</p>
                 <div class="mt-4 flex flex-wrap gap-2">
                   <span class="rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-1 text-xs text-zinc-300">
@@ -1724,22 +1724,22 @@ export default function ExperimentsIndexPage() {
               <h3 class="text-lg font-semibold text-zinc-100">Validate, then commit the compute</h3>
             </div>
 
-            <div class="rounded-[28px] border border-zinc-800 bg-zinc-950/80 p-5">
-              <div class="relative mx-auto h-36 w-full max-w-[280px] overflow-hidden">
+            <div class="rounded-[28px] border border-zinc-800 bg-zinc-950/80 p-4 lg:p-5">
+              <div class="relative mx-auto h-32 w-full max-w-[260px] overflow-hidden">
                 <div
-                  class="absolute inset-x-0 bottom-0 h-[280px] rounded-full border border-zinc-800/80"
+                  class="absolute inset-x-0 bottom-0 h-[260px] rounded-full border border-zinc-800/80"
                   style={{
                     background: `conic-gradient(from 180deg at 50% 100%, ${launchGaugeColor()} 0deg ${runningCapacityDegrees()}deg, rgba(39,39,42,0.96) ${runningCapacityDegrees()}deg 180deg, rgba(9,9,11,0) 180deg 360deg)`,
                   }}
                 />
-                <div class="absolute inset-x-9 bottom-0 h-[190px] rounded-full border border-zinc-900 bg-zinc-950" />
-                <div class="absolute inset-x-0 bottom-5 text-center">
-                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Capacity</p>
-                  <p class="app-data mt-2 text-3xl font-semibold text-zinc-100">
+                <div class="absolute inset-x-8 bottom-0 h-[175px] rounded-full border border-zinc-900 bg-zinc-950" />
+                <div class="absolute inset-x-0 bottom-4 text-center">
+                  <p class="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Capacity</p>
+                  <p class="app-data mt-1.5 text-3xl font-semibold text-zinc-100">
                     {formatCount(estimatedRunCount())}
                     <span class="text-lg text-zinc-500"> / 250</span>
                   </p>
-                  <p class="mt-1 text-xs text-zinc-500">Queue slot {queueDepth() + 1} if launched now</p>
+                  <p class="mt-1 text-[11px] text-zinc-500">Queue slot {queueDepth() + 1} if launched now</p>
                 </div>
                 <div class="absolute bottom-1 left-3 text-[11px] text-zinc-600">0</div>
                 <div class="absolute bottom-1 left-1/2 -translate-x-1/2 text-[11px] text-zinc-600">
@@ -1748,41 +1748,45 @@ export default function ExperimentsIndexPage() {
                 <div class="absolute bottom-1 right-3 text-[11px] text-zinc-600">250</div>
               </div>
 
-              <div class="mt-4 grid gap-3 sm:grid-cols-3">
-                <div class="rounded-md border border-zinc-800 bg-zinc-950/75 px-4 py-3">
-                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">ETA</p>
-                  <p class="app-data mt-2 text-xl font-semibold text-zinc-100">
+              <div class="mt-4 space-y-2">
+                <div class="flex items-center justify-between gap-4 rounded-md border border-zinc-800 bg-zinc-950/75 px-4 py-3">
+                  <div class="min-w-0">
+                    <p class="text-[11px] uppercase tracking-[0.18em] text-zinc-500">ETA</p>
+                    <p class="mt-0.5 text-xs text-zinc-500">Includes the current run queue.</p>
+                  </div>
+                  <p class="app-data shrink-0 text-xl font-semibold text-zinc-100">
                     {formatDuration(runtimeEstimateMinutes() + queueDepth() * 4)}
                   </p>
-                  <p class="mt-1 text-xs text-zinc-500">Includes the current run queue.</p>
                 </div>
-                <div class="rounded-md border border-zinc-800 bg-zinc-950/75 px-4 py-3">
-                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Scoring Bias</p>
-                  <p class="mt-2 text-sm font-semibold text-zinc-100">
+                <div class="flex items-center justify-between gap-4 rounded-md border border-zinc-800 bg-zinc-950/75 px-4 py-3">
+                  <div class="min-w-0">
+                    <p class="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Scoring Bias</p>
+                    <p class="mt-0.5 text-xs text-zinc-500">Set in the scoring rule above.</p>
+                  </div>
+                  <p class="shrink-0 truncate text-sm font-semibold text-zinc-100">
                     {scoringOptions.find((option) => option.value === scoringRule())?.label}
                   </p>
-                  <p class="mt-1 text-xs text-zinc-500">
-                    {scoringOptions.find((option) => option.value === scoringRule())?.blurb}
-                  </p>
                 </div>
-                <div class="rounded-md border border-zinc-800 bg-zinc-950/75 px-4 py-3">
-                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Confidence Band</p>
-                  <p class="app-data mt-2 text-xl font-semibold text-zinc-100">
+                <div class="flex items-center justify-between gap-4 rounded-md border border-zinc-800 bg-zinc-950/75 px-4 py-3">
+                  <div class="min-w-0">
+                    <p class="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Confidence Band</p>
+                    <p class="mt-0.5 text-xs text-zinc-500">A rough stability hint, not gospel.</p>
+                  </div>
+                  <p class="app-data shrink-0 text-xl font-semibold text-zinc-100">
                     +/-{sharpeVarianceBand().toFixed(2)}
                   </p>
-                  <p class="mt-1 text-xs text-zinc-500">A rough stability hint, not gospel.</p>
                 </div>
               </div>
             </div>
 
             <div class="rounded-md border border-zinc-800 bg-zinc-950/80 p-4">
               <div class="flex items-center justify-between gap-3">
-                <div>
+                <div class="min-w-0">
                   <p class="text-sm font-semibold text-zinc-100">Pre-flight validator</p>
                   <p class="mt-1 text-xs text-zinc-500">This updates live so weird setups get called out early.</p>
                 </div>
                 <span
-                  class={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                  class={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold ${
                     isValidated()
                       ? "border-emerald-800/80 bg-emerald-950/45 text-emerald-200"
                       : "border-zinc-700 bg-zinc-900 text-zinc-300"
