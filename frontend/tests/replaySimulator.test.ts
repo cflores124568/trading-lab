@@ -117,6 +117,90 @@ test("open positions remain mark-to-market when replay has not exited", () => {
   assert.equal(session.equityCurve.at(-1), 100_012.5);
 });
 
+test("breach with an open position auto-flattens on the breach bar", () => {
+  const candles: Candle[] = [
+    { time: 1 as Candle["time"], open: 100, high: 100.5, low: 99.75, close: 100, volume: 1 },
+    { time: 2 as Candle["time"], open: 100, high: 100.25, low: 98.5, close: 99, volume: 1 },
+    { time: 3 as Candle["time"], open: 99, high: 99.25, low: 97.75, close: 98, volume: 1 },
+  ];
+  const actions: ReplayAction[] = [
+    { id: "buy-1", barIndex: 0, type: "lift_ask", createdAt: 1 },
+    { id: "ignored-after-breach", barIndex: 2, type: "hit_bid", createdAt: 2 },
+  ];
+
+  const session = simulateReplaySession({
+    candles,
+    currentIndex: 2,
+    actions,
+    initialBalance: 100_000,
+    commission: 0,
+    tickValue: 10,
+    tickSize: 0.25,
+    spreadTicks: 1,
+    propFirmRules: {
+      ...rules,
+      daily_loss_limit: 0.0001,
+      max_drawdown: 0.0001,
+    },
+  });
+
+  assert.equal(session.trades.length, 1);
+  assert.equal(session.trades[0].exit_price, 99);
+  assert.equal(session.trades[0].pnl, -12.5);
+  assert.equal(session.balance, 99_987.5);
+  assert.equal(session.position, null);
+  assert.equal(session.currentQuote?.reference, 99);
+  assert.equal(
+    session.executionEvents.some(
+      (event) => event.type === "flatten" && event.reason === "Prop firm breach forced liquidation.",
+    ),
+    true,
+  );
+  assert.equal(session.executionEvents.some((event) => event.bar_index === 2), false);
+  assert.equal(session.propEvaluation.daily_loss_breached, true);
+});
+
+test("breach with no open position just locks the replay session", () => {
+  const candles: Candle[] = [
+    { time: 1 as Candle["time"], open: 100, high: 100.5, low: 99.75, close: 100, volume: 1 },
+    { time: 2 as Candle["time"], open: 100, high: 100.25, low: 89.5, close: 90, volume: 1 },
+    { time: 3 as Candle["time"], open: 90, high: 90.25, low: 89.75, close: 90, volume: 1 },
+  ];
+  const actions: ReplayAction[] = [
+    { id: "buy-1", barIndex: 0, type: "lift_ask", createdAt: 1 },
+    { id: "flatten-1", barIndex: 1, type: "flatten", createdAt: 2 },
+    { id: "ignored-after-breach", barIndex: 2, type: "hit_bid", createdAt: 3 },
+  ];
+
+  const session = simulateReplaySession({
+    candles,
+    currentIndex: 2,
+    actions,
+    initialBalance: 100_000,
+    commission: 0,
+    tickValue: 10,
+    tickSize: 0.25,
+    spreadTicks: 1,
+    propFirmRules: {
+      ...rules,
+      daily_loss_limit: 0.0001,
+      max_drawdown: 0.0001,
+    },
+  });
+
+  assert.equal(session.trades.length, 1);
+  assert.equal(session.position, null);
+  assert.equal(session.currentQuote?.reference, 90);
+  assert.equal(
+    session.executionEvents.some(
+      (event) => event.type === "flatten" && event.reason === "Prop firm breach forced liquidation.",
+    ),
+    false,
+  );
+  assert.equal(session.executionEvents.some((event) => event.bar_index === 2), false);
+  assert.equal(session.propEvaluation.daily_loss_breached, true);
+});
+
 test("replay session carries configured position size through fills", () => {
   const candles = makeCandles(4);
   const actions: ReplayAction[] = [

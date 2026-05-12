@@ -463,6 +463,8 @@ export function simulateReplaySession(args: {
   const trades: Trade[] = [];
   const equityCurve: number[] = [];
   const executionEvents: ExecutionEvent[] = [];
+  let lastCandle = visibleCandles[0];
+  let lastQuote = syntheticQuoteForCandle(lastCandle, executionConfig);
 
   const appendEvent = (event: Omit<ExecutionEvent, "id">) => {
     executionEvents.push({
@@ -524,6 +526,8 @@ export function simulateReplaySession(args: {
   for (let i = 0; i < visibleCandles.length; i += 1) {
     const candle = visibleCandles[i];
     const quote = syntheticQuoteForCandle(candle, executionConfig);
+    lastCandle = candle;
+    lastQuote = quote;
     const actionsAtBar = visibleActions.filter((action) => action.barIndex === i);
 
     const pendingOrders = activeOrders.filter(
@@ -892,24 +896,61 @@ export function simulateReplaySession(args: {
           markedPosition.side,
           markedPosition.entryPrice,
           candle.close,
-          positionSize,
+          markedPosition.quantity,
           tickValue,
           commission,
         )
       : 0;
 
     equityCurve.push(round(balance + unrealizedPnl));
+
+    const currentEvaluation = evaluatePropFirm(propFirmRules, trades, equityCurve, initialBalance);
+    if (currentEvaluation.daily_loss_breached || currentEvaluation.drawdown_breached) {
+      // Freeze the session right here so later candles can't sneak in extra fills.
+      if (hasPendingOrders()) {
+        for (const order of activeOrders.filter((candidate) => candidate.status === "pending")) {
+          appendEvent({
+            type: "resting_canceled",
+            action: "cancel",
+            side: order.side,
+            price: order.price,
+            bar_index: i,
+            time: getCandleTime(candle),
+            order_id: order.id,
+            reason: "Prop firm breach canceled the resting order.",
+          });
+        }
+        clearActiveOrders();
+      }
+
+      const breachPosition = getPosition();
+      if (breachPosition) {
+        const exitPrice = breachPosition.side === "buy" ? quote.bid : quote.ask;
+        closePosition(candle, exitPrice);
+        appendEvent({
+          type: "flatten",
+          action: "flatten",
+          price: exitPrice,
+          bar_index: i,
+          time: getCandleTime(candle),
+          reason: "Prop firm breach forced liquidation.",
+        });
+        equityCurve[equityCurve.length - 1] = balance;
+      }
+
+      break;
+    }
   }
 
-  const currentCandle = visibleCandles[visibleCandles.length - 1];
-  const currentQuote = syntheticQuoteForCandle(currentCandle, executionConfig);
+  const currentCandle = lastCandle;
+  const currentQuote = lastQuote;
   const finalPosition = getPosition();
   const finalUnrealizedPnl = finalPosition
     ? computePnl(
         finalPosition.side,
         finalPosition.entryPrice,
         currentCandle.close,
-        positionSize,
+        finalPosition.quantity,
         tickValue,
         commission,
       )

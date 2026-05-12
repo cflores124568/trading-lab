@@ -1037,6 +1037,17 @@ export default function ReplayLabPage() {
       }
     }
 
+    const breach = replayBreach();
+    if (breach?.time) {
+      markers.push({
+        time: markerTimeFromIso(breach.time),
+        position: "inBar",
+        color: "#f87171",
+        shape: "square",
+        text: breach.equity !== null ? `${breach.label} ${formatCurrency(breach.equity)}` : breach.label,
+      });
+    }
+
     if (session.position && currentCandle()) {
       markers.push({
         time: Number(currentCandle()!.time),
