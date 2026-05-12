@@ -14,25 +14,19 @@ import {
   TrendingUp,
 } from "lucide-solid";
 
-interface Props {
+interface ChartStripProps {
   isPlaying: boolean;
-  speed: number;
   statusLabel: string;
-  statusDetail: string;
-  progress: number;
   currentBar: number;
   totalBars: number;
-  currentTimeLabel: string;
   currentPriceLabel: string;
   bidAskLabel: string;
-  positionLabel: string;
-  activeOrderLabel: string;
-  canSeek: boolean;
   canStartPlayback: boolean;
-  canStepBack: boolean;
-  canStepForward: boolean;
-  canJumpPrevTrade: boolean;
-  canJumpNextTrade: boolean;
+  onPlayPause: () => void;
+  onRestart: () => void;
+}
+
+interface ExecutionActionsProps {
   canLiftAsk: boolean;
   canHitBid: boolean;
   canJoinBid: boolean;
@@ -41,14 +35,6 @@ interface Props {
   canReplaceOrder: boolean;
   canCancelOrder: boolean;
   canFlatten: boolean;
-  onPlayPause: () => void;
-  onSpeedChange: (speed: number) => void;
-  onSeek: (progress: number) => void;
-  onRestart: () => void;
-  onStepBack: () => void;
-  onStepForward: () => void;
-  onJumpPrevTrade: () => void;
-  onJumpNextTrade: () => void;
   onLiftAsk: () => void;
   onHitBid: () => void;
   onJoinBid: () => void;
@@ -58,6 +44,32 @@ interface Props {
   onCancel: () => void;
   onFlatten: () => void;
 }
+
+interface TimelineControlsProps {
+  speed: number;
+  progress: number;
+  currentBar: number;
+  totalBars: number;
+  statusDetail: string;
+  currentTimeLabel: string;
+  positionLabel: string;
+  activeOrderLabel: string;
+  isPlaying: boolean;
+  canSeek: boolean;
+  canStartPlayback: boolean;
+  canStepBack: boolean;
+  canStepForward: boolean;
+  canJumpPrevTrade: boolean;
+  canJumpNextTrade: boolean;
+  onSpeedChange: (speed: number) => void;
+  onSeek: (progress: number) => void;
+  onStepBack: () => void;
+  onStepForward: () => void;
+  onJumpPrevTrade: () => void;
+  onJumpNextTrade: () => void;
+}
+
+type Props = ChartStripProps & ExecutionActionsProps & TimelineControlsProps;
 
 const speeds = [1, 2, 5, 8, 12, 20];
 
@@ -82,88 +94,154 @@ function actionButton(enabled: boolean, tone: "green" | "rose"): string {
   ].join(" ");
 }
 
-export default function ReplayControls(props: Props) {
+export function ReplayChartStrip(props: ChartStripProps) {
+  const playEnabled = () => props.isPlaying || props.canStartPlayback;
+
+  return (
+    <div class="flex flex-wrap items-center gap-3 border-b border-zinc-700/80 bg-zinc-950/78 px-4 py-3">
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        <span class="app-panel-selected rounded-sm border px-3 py-1.5 font-semibold uppercase tracking-[0.16em] text-sky-100">
+          {props.statusLabel}
+        </span>
+        <span class="rounded-sm border border-zinc-700/80 bg-zinc-900 px-3 py-1.5 text-zinc-400">
+          Bar <span class="app-data ml-1 text-zinc-100">{props.currentBar} / {props.totalBars}</span>
+        </span>
+        <span class="rounded-sm border border-zinc-700/80 bg-zinc-900 px-3 py-1.5 text-zinc-400">
+          Last <span class="app-data ml-1 text-zinc-100">{props.currentPriceLabel}</span>
+        </span>
+        <span class="rounded-sm border border-zinc-700/80 bg-zinc-900 px-3 py-1.5 text-zinc-400">
+          Book <span class="app-data ml-1 text-zinc-100">{props.bidAskLabel}</span>
+        </span>
+      </div>
+
+      <div class="ml-auto flex items-center gap-2">
+        <button
+          onClick={props.onPlayPause}
+          disabled={!playEnabled()}
+          class={`flex items-center gap-2 rounded-sm px-5 py-2 text-sm font-semibold transition-colors ${
+            playEnabled()
+              ? "bg-sky-400 text-zinc-950 hover:bg-sky-300"
+              : "cursor-not-allowed bg-zinc-800 text-zinc-500"
+          }`}
+        >
+          {props.isPlaying ? (
+            <>
+              <Pause size={16} /> Pause
+            </>
+          ) : (
+            <>
+              <Play size={16} fill="currentColor" /> Play
+            </>
+          )}
+        </button>
+        <button
+          onClick={props.onRestart}
+          class="flex items-center gap-2 rounded-sm border border-zinc-700 px-3 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+        >
+          <RotateCw size={14} />
+          Restart
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function ReplayExecutionActions(props: ExecutionActionsProps) {
+  return (
+    <div class="flex flex-wrap items-center gap-2 border-t border-zinc-700/80 bg-zinc-950/78 px-4 py-3">
+      <span class="mr-1 flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-zinc-500">
+        <TrendingUp size={14} />
+        Execute
+      </span>
+      <button
+        onClick={props.onLiftAsk}
+        disabled={!props.canLiftAsk}
+        class={actionButton(props.canLiftAsk, "green")}
+      >
+        <TrendingUp size={16} />
+        Lift Ask
+      </button>
+      <button
+        onClick={props.onHitBid}
+        disabled={!props.canHitBid}
+        class={actionButton(props.canHitBid, "rose")}
+      >
+        <TrendingDown size={16} />
+        Hit Bid
+      </button>
+      <button
+        onClick={props.onJoinBid}
+        disabled={!props.canJoinBid}
+        class={ghostButton(props.canJoinBid)}
+      >
+        <CircleDot size={16} />
+        Join Bid
+      </button>
+      <button
+        onClick={props.onJoinAsk}
+        disabled={!props.canJoinAsk}
+        class={ghostButton(props.canJoinAsk)}
+      >
+        <CircleDot size={16} />
+        Join Ask
+      </button>
+      <button
+        onClick={props.onRestExit}
+        disabled={!props.canRestExit}
+        class={ghostButton(props.canRestExit)}
+      >
+        <CircleDot size={16} />
+        Rest Exit
+      </button>
+      <button
+        onClick={props.onReplace}
+        disabled={!props.canReplaceOrder}
+        class={ghostButton(props.canReplaceOrder)}
+      >
+        <RotateCw size={16} />
+        Replace
+      </button>
+      <button
+        onClick={props.onCancel}
+        disabled={!props.canCancelOrder}
+        class={ghostButton(props.canCancelOrder)}
+      >
+        <Ban size={16} />
+        Cancel
+      </button>
+      <button
+        onClick={props.onFlatten}
+        disabled={!props.canFlatten}
+        class={ghostButton(props.canFlatten)}
+      >
+        <DoorOpen size={16} />
+        Flatten
+      </button>
+    </div>
+  );
+}
+
+export function ReplayTimelineControls(props: TimelineControlsProps) {
   return (
     <div class="app-panel overflow-hidden rounded-md">
-      <div class="border-b border-zinc-700/80 bg-zinc-950/78 px-5 py-4">
-        <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div class="space-y-1">
-            <p class="text-xs uppercase tracking-[0.18em] text-sky-300">Replay Controls</p>
-            <p class="text-sm text-zinc-500">{props.statusDetail}</p>
-          </div>
-
-          <div class="flex flex-wrap gap-2.5">
-            <div class="app-panel-selected rounded-sm border px-4 py-3 text-xs text-zinc-500">
-              <p>Status</p>
-              <p class="mt-1 text-sm font-semibold text-sky-100">{props.statusLabel}</p>
-            </div>
-            <div class="rounded-sm border border-zinc-700/80 bg-zinc-900 px-4 py-3 text-xs text-zinc-500">
-              <p>Current Bar</p>
-              <p class="app-data mt-1 text-sm font-semibold text-zinc-100">
-                {props.currentBar} / {props.totalBars}
-              </p>
-            </div>
-            <div class="rounded-sm border border-zinc-700/80 bg-zinc-900 px-4 py-3 text-xs text-zinc-500">
-              <p>Last Price</p>
-              <p class="app-data mt-1 text-sm font-semibold text-zinc-100">
-                {props.currentPriceLabel}
-              </p>
-            </div>
-            <div class="rounded-sm border border-zinc-700/80 bg-zinc-900 px-4 py-3 text-xs text-zinc-500">
-              <p>Book</p>
-              <p class="app-data mt-1 text-sm font-semibold text-zinc-100">
-                {props.bidAskLabel}
-              </p>
-            </div>
-          </div>
-        </div>
+      <div class="border-b border-zinc-700/80 bg-zinc-950/78 px-5 py-3">
+        <p class="text-xs uppercase tracking-[0.18em] text-sky-300">Session Control</p>
+        <p class="mt-1 text-sm text-zinc-500">{props.statusDetail}</p>
       </div>
 
       <div class="space-y-5 p-5">
-        <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div class="flex flex-wrap gap-3">
-            <button
-              onClick={props.onPlayPause}
-              disabled={!props.isPlaying && !props.canStartPlayback}
-              class={`flex items-center gap-2 rounded-sm px-6 py-3 text-sm font-semibold transition-colors ${
-                props.isPlaying || props.canStartPlayback
-                  ? "bg-sky-400 text-zinc-950 hover:bg-sky-300"
-                  : "cursor-not-allowed bg-zinc-800 text-zinc-500"
-              }`}
-            >
-              {props.isPlaying ? (
-                <>
-                  <Pause size={20} /> Pause Tape
-                </>
-              ) : (
-                <>
-                  <Play size={20} fill="currentColor" /> Play Replay
-                </>
-              )}
-            </button>
-
-            <button
-              onClick={props.onRestart}
-              class="flex items-center gap-2 rounded-sm border border-zinc-700 px-4 py-3 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
-            >
-              <RotateCw size={18} />
-              Restart
-            </button>
+        <div class="grid gap-2 md:grid-cols-3">
+          <div class="rounded-sm border border-zinc-700/80 bg-zinc-950 px-3 py-3 text-xs text-zinc-500">
+            <p>Time</p>
+            <p class="app-data mt-1 text-sm text-zinc-200">{props.currentTimeLabel}</p>
           </div>
-
-          <div class="grid min-w-72 grid-cols-1 gap-2 md:grid-cols-2 xl:max-w-[440px]">
-            <div class="rounded-sm border border-zinc-700/80 bg-zinc-950 px-3 py-3 text-xs text-zinc-500">
-              <p>Time</p>
-              <p class="app-data mt-1 text-sm text-zinc-200">{props.currentTimeLabel}</p>
-            </div>
-            <div class="rounded-sm border border-zinc-700/80 bg-zinc-950 px-3 py-3 text-xs text-zinc-500">
-              <p>Position</p>
-              <p class="app-data mt-1 text-sm text-zinc-200">{props.positionLabel}</p>
-            </div>
-            <div class="rounded-sm border border-zinc-700/80 bg-zinc-950 px-3 py-3 text-xs text-zinc-500 md:col-span-2">
-              <p>Resting Order</p>
-              <p class="app-data mt-1 text-sm text-zinc-200">{props.activeOrderLabel}</p>
-            </div>
+          <div class="rounded-sm border border-zinc-700/80 bg-zinc-950 px-3 py-3 text-xs text-zinc-500">
+            <p>Position</p>
+            <p class="app-data mt-1 text-sm text-zinc-200">{props.positionLabel}</p>
+          </div>
+          <div class="rounded-sm border border-zinc-700/80 bg-zinc-950 px-3 py-3 text-xs text-zinc-500">
+            <p>Resting Order</p>
+            <p class="app-data mt-1 text-sm text-zinc-200">{props.activeOrderLabel}</p>
           </div>
         </div>
 
@@ -272,80 +350,68 @@ export default function ReplayControls(props: Props) {
             </div>
           </div>
         </div>
-
-        <div class="rounded-md border border-zinc-700/80 bg-zinc-950/80 p-4">
-          <div class="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-zinc-500">
-            <TrendingUp size={16} />
-            Execution Actions
-          </div>
-          <div class="mt-4 flex flex-wrap gap-2">
-            <button
-              onClick={props.onLiftAsk}
-              disabled={!props.canLiftAsk}
-              class={actionButton(props.canLiftAsk, "green")}
-            >
-              <TrendingUp size={16} />
-              Lift Ask
-            </button>
-            <button
-              onClick={props.onHitBid}
-              disabled={!props.canHitBid}
-              class={actionButton(props.canHitBid, "rose")}
-            >
-              <TrendingDown size={16} />
-              Hit Bid
-            </button>
-            <button
-              onClick={props.onJoinBid}
-              disabled={!props.canJoinBid}
-              class={ghostButton(props.canJoinBid)}
-            >
-              <CircleDot size={16} />
-              Join Bid
-            </button>
-            <button
-              onClick={props.onJoinAsk}
-              disabled={!props.canJoinAsk}
-              class={ghostButton(props.canJoinAsk)}
-            >
-              <CircleDot size={16} />
-              Join Ask
-            </button>
-            <button
-              onClick={props.onRestExit}
-              disabled={!props.canRestExit}
-              class={ghostButton(props.canRestExit)}
-            >
-              <CircleDot size={16} />
-              Rest Exit
-            </button>
-            <button
-              onClick={props.onReplace}
-              disabled={!props.canReplaceOrder}
-              class={ghostButton(props.canReplaceOrder)}
-            >
-              <RotateCw size={16} />
-              Replace
-            </button>
-            <button
-              onClick={props.onCancel}
-              disabled={!props.canCancelOrder}
-              class={ghostButton(props.canCancelOrder)}
-            >
-              <Ban size={16} />
-              Cancel
-            </button>
-            <button
-              onClick={props.onFlatten}
-              disabled={!props.canFlatten}
-              class={ghostButton(props.canFlatten)}
-            >
-              <DoorOpen size={16} />
-              Flatten
-            </button>
-          </div>
-        </div>
       </div>
+    </div>
+  );
+}
+
+export default function ReplayControls(props: Props) {
+  return (
+    <div class="space-y-4">
+      <div class="app-panel overflow-hidden rounded-md">
+        <ReplayChartStrip
+          isPlaying={props.isPlaying}
+          statusLabel={props.statusLabel}
+          currentBar={props.currentBar}
+          totalBars={props.totalBars}
+          currentPriceLabel={props.currentPriceLabel}
+          bidAskLabel={props.bidAskLabel}
+          canStartPlayback={props.canStartPlayback}
+          onPlayPause={props.onPlayPause}
+          onRestart={props.onRestart}
+        />
+        <ReplayExecutionActions
+          canLiftAsk={props.canLiftAsk}
+          canHitBid={props.canHitBid}
+          canJoinBid={props.canJoinBid}
+          canJoinAsk={props.canJoinAsk}
+          canRestExit={props.canRestExit}
+          canReplaceOrder={props.canReplaceOrder}
+          canCancelOrder={props.canCancelOrder}
+          canFlatten={props.canFlatten}
+          onLiftAsk={props.onLiftAsk}
+          onHitBid={props.onHitBid}
+          onJoinBid={props.onJoinBid}
+          onJoinAsk={props.onJoinAsk}
+          onRestExit={props.onRestExit}
+          onReplace={props.onReplace}
+          onCancel={props.onCancel}
+          onFlatten={props.onFlatten}
+        />
+      </div>
+      <ReplayTimelineControls
+        speed={props.speed}
+        progress={props.progress}
+        currentBar={props.currentBar}
+        totalBars={props.totalBars}
+        statusDetail={props.statusDetail}
+        currentTimeLabel={props.currentTimeLabel}
+        positionLabel={props.positionLabel}
+        activeOrderLabel={props.activeOrderLabel}
+        isPlaying={props.isPlaying}
+        canSeek={props.canSeek}
+        canStartPlayback={props.canStartPlayback}
+        canStepBack={props.canStepBack}
+        canStepForward={props.canStepForward}
+        canJumpPrevTrade={props.canJumpPrevTrade}
+        canJumpNextTrade={props.canJumpNextTrade}
+        onSpeedChange={props.onSpeedChange}
+        onSeek={props.onSeek}
+        onStepBack={props.onStepBack}
+        onStepForward={props.onStepForward}
+        onJumpPrevTrade={props.onJumpPrevTrade}
+        onJumpNextTrade={props.onJumpNextTrade}
+      />
     </div>
   );
 }
