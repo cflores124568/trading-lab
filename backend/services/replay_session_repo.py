@@ -98,7 +98,7 @@ def save_replay_session(result: dict) -> None:
         VALUES (
             %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s,
             %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
-            %s::jsonb, %s::jsonb, %s, %s
+            %s::jsonb, %s::jsonb, %s, %s, %s
         )
         ON CONFLICT (replay_session_id) DO UPDATE SET
             name              = EXCLUDED.name,
