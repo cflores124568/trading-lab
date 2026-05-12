@@ -54,6 +54,7 @@ import {
   type PayoutEstimate,
   type TradeAnalyticsSummary,
 } from "../../services/backtestAnalytics";
+import { formatTradeLabel } from "../../services/tradeFormatting";
 import { CircleCheck, CircleX, TriangleAlert } from "lucide-solid";
 import AppShell from "../../components/AppShell";
 import WorkspaceLaunchControl from "../../components/workspace/WorkspaceLaunchControl";
@@ -855,7 +856,7 @@ function TradesTable(props: {
                       trade.side === "buy" ? "text-green-400" : "text-red-400"
                     }`}
                   >
-                    {trade.side}
+                    {formatTradeLabel(trade.side, trade.quantity)}
                   </td>
                   <td class="p-3 font-mono text-xs text-zinc-400">{trade.entry_time}</td>
                   <td class="p-3 font-mono text-xs text-zinc-400">{trade.exit_time}</td>
@@ -1173,7 +1174,7 @@ export default function BacktestDetail() {
       position: trade.side === "buy" ? "belowBar" : "aboveBar",
       color: trade.side === "buy" ? "#38bdf8" : "#f59e0b",
       shape: trade.side === "buy" ? "arrowUp" : "arrowDown",
-      text: `SYS ${trade.side.toUpperCase()} @ ${trade.entry_price.toFixed(2)}`,
+      text: `SYS ${formatTradeLabel(trade.side, trade.quantity)} @ ${trade.entry_price.toFixed(2)}`,
     }));
 
     const replayMarkers: PriceChartMarker[] = [];
@@ -1183,7 +1184,7 @@ export default function BacktestDetail() {
         position: trade.side === "buy" ? "belowBar" : "aboveBar",
         color: trade.side === "buy" ? "#22c55e" : "#fb7185",
         shape: trade.side === "buy" ? "arrowUp" : "arrowDown",
-        text: `YOU ${trade.side.toUpperCase()} @ ${trade.entry_price.toFixed(2)}`,
+        text: `YOU ${formatTradeLabel(trade.side, trade.quantity)} @ ${trade.entry_price.toFixed(2)}`,
       });
 
       if (trade.exit_time) {
@@ -1203,7 +1204,7 @@ export default function BacktestDetail() {
         position: session.position.side === "buy" ? "belowBar" : "aboveBar",
         color: session.position.side === "buy" ? "#34d399" : "#f43f5e",
         shape: "circle",
-        text: `OPEN ${session.position.side.toUpperCase()} ${formatCurrency(session.position.unrealized_pnl, { signed: true })}`,
+        text: `OPEN ${formatTradeLabel(session.position.side, session.position.quantity)} ${formatCurrency(session.position.unrealized_pnl, { signed: true })}`,
       });
     }
 
@@ -1226,7 +1227,7 @@ export default function BacktestDetail() {
       return "Flat";
     }
 
-    return `${session.position.side.toUpperCase()} from $${session.position.entry_price.toFixed(2)} (${formatCurrency(session.position.unrealized_pnl, { signed: true })})`;
+    return `${formatTradeLabel(session.position.side, session.position.quantity)} from $${session.position.entry_price.toFixed(2)} (${formatCurrency(session.position.unrealized_pnl, { signed: true })})`;
   });
 
   const bidAskLabel = createMemo(() => {
@@ -1260,7 +1261,7 @@ export default function BacktestDetail() {
       ["Win Rate", `${(session.metrics.win_rate * 100).toFixed(1)}%`],
       ["Trades", String(session.metrics.total_trades)],
       ["Balance", formatCurrency(session.balance)],
-      ["Position", session.position ? session.position.side.toUpperCase() : "FLAT"],
+      ["Position", session.position ? formatTradeLabel(session.position.side, session.position.quantity) : "FLAT"],
     ] as [string, string][];
   });
 

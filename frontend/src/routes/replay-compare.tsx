@@ -7,6 +7,7 @@ import {
   type Trade,
 } from "../services/api";
 import { compareReplayToBacktest } from "../services/replayComparison";
+import { formatTradeLabel } from "../services/tradeFormatting";
 
 function formatMoney(value: number): string {
   return `${value >= 0 ? "+" : "-"}$${Math.abs(value).toFixed(2)}`;
@@ -93,7 +94,7 @@ function TradeTable(props: {
                       trade.side === "buy" ? "text-green-400" : "text-red-400"
                     }`}
                   >
-                    {trade.side}
+                    {formatTradeLabel(trade.side, trade.quantity)}
                   </td>
                   <td class="app-data text-xs text-zinc-500">{formatTradeTime(trade.entry_time)}</td>
                   <td class="app-data text-xs text-zinc-500">{formatTradeTime(trade.exit_time)}</td>
