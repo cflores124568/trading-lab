@@ -17,6 +17,7 @@ function trade(args: {
     ...args,
     status: "closed",
     commission: 5,
+    quantity: 1,
   };
 }
 

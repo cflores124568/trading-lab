@@ -123,8 +123,7 @@ export function summarizeTrades(
     gross_losses: round(grossLosses),
     current_balance:
       equityCurve.length > 0 ? round(equityCurve[equityCurve.length - 1]) : round(initialBalance),
-    // Backtests currently run fixed-size trades, so trade count is the cleanest proxy.
-    total_contracts: trades.length,
+    total_contracts: trades.reduce((sum, trade) => sum + (trade.quantity ?? 1), 0),
     trading_days: dailyPnls.length,
     largest_green_day:
       dailyPnls.length > 0 ? round(Math.max(...dailyPnls.map((entry) => entry.pnl))) : 0,

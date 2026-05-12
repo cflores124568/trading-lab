@@ -39,6 +39,22 @@ def _bars(
 
 
 class BacktestEngineBracketTests(unittest.TestCase):
+    def test_trade_records_carry_position_size(self):
+        df = _bars(high=101.0, low=99.0, close=100.0)
+
+        result = run_backtest(
+            df,
+            initial_balance=100.0,
+            position_size=3.0,
+            commission=0.0,
+            tick_size=1.0,
+            tick_value=1.0,
+            slippage_ticks=0.0,
+        )
+
+        self.assertEqual(len(result["trades"]), 1)
+        self.assertEqual(result["trades"][0]["quantity"], 3.0)
+
     def test_stop_loss_wins_when_one_bar_hits_both_levels(self):
         df = _bars(high=105.0, low=95.0, close=102.0)
 

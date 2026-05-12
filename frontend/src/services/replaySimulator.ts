@@ -58,6 +58,7 @@ export interface ReplayMetrics {
 
 export interface ReplayPosition {
   side: "buy" | "sell";
+  quantity: number;
   entry_price: number;
   entry_time: string;
   entry_bar_index: number;
@@ -84,6 +85,7 @@ export interface ReplaySession {
 
 interface OpenReplayPosition {
   side: "buy" | "sell";
+  quantity: number;
   entryPrice: number;
   entryTime: string;
   entryBarIndex: number;
@@ -486,6 +488,7 @@ export function simulateReplaySession(args: {
       entry_time: position.entryTime,
       exit_time: getCandleTime(candle),
       side: position.side,
+      quantity: position.quantity,
       entry_price: position.entryPrice,
       exit_price: exitPrice,
       pnl,
@@ -504,6 +507,7 @@ export function simulateReplaySession(args: {
   ) => {
     position = {
       side,
+      quantity: positionSize,
       entryPrice: price,
       entryTime: getCandleTime(candle),
       entryBarIndex: barIndex,
@@ -904,6 +908,7 @@ export function simulateReplaySession(args: {
   const replayPosition = finalPosition
     ? {
         side: finalPosition.side,
+        quantity: finalPosition.quantity,
         entry_price: finalPosition.entryPrice,
         entry_time: finalPosition.entryTime,
         entry_bar_index: finalPosition.entryBarIndex,

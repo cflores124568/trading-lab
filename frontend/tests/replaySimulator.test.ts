@@ -81,10 +81,12 @@ test("manual replay session closes and reverses positions correctly", () => {
 
   assert.equal(session.trades.length, 2);
   assert.equal(session.trades[0].side, "buy");
+  assert.equal(session.trades[0].quantity, 1);
   assert.equal(session.trades[0].entry_price, 101.25);
   assert.equal(session.trades[0].exit_price, 103);
   assert.equal(session.trades[0].pnl, 12.5);
   assert.equal(session.trades[1].side, "sell");
+  assert.equal(session.trades[1].quantity, 1);
   assert.equal(session.trades[1].entry_price, 103);
   assert.equal(session.trades[1].exit_price, 105.25);
   assert.equal(session.trades[1].pnl, -27.5);
@@ -109,6 +111,7 @@ test("open positions remain mark-to-market when replay has not exited", () => {
 
   assert.equal(session.trades.length, 0);
   assert.equal(session.position?.side, "buy");
+  assert.equal(session.position?.quantity, 1);
   assert.equal(session.unrealizedPnl, 12.5);
   assert.equal(session.totalPnl, 12.5);
   assert.equal(session.equityCurve.at(-1), 100_012.5);

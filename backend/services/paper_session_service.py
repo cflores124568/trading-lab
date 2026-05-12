@@ -1271,6 +1271,7 @@ def _open_position(side: str, price: float, timestamp: str) -> dict:
     return {
         "side": side,
         "contracts": 1,
+        "quantity": 1,
         "entry_price": round(price, 4),
         "entry_time": timestamp,
         "mark_price": round(price, 4),
@@ -1302,6 +1303,7 @@ def _close_position(session: dict, position: dict, price: float, timestamp: str)
         "entry_time": position["entry_time"],
         "exit_time": timestamp,
         "side": position["side"],
+        "quantity": float(position.get("quantity") or position.get("contracts") or 1),
         "entry_price": round(float(position["entry_price"]), 4),
         "exit_price": round(float(price), 4),
         "pnl": pnl,

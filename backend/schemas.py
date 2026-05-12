@@ -67,6 +67,7 @@ class Trade(BaseModel):
     pnl: float
     status: TradeStatus
     commission: float
+    quantity: Optional[float] = None
     tick_size: Optional[float] = None
     tick_value: Optional[float] = None
     slippage_ticks: Optional[float] = None

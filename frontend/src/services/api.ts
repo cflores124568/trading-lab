@@ -115,6 +115,7 @@ export interface Trade {
   entry_time: string;
   exit_time: string;
   side: "buy" | "sell";
+  quantity?: number | null;
   entry_price: number;
   exit_price: number;
   pnl: number;
