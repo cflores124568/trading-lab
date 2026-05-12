@@ -394,7 +394,12 @@ def advance_paper_session_bar(
                 session["current_position"] = {}
                 session["equity_curve"] = [*session.get("equity_curve", []), _realized_equity(session)]
             else:
-                session["current_position"] = _open_position(filled_order["side"], float(filled_order["price"]), timestamp)
+                session["current_position"] = _open_position(
+                    filled_order["side"],
+                    float(filled_order["price"]),
+                    timestamp,
+                    float(filled_order.get("quantity") or 1),
+                )
 
             next_orders: list[dict] = []
             for order in updated_orders:
@@ -479,6 +484,7 @@ def execute_paper_session_action(
     price: float | None = None,
     stop_price: float | None = None,
     target_price: float | None = None,
+    quantity: float | None = None,
     filled_at: str | None = None,
     actor: str = "local-user",
     note: str | None = None,
@@ -491,6 +497,7 @@ def execute_paper_session_action(
     quote = _resolve_session_quote(session, price=price)
     execution_price = _price_for_action(action_key, quote, price)
     active_orders = _session_active_orders(session)
+    resolved_quantity = round(float(quantity or 1.0), 4)
 
     if action_key in {"lift_ask", "hit_bid"}:
         if session["status"] not in OPEN_ACTION_STATUSES:
@@ -507,11 +514,11 @@ def execute_paper_session_action(
             session["trade_log"] = [*(session.get("trade_log") or []), closed_trade]
 
         _set_session_active_orders(session, [])
-        session["current_position"] = _open_position(side, execution_price, timestamp)
+        session["current_position"] = _open_position(side, execution_price, timestamp, resolved_quantity)
         if previous_status == PaperSessionStatus.READY.value:
             session["status"] = PaperSessionStatus.RUNNING.value
 
-        summary = note or f"{_execution_label(action_key)} filled at {execution_price:.2f}."
+        summary = note or f"{_execution_label(action_key)} {_contract_phrase(resolved_quantity)} filled at {execution_price:.2f}."
         payload = {
             "action": action_key,
             "raw_action": raw_action,
@@ -519,6 +526,7 @@ def execute_paper_session_action(
             "entry_price": execution_price,
             "entry_time": timestamp,
             "side": side,
+            "quantity": resolved_quantity,
             "status_auto_started": previous_status != session["status"],
             "closed_trade": closed_trade,
         }
@@ -539,13 +547,15 @@ def execute_paper_session_action(
             price=order_price,
             submitted_at=timestamp,
             submitted_bar_index=(session.get("runner_state") or {}).get("bars_processed"),
+            quantity=resolved_quantity,
         )
         _set_session_active_orders(session, [order])
-        summary = note or f"Posted {action_key.replace('_', ' ')} at {order_price:.2f}."
+        summary = note or f"Posted {action_key.replace('_', ' ')} {_contract_phrase(resolved_quantity)} at {order_price:.2f}."
         payload = {
             "action": action_key,
             "quote": quote,
             "order": order,
+            "quantity": resolved_quantity,
         }
         audit_summary = summary
         event_type = "order_submitted"
@@ -566,6 +576,7 @@ def execute_paper_session_action(
             submitted_bar_index=(session.get("runner_state") or {}).get("bars_processed"),
             intent="exit",
             side=order_side,
+            quantity=float(position.get("quantity") or position.get("contracts") or 1),
         )
         _set_session_active_orders(session, [order])
         summary = note or f"Posted resting exit for the {position['side']} trade at {order_price:.2f}."
@@ -1031,6 +1042,7 @@ def _make_bracket_exit_orders(
     hidden state. One fills, the sibling gets canceled.
     """
     exit_side = "sell" if position.get("side") == "buy" else "buy"
+    quantity = float(position.get("quantity") or position.get("contracts") or 1)
     bracket_id = str(uuid.uuid4())
     stop_id = str(uuid.uuid4())
     target_id = str(uuid.uuid4())
@@ -1043,6 +1055,7 @@ def _make_bracket_exit_orders(
         submitted_bar_index=submitted_bar_index,
         intent="exit",
         side=exit_side,
+        quantity=quantity,
     )
     stop_order["reduce_only"] = True
     stop_order["bracket_id"] = bracket_id
@@ -1057,6 +1070,7 @@ def _make_bracket_exit_orders(
         submitted_bar_index=submitted_bar_index,
         intent="exit",
         side=exit_side,
+        quantity=quantity,
     )
     target_order["reduce_only"] = True
     target_order["bracket_id"] = bracket_id
@@ -1267,11 +1281,12 @@ def _require_open_position(session: dict) -> dict:
     return position
 
 
-def _open_position(side: str, price: float, timestamp: str) -> dict:
+def _open_position(side: str, price: float, timestamp: str, quantity: float = 1.0) -> dict:
+    size = round(float(quantity), 4)
     return {
         "side": side,
-        "contracts": 1,
-        "quantity": 1,
+        "contracts": size,
+        "quantity": size,
         "entry_price": round(price, 4),
         "entry_time": timestamp,
         "mark_price": round(price, 4),
@@ -1314,10 +1329,11 @@ def _close_position(session: dict, position: dict, price: float, timestamp: str)
 
 def _position_pnl(position: dict, price: float, tick_value: float, *, commission: float) -> float:
     entry_price = float(position["entry_price"])
+    quantity = float(position.get("quantity") or position.get("contracts") or 1)
     if position["side"] == "buy":
-        pnl = (price - entry_price) * tick_value
+        pnl = (price - entry_price) * tick_value * quantity
     else:
-        pnl = (entry_price - price) * tick_value
+        pnl = (entry_price - price) * tick_value * quantity
     return pnl - commission
 
 
@@ -1398,6 +1414,12 @@ def _execution_label(action: str) -> str:
     if action == "hit_bid":
         return "Hit bid"
     return action.replace("_", " ").title()
+
+
+def _contract_phrase(quantity: float) -> str:
+    rounded = round(float(quantity), 4)
+    label = f"{rounded:g}"
+    return f"{label} contract" if rounded == 1 else f"{label} contracts"
 
 
 def _resolve_tick_value(symbol: str | None) -> float:

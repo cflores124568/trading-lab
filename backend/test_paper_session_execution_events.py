@@ -109,13 +109,16 @@ class PaperSessionExecutionEventTests(unittest.TestCase):
             updated = paper_session_service.execute_paper_session_action(
                 "paper-1",
                 action="hit_bid",
+                quantity=3,
                 actor="tester",
             )
 
         self.assertEqual(updated["current_position"]["side"], "sell")
+        self.assertEqual(updated["current_position"]["quantity"], 3)
         self.assertEqual(len(updated["trade_log"]), 1)
         self.assertEqual(captured_event["event_type"], "position_opened")
         self.assertEqual(captured_event["payload"]["side"], "sell")
+        self.assertEqual(captured_event["payload"]["quantity"], 3)
         self.assertIsNotNone(captured_event["payload"]["closed_trade"])
         self.assertEqual(captured_event["payload"]["closed_trade"]["side"], "buy")
         self.assertEqual(captured_event["payload"]["closed_trade"]["exit_price"], 101.0)
@@ -223,6 +226,83 @@ class PaperSessionExecutionEventTests(unittest.TestCase):
         self.assertEqual(captured_events[-1]["event_type"], "order_filled")
         self.assertEqual(captured_events[-1]["payload"]["order"]["intent"], "exit")
         self.assertEqual(captured_events[-1]["payload"]["closed_trade"]["side"], "buy")
+
+    def test_join_bid_posts_a_resting_order_with_quantity(self):
+        """Join bid should remember the chosen contract count.
+
+        The order needs to carry the user-entered size so the later fill opens
+        the same number of contracts instead of silently snapping back to one.
+        """
+        captured_event = {}
+        session = {
+            "paper_session_id": "paper-1",
+            "candidate_id": "cand-1",
+            "status": "running",
+            "symbol": "ES",
+            "interval": "1min",
+            "prop_firm_rules": {"account_size": 100_000},
+            "guardrails": {},
+            "commission": 5.0,
+            "tick_value": 50.0,
+            "tick_size": 0.25,
+            "spread_ticks": 1,
+            "volatile_bar_threshold_ticks": 0,
+            "volatile_bar_extra_ticks": 0,
+            "resting_fill_mode": "touch",
+            "current_position": {},
+            "active_order": {},
+            "last_quote": {"bid": 101.0, "ask": 101.25, "reference": 101.0},
+            "trade_log": [],
+            "equity_curve": [100_000.0],
+            "runner_state": {"bars_processed": 1},
+            "last_bar_time": "2026-05-01T09:31:00+00:00",
+            "last_event_at": "2026-05-01T09:31:00+00:00",
+            "created_by": "test",
+            "created_at": "2026-05-01T09:30:00+00:00",
+            "updated_at": "2026-05-01T09:31:00+00:00",
+        }
+
+        with patch.object(paper_session_service, "_require_paper_session", return_value=session), patch.object(
+            paper_session_service,
+            "_save_paper_session_any",
+            side_effect=lambda payload: payload,
+        ), patch.object(
+            paper_session_service,
+            "_append_paper_event_any",
+            side_effect=lambda payload: captured_event.update(payload),
+        ), patch.object(
+            paper_session_service,
+            "_require_candidate",
+            return_value={"candidate_id": "cand-1"},
+        ), patch.object(
+            paper_session_service,
+            "_sync_candidate_paper_session",
+            return_value=None,
+        ), patch.object(
+            paper_session_service,
+            "_append_candidate_session_audit",
+            return_value=None,
+        ), patch.object(
+            paper_session_service,
+            "_now",
+            return_value="2026-05-01T09:31:00+00:00",
+        ), patch.object(
+            paper_session_service.uuid,
+            "uuid4",
+            return_value="order-2",
+        ):
+            updated = paper_session_service.execute_paper_session_action(
+                "paper-1",
+                action="join_bid",
+                quantity=2,
+                actor="tester",
+            )
+
+        self.assertEqual(updated["active_order"]["quantity"], 2)
+        self.assertEqual(updated["active_order"]["side"], "buy")
+        self.assertEqual(captured_event["event_type"], "order_submitted")
+        self.assertEqual(captured_event["payload"]["quantity"], 2)
+        self.assertEqual(captured_event["payload"]["order"]["quantity"], 2)
 
     def test_replace_creates_a_new_child_order_with_lineage(self):
         """Replacing should behave like cancel-and-new-child, not mutation.

@@ -14,6 +14,7 @@ import {
 } from "../../services/api";
 import type { PaperSessionStatus, PaperSessionTradeAction, Trade } from "../../services/api";
 import { buildPaperExecutionAnalytics } from "../../services/executionAnalytics";
+import { formatTradeLabel } from "../../services/tradeFormatting";
 
 function describeStatus(status: string): string {
   return status.replace(/_/g, " ");
@@ -125,12 +126,25 @@ function isoToLocalInputValue(value?: string | null): string {
   return adjusted.toISOString().slice(0, 16);
 }
 
-function positionLabel(side?: string | null): string {
+function formatContracts(value?: number | null): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "1";
+  }
+
+  if (Number.isInteger(value)) {
+    return String(value);
+  }
+
+  return value.toFixed(2).replace(/\.00$/, "");
+}
+
+function positionLabel(side?: string | null, quantity?: number | null): string {
+  const size = quantity && quantity > 1 ? ` ${formatContracts(quantity)}` : "";
   if (side === "buy") {
-    return "Long";
+    return `Long${size}`;
   }
   if (side === "sell") {
-    return "Short";
+    return `Short${size}`;
   }
   return "Flat";
 }
@@ -189,7 +203,9 @@ function orderLabel(order: Record<string, unknown>): string {
         : stringFromUnknown(order.intent) === "exit"
           ? "EXIT"
           : "ENTRY";
-  return `${intent} ${side.toUpperCase()} @ ${price.toFixed(4)}${armed}${replaceTag}`;
+  const quantity = numberFromUnknown(order.quantity) ?? numberFromUnknown(order.contracts);
+  const size = quantity ? ` ${formatContracts(quantity)}` : "";
+  return `${intent} ${side.toUpperCase()}${size} @ ${price.toFixed(4)}${armed}${replaceTag}`;
 }
 
 function runnerModeTone(mode?: string | null): string {
@@ -361,6 +377,7 @@ export default function PaperSessionDetailPage() {
   const [eventType, setEventType] = createSignal("operator_note");
   const [eventSummary, setEventSummary] = createSignal("");
   const [executionNote, setExecutionNote] = createSignal("");
+  const [entryQuantity, setEntryQuantity] = createSignal(1);
   const [bracketStopPrice, setBracketStopPrice] = createSignal("");
   const [bracketTargetPrice, setBracketTargetPrice] = createSignal("");
   const [runnerStartDate, setRunnerStartDate] = createSignal("");
@@ -462,11 +479,23 @@ export default function PaperSessionDetailPage() {
     action: PaperSessionTradeAction,
     extra: { stopPrice?: number; targetPrice?: number } = {},
   ) => {
+    const needsQuantity = ["lift_ask", "hit_bid", "join_bid", "join_ask"].includes(action);
+    let quantity: number | undefined;
+    if (needsQuantity) {
+      const nextQuantity = Number(entryQuantity());
+      if (!Number.isFinite(nextQuantity) || nextQuantity <= 0) {
+        setError("Quantity needs to be a real positive number.");
+        return;
+      }
+      quantity = nextQuantity;
+    }
+
     await runSessionAction("execute", async () => {
       const nextSession = await executePaperSessionAction(paperSessionId(), {
         action,
         stopPrice: extra.stopPrice,
         targetPrice: extra.targetPrice,
+        quantity,
         note: executionNote().trim() || undefined,
       });
       mutateSession(() => nextSession);
@@ -648,7 +677,11 @@ export default function PaperSessionDetailPage() {
                 <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-3">
                   <p class="app-kicker">Open Position</p>
                   <p class="mt-2 text-sm font-semibold text-zinc-100">
-                    {positionLabel(stringFromUnknown(currentPosition().side))}
+                    {positionLabel(
+                      stringFromUnknown(currentPosition().side),
+                      numberFromUnknown(currentPosition().quantity) ??
+                        numberFromUnknown(currentPosition().contracts),
+                    )}
                   </p>
                   <p class="mt-1 text-xs text-zinc-500">
                     Unrealized {formatCurrency(numberFromUnknown(metricsSnapshot().unrealized_pnl), true)}
@@ -809,7 +842,11 @@ export default function PaperSessionDetailPage() {
                     <div class="app-subpanel px-4 py-4">
                       <p class="text-sm font-medium text-zinc-100">Current position</p>
                       <p class="mt-3 text-sm text-zinc-300">
-                        {positionLabel(stringFromUnknown(currentPosition().side))}
+                        {positionLabel(
+                          stringFromUnknown(currentPosition().side),
+                          numberFromUnknown(currentPosition().quantity) ??
+                            numberFromUnknown(currentPosition().contracts),
+                        )}
                       </p>
                       <p class="mt-1 text-sm text-zinc-300">
                         Entry: {formatTimestamp(stringFromUnknown(currentPosition().entry_time))}
@@ -927,6 +964,24 @@ export default function PaperSessionDetailPage() {
                     placeholder="Optional execution note..."
                     class="w-full rounded-sm border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
                   />
+
+                  <div class="grid gap-3 md:grid-cols-[180px_1fr]">
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={entryQuantity()}
+                      onInput={(event) => {
+                        const next = Number(event.currentTarget.value);
+                        setEntryQuantity(Number.isFinite(next) && next > 0 ? next : 1);
+                      }}
+                      placeholder="Contracts"
+                      class="w-full rounded-sm border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                    />
+                    <div class="rounded-sm border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-400">
+                      Use this size for lift, hit, and join orders.
+                    </div>
+                  </div>
 
                   <div class="grid gap-3 md:grid-cols-[1fr_1fr_180px]">
                     <input
@@ -1214,7 +1269,7 @@ export default function PaperSessionDetailPage() {
                               <article class="rounded-md border border-zinc-800 bg-zinc-950 px-4 py-3">
                                 <div class="flex flex-wrap items-center justify-between gap-2">
                                   <span class="text-sm font-medium text-zinc-100">
-                                    {positionLabel(trade.side)}
+                                    {formatTradeLabel(trade.side, trade.quantity)}
                                   </span>
                                   <span
                                     class={`text-sm font-semibold ${

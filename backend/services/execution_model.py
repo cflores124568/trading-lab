@@ -280,12 +280,13 @@ def make_resting_order(
     submitted_bar_index: int | None = None,
     intent: str = "entry",
     side: str | None = None,
+    quantity: float | None = None,
 ) -> dict[str, Any]:
     resolved_side = side
     if resolved_side not in {"buy", "sell"}:
         resolved_side = "buy" if action == "join_bid" else "sell"
 
-    return {
+    payload = {
         "id": order_id,
         "intent": "exit" if intent == "exit" else "entry",
         "side": resolved_side,
@@ -294,6 +295,12 @@ def make_resting_order(
         "submitted_bar_index": submitted_bar_index,
         "type": action,
         "status": "pending",
+    }
+    if quantity is not None:
+        payload["quantity"] = round(float(quantity), 4)
+
+    return {
+        **payload,
     }
 
 
