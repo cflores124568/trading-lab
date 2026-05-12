@@ -581,16 +581,20 @@ export default function PriceChart(props: Props) {
 
   return (
     <div
-      class={`relative w-full overflow-hidden rounded-sm border border-zinc-700/80 bg-zinc-950 ${props.class ?? ""}`}
-      style={props.height ? { height: `${props.height}px` } : undefined}
+      class={`relative w-full overflow-hidden border border-zinc-700/80 bg-zinc-950 ${props.class ?? ""}`}
+      style={{
+        "border-radius": "0",
+        ...(props.height ? { height: `${props.height}px` } : {}),
+      }}
     >
       <div ref={container} class="h-full w-full" />
 
       {indicatorLegendMode() !== "hidden" && activeCandle() ? (
         <div
-          class={`pointer-events-none absolute left-3 top-3 z-10 max-w-[min(320px,calc(100%-1.5rem))] rounded-sm border border-zinc-800/90 bg-zinc-950/82 shadow-xl shadow-black/25 backdrop-blur ${
+          class={`pointer-events-none absolute left-3 top-3 z-10 max-w-[min(320px,calc(100%-1.5rem))] border border-zinc-800/90 bg-zinc-950/82 shadow-xl shadow-black/25 backdrop-blur ${
             indicatorLegendMode() === "full" ? "px-3 py-2.5" : "px-2.5 py-2"
           }`}
+          style={{ "border-radius": "0" }}
         >
           <div class="flex items-center justify-between gap-4">
             <span class="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500">

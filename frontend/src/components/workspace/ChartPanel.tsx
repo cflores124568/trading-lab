@@ -219,9 +219,10 @@ export default function ChartPanel(props: Props) {
 
   return (
     <section
-      class={`app-panel app-panel-interactive flex h-full min-h-[460px] flex-col overflow-hidden rounded-xl ${
+      class={`app-panel app-panel-interactive flex h-full min-h-[460px] flex-col overflow-hidden ${
         props.expanded ? "app-panel-selected" : ""
       }`}
+      style={{ "border-radius": "0" }}
     >
       <div class="border-b border-zinc-700/80 bg-zinc-950/92 px-4 py-3">
         <div class="flex flex-col gap-2.5 xl:flex-row xl:items-center xl:justify-between">

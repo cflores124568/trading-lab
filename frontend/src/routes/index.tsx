@@ -1,7 +1,7 @@
 import { A, useLocation, useNavigate } from "@solidjs/router";
 import { batch, createEffect, createMemo, createSignal } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
-import { LayoutPanelTop, PanelRight, Radio, SquareChartGantt } from "lucide-solid";
+import { SquareChartGantt } from "lucide-solid";
 import AppShell from "../components/AppShell";
 import WorkspaceGrid from "../components/workspace/WorkspaceGrid";
 import WorkspaceToolbar from "../components/workspace/WorkspaceToolbar";
@@ -35,7 +35,6 @@ export default function Dashboard() {
   const location = useLocation();
   const [workspace, setWorkspace] = createStore(loadWorkspaceCollectionState());
   const [launchNotice, setLaunchNotice] = createSignal<string | null>(null);
-  const [showUtilityRail, setShowUtilityRail] = createSignal(true);
   let hydratedLaunchSearch: string | null = null;
   const activeWorkspaceIndex = createMemo(() => {
     const index = workspace.workspaces.findIndex(
@@ -52,12 +51,6 @@ export default function Dashboard() {
   const canAddChart = createMemo(() => activePresetState().panels.length < MAX_WORKSPACE_PANELS);
   const canDeleteWorkspace = createMemo(() => workspace.workspaces.length > 1);
   const activePanels = createMemo(() => activePresetState().panels);
-  const livePanelCount = createMemo(
-    () => activePanels().filter((panel) => panel.query.mode === "live").length,
-  );
-  const historicalPanelCount = createMemo(
-    () => activePanels().filter((panel) => panel.query.mode === "historical").length,
-  );
   const symbolMix = createMemo(() => {
     const counts = new Map<string, number>();
 
@@ -79,8 +72,8 @@ export default function Dashboard() {
   const primarySymbol = createMemo(() => symbolMix()[0]?.[0] ?? "n/a");
   const primaryInterval = createMemo(() => intervalMix()[0]?.[0] ?? "n/a");
   const workspaceMode = createMemo(() => {
-    const live = livePanelCount();
-    const historical = historicalPanelCount();
+    const live = activePanels().filter((panel) => panel.query.mode === "live").length;
+    const historical = activePanels().filter((panel) => panel.query.mode === "historical").length;
 
     if (live > historical) {
       return "live leaning";
@@ -91,22 +84,6 @@ export default function Dashboard() {
     }
 
     return "balanced";
-  });
-  const layoutRead = createMemo(() => {
-    const panelCount = activePanels().length;
-    if (panelCount === 3) {
-      return "Anchor chart plus two support panels.";
-    }
-
-    if (panelCount === 1) {
-      return "Single-chart focus.";
-    }
-
-    if (panelCount === 2) {
-      return "Side-by-side comparison.";
-    }
-
-    return "Multi-panel grid.";
   });
   const handleWorkspaceChange = (workspaceId: string) => {
     setWorkspace("selectedWorkspaceId", workspaceId);
@@ -373,6 +350,7 @@ export default function Dashboard() {
     <AppShell
       title="Dashboard"
       subtitle="Live and historical chart workspaces tuned for fast setup, replay, and screenshot-worthy analysis."
+      mainClass="max-w-none"
       actions={
         <>
           <A
@@ -396,35 +374,69 @@ export default function Dashboard() {
         </>
       }
     >
-      <div class="rounded-[1.5rem] border border-zinc-800/80 bg-[radial-gradient(circle_at_top_left,rgba(183,235,229,0.12),transparent_38%),linear-gradient(180deg,rgba(9,9,11,0.98),rgba(9,9,11,0.86))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.28)] lg:p-6">
-        <div class="flex flex-col gap-6">
-          <div class="max-w-3xl space-y-3">
-            <p class="app-kicker text-[#b7ebe5]">Current Setup</p>
-            <h2 class="text-2xl font-semibold tracking-tight text-zinc-50 lg:text-[28px] lg:leading-[1.15]">
-              Charts, replay, evaluation — one workspace.
-            </h2>
+      <div class="rounded-[1.5rem] border border-zinc-800/80 bg-[radial-gradient(circle_at_top_left,rgba(183,235,229,0.08),transparent_36%),linear-gradient(180deg,rgba(9,9,11,0.98),rgba(9,9,11,0.9))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.28)] lg:p-6">
+        <div class="flex flex-col gap-4">
+          <div class="max-w-3xl space-y-2">
+            <p class="app-kicker text-[#b7ebe5]">Workspace snapshot</p>
             <p class="max-w-2xl text-sm leading-6 text-zinc-400">
-              Active charts, account context, and the live-versus-historical mix
-              for whatever you’re working on right now.
+              Setup lives in the toolbar. This keeps the active mix visible without
+              piling on another wall of cards.
             </p>
           </div>
 
-          <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div class="app-panel app-panel-selected rounded-2xl px-4 py-3">
-              <p class="app-metric-label">Current Workspace</p>
-              <p class="mt-2 truncate text-base font-semibold text-zinc-100">{activeWorkspace().name}</p>
-            </div>
-            <div class="app-panel rounded-2xl px-4 py-3">
+          <div class="grid gap-3 sm:grid-cols-3">
+            <div class="rounded-2xl bg-zinc-950/55 px-4 py-3">
               <p class="app-metric-label">Panel Count</p>
-              <p class="app-data mt-2 text-2xl font-semibold leading-none text-zinc-100">{activePanels().length}</p>
+              <p class="app-data mt-2 text-2xl font-semibold leading-none text-zinc-100">
+                {activePanels().length}
+              </p>
             </div>
-            <div class="app-panel rounded-2xl px-4 py-3">
+            <div class="rounded-2xl bg-zinc-950/55 px-4 py-3">
               <p class="app-metric-label">Primary Mix</p>
-              <p class="app-data mt-2 text-base font-semibold text-zinc-100">{primarySymbol()} <span class="text-zinc-500">/</span> {primaryInterval()}</p>
+              <p class="app-data mt-2 text-base font-semibold text-zinc-100">
+                {primarySymbol()} <span class="text-zinc-500">/</span> {primaryInterval()}
+              </p>
             </div>
-            <div class="app-panel rounded-2xl px-4 py-3">
+            <div class="rounded-2xl bg-zinc-950/55 px-4 py-3">
               <p class="app-metric-label">Workspace Mode</p>
               <p class="mt-2 text-base font-semibold capitalize text-sky-200">{workspaceMode()}</p>
+            </div>
+          </div>
+
+          <div class="rounded-2xl border border-zinc-800/80 bg-zinc-950/70 px-4 py-3">
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex items-center gap-2 text-zinc-100">
+                <SquareChartGantt size={16} class="text-[#b7ebe5]" />
+                <p class="text-sm font-semibold">Panel stack</p>
+              </div>
+              <p class="text-xs text-zinc-500">
+                {activePanels().length} panels · {activeWorkspace().selectedPreset}
+              </p>
+            </div>
+            <div class="mt-3 flex flex-wrap gap-2">
+              {activePanels().map((panel, index) => (
+                <div class="rounded-full border border-zinc-800 bg-zinc-900/70 px-3 py-2 text-xs text-zinc-300">
+                  <span class="font-semibold text-zinc-100">Panel {index + 1}</span>
+                  <span class="mx-2 text-zinc-600">·</span>
+                  <span>{panel.title}</span>
+                  <span class="mx-2 text-zinc-600">·</span>
+                  <span class="uppercase tracking-[0.16em] text-zinc-500">
+                    {panel.query.symbol} {panel.query.interval}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div class="mt-4 flex flex-wrap gap-2">
+              {symbolMix().map(([symbol, count]) => (
+                <span class="rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-zinc-200">
+                  {symbol} x{count}
+                </span>
+              ))}
+              {intervalMix().map(([interval, count]) => (
+                <span class="rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-zinc-200">
+                  {interval} x{count}
+                </span>
+              ))}
             </div>
           </div>
         </div>
@@ -437,184 +449,44 @@ export default function Dashboard() {
       ) : null}
 
       <div class="flex min-h-0 flex-1 flex-col gap-6">
-        <section class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[1.5rem] border border-zinc-800/80 bg-zinc-950/60 shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
-          <WorkspaceToolbar
-            workspaceId={activeWorkspace().id}
-            defaultWorkspaceId={workspace.defaultWorkspaceId}
-            workspaceName={activeWorkspace().name}
-            workspaceCount={workspace.workspaces.length}
-            accountProfile={activeWorkspace().accountProfile}
-            workspaces={workspace.workspaces.map((candidate) => ({
-              id: candidate.id,
-              name: candidate.name,
-            }))}
-            preset={activeWorkspace().selectedPreset}
-            options={WORKSPACE_PRESET_OPTIONS}
-            panelCount={activePresetState().panels.length}
-            canAddChart={canAddChart()}
-            canDeleteWorkspace={canDeleteWorkspace()}
-            showUtilityRail={showUtilityRail()}
-            onWorkspaceChange={handleWorkspaceChange}
-            onDefaultWorkspaceChange={handleDefaultWorkspaceChange}
-            onWorkspaceNameChange={handleWorkspaceNameChange}
-            onWorkspaceAccountProfileChange={handleWorkspaceAccountProfileChange}
-            onCreateWorkspace={handleCreateWorkspace}
-            onDeleteWorkspace={handleDeleteWorkspace}
-            onPresetChange={handlePresetChange}
-            onAddChart={handleAddChart}
-            onToggleUtilityRail={() => setShowUtilityRail((current) => !current)}
-          />
-          <div class="min-h-0 flex-1 p-4 lg:p-5">
-            <div
-              class={`grid h-full min-w-0 gap-4 ${
-                showUtilityRail() ? "xl:grid-cols-[minmax(0,1fr)_280px]" : ""
-              }`}
-            >
-            <WorkspaceGrid
+        <section class="flex min-h-0 w-full flex-col overflow-hidden border-y border-zinc-800/80 bg-zinc-950/60 shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
+            <WorkspaceToolbar
+              workspaceId={activeWorkspace().id}
+              defaultWorkspaceId={workspace.defaultWorkspaceId}
+              workspaceName={activeWorkspace().name}
+              workspaceCount={workspace.workspaces.length}
+              accountProfile={activeWorkspace().accountProfile}
+              workspaces={workspace.workspaces.map((candidate) => ({
+                id: candidate.id,
+                name: candidate.name,
+              }))}
               preset={activeWorkspace().selectedPreset}
-              panels={activePresetState().panels}
-              layout={activePresetState().layout}
-              onLayoutChange={handleLayoutChange}
-              onPanelTitleChange={handlePanelTitleChange}
-              onPanelQueryChange={handlePanelQueryChange}
-              onPanelRemove={handleRemovePanel}
-              onPanelDuplicate={handlePanelDuplicate}
-              onPanelMove={handlePanelMove}
+              options={WORKSPACE_PRESET_OPTIONS}
+              panelCount={activePresetState().panels.length}
+              canAddChart={canAddChart()}
+              canDeleteWorkspace={canDeleteWorkspace()}
+              onWorkspaceChange={handleWorkspaceChange}
+              onDefaultWorkspaceChange={handleDefaultWorkspaceChange}
+              onWorkspaceNameChange={handleWorkspaceNameChange}
+              onWorkspaceAccountProfileChange={handleWorkspaceAccountProfileChange}
+              onCreateWorkspace={handleCreateWorkspace}
+              onDeleteWorkspace={handleDeleteWorkspace}
+              onPresetChange={handlePresetChange}
+              onAddChart={handleAddChart}
             />
-
-              {showUtilityRail() ? (
-                <aside class="hidden min-h-0 flex-col gap-3 rounded-2xl border border-zinc-700/80 bg-zinc-950/55 p-4 xl:flex">
-                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/85 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                  <div class="flex items-center gap-2 text-zinc-100">
-                    <PanelRight size={16} class="text-[#b7ebe5]" />
-                    <p class="text-sm font-semibold">Account Context</p>
-                  </div>
-                  <div class="mt-3 space-y-2 text-sm">
-                    <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2">
-                      <p class="text-xs uppercase tracking-[0.16em] text-zinc-500">Firm</p>
-                      <p class="mt-1 font-medium text-zinc-100">
-                        {activeWorkspace().accountProfile.propFirm || "Not set"}
-                      </p>
-                    </div>
-                    <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2">
-                      <p class="text-xs uppercase tracking-[0.16em] text-zinc-500">Account</p>
-                      <p class="mt-1 font-medium text-zinc-100">
-                        {activeWorkspace().accountProfile.accountLabel || "Not set"}
-                      </p>
-                      <p class="mt-1 text-xs text-zinc-500">
-                        {activeWorkspace().accountProfile.accountStage || "Stage not set"}
-                      </p>
-                    </div>
-                    <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2">
-                      <p class="text-xs uppercase tracking-[0.16em] text-zinc-500">Risk Snapshot</p>
-                      <p class="mt-1 text-xs text-zinc-300">
-                        Daily Loss: {activeWorkspace().accountProfile.dailyLossLimit?.toLocaleString() ?? "n/a"}
-                      </p>
-                      <p class="text-xs text-zinc-300">
-                        Max DD: {activeWorkspace().accountProfile.maxDrawdown?.toLocaleString() ?? "n/a"}
-                      </p>
-                      <p class="text-xs text-zinc-300">
-                        Profit Target: {activeWorkspace().accountProfile.profitTarget?.toLocaleString() ?? "n/a"}
-                      </p>
-                    </div>
-                    {activeWorkspace().accountProfile.notes ? (
-                      <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2">
-                        <p class="text-xs uppercase tracking-[0.16em] text-zinc-500">Notes</p>
-                        <p class="mt-1 text-xs text-zinc-300">{activeWorkspace().accountProfile.notes}</p>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/85 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                  <div class="flex items-center gap-2 text-zinc-100">
-                    <LayoutPanelTop size={16} class="text-[#b7ebe5]" />
-                    <p class="text-sm font-semibold">Layout Read</p>
-                  </div>
-                  <p class="mt-3 text-sm text-zinc-300">{layoutRead()}</p>
-                  <p class="mt-2 text-xs text-zinc-500">
-                    {activePanels().length} panels · {activeWorkspace().selectedPreset}
-                  </p>
-                </div>
-
-                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/85 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                  <div class="flex items-center gap-2 text-zinc-100">
-                    <Radio size={16} class="text-emerald-300" />
-                    <p class="text-sm font-semibold">Workspace Pulse</p>
-                  </div>
-                  <div class="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                    <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-3">
-                      <p class="text-xs uppercase tracking-[0.16em] text-zinc-500">Live Panels</p>
-                      <p class="mt-2 text-xl font-semibold text-zinc-100">{livePanelCount()}</p>
-                    </div>
-                    <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-3">
-                      <p class="text-xs uppercase tracking-[0.16em] text-zinc-500">Historical Panels</p>
-                      <p class="mt-2 text-xl font-semibold text-zinc-100">{historicalPanelCount()}</p>
-                    </div>
-                    <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-3">
-                      <p class="text-xs uppercase tracking-[0.16em] text-zinc-500">Symbols In Play</p>
-                      <p class="mt-2 text-xl font-semibold text-zinc-100">{symbolMix().length}</p>
-                    </div>
-                    <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-3">
-                      <p class="text-xs uppercase tracking-[0.16em] text-zinc-500">Intervals In Play</p>
-                      <p class="mt-2 text-xl font-semibold text-zinc-100">{intervalMix().length}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/85 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                  <div class="flex items-center gap-2 text-zinc-100">
-                    <SquareChartGantt size={16} class="text-[#b7ebe5]" />
-                    <p class="text-sm font-semibold">Panel Stack</p>
-                  </div>
-                  <div class="mt-3 space-y-2">
-                    {activePanels().map((panel, index) => (
-                      <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2">
-                        <div class="flex items-center justify-between gap-3">
-                          <p class="text-xs uppercase tracking-[0.16em] text-zinc-500">Panel {index + 1}</p>
-                          <span class="rounded-full border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
-                            {panel.query.mode}
-                          </span>
-                        </div>
-                        <p class="mt-1 text-sm font-medium text-zinc-100">{panel.title}</p>
-                        <p class="mt-1 text-xs text-zinc-500">
-                          {panel.query.symbol} · {panel.query.interval}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div class="rounded-2xl border border-zinc-800 bg-zinc-950/85 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                  <div class="flex items-center gap-2 text-zinc-100">
-                    <PanelRight size={16} class="text-[#b7ebe5]" />
-                    <p class="text-sm font-semibold">Mix Read</p>
-                  </div>
-                  <div class="mt-3">
-                    <p class="text-xs uppercase tracking-[0.16em] text-zinc-500">Symbols</p>
-                    <div class="mt-2 flex flex-wrap gap-2">
-                      {symbolMix().map(([symbol, count]) => (
-                        <span class="rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-zinc-200">
-                          {symbol} x{count}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <div class="mt-4">
-                    <p class="text-xs uppercase tracking-[0.16em] text-zinc-500">Intervals</p>
-                    <div class="mt-2 flex flex-wrap gap-2">
-                      {intervalMix().map(([interval, count]) => (
-                        <span class="rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-zinc-200">
-                          {interval} x{count}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </aside>
-              ) : null}
+            <div class="min-h-0 flex-1 p-4 lg:p-5">
+              <WorkspaceGrid
+                preset={activeWorkspace().selectedPreset}
+                panels={activePresetState().panels}
+                layout={activePresetState().layout}
+                onLayoutChange={handleLayoutChange}
+                onPanelTitleChange={handlePanelTitleChange}
+                onPanelQueryChange={handlePanelQueryChange}
+                onPanelRemove={handleRemovePanel}
+                onPanelDuplicate={handlePanelDuplicate}
+                onPanelMove={handlePanelMove}
+              />
             </div>
-          </div>
         </section>
       </div>
     </AppShell>

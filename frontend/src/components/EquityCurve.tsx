@@ -38,5 +38,5 @@ export default function EquityCurve(props: Props) {
     onCleanup(() => chart.remove());
   });
 
-  return <div ref={container} class="w-full rounded-lg overflow-hidden" />;
+  return <div ref={container} class="w-full overflow-hidden" style={{ "border-radius": "0" }} />;
 }

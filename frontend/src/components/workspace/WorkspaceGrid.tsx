@@ -196,11 +196,12 @@ function PanelSlot(props: {
 
   return (
     <div
-      class={`h-full min-h-0 min-w-0 rounded-2xl transition ${
+      class={`h-full min-h-0 min-w-0 transition ${
         props.dropTargetPanelId === panel.id && props.draggingPanelId !== panel.id
           ? "ring-2 ring-sky-400/70 ring-offset-2 ring-offset-zinc-950"
           : ""
       } ${props.draggingPanelId === panel.id ? "opacity-45" : ""}`}
+      style={{ "border-radius": "0" }}
       onDragEnter={(event) => {
         if (!props.canReorder || !props.draggingPanelId || props.draggingPanelId === panel.id) {
           return;
