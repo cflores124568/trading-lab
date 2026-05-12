@@ -137,6 +137,7 @@ class ReplaySessionBase(BaseModel):
     commission: float = Field(default=5.0, ge=0)
     tick_value: float = Field(default=1.0, gt=0)
     tick_size: float = Field(default=0.25, gt=0)
+    position_size: float = Field(default=1.0, gt=0)
     spread_ticks: int = Field(default=1, ge=1)
     volatile_bar_threshold_ticks: int = Field(default=0, ge=0)
     volatile_bar_extra_ticks: int = Field(default=0, ge=0)
@@ -391,6 +392,7 @@ class PaperSessionExecutionRequest(BaseModel):
     price: Optional[float] = Field(default=None, gt=0)
     stop_price: Optional[float] = Field(default=None, gt=0)
     target_price: Optional[float] = Field(default=None, gt=0)
+    quantity: Optional[float] = Field(default=None, gt=0)
     filled_at: Optional[str] = None
     actor: str = Field(default="local-user")
     note: Optional[str] = None

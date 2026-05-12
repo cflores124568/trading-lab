@@ -31,6 +31,7 @@ def _ensure_replay_sessions_schema(conn) -> None:
                     commission        DOUBLE PRECISION NOT NULL DEFAULT 5,
                     tick_value        DOUBLE PRECISION NOT NULL,
                     tick_size         DOUBLE PRECISION NOT NULL DEFAULT 0.25,
+                    position_size     DOUBLE PRECISION NOT NULL DEFAULT 1,
                     spread_ticks      INTEGER NOT NULL DEFAULT 1,
                     volatile_bar_threshold_ticks INTEGER NOT NULL DEFAULT 0,
                     volatile_bar_extra_ticks     INTEGER NOT NULL DEFAULT 0,
@@ -53,6 +54,9 @@ def _ensure_replay_sessions_schema(conn) -> None:
             cur.execute("ALTER TABLE replay_sessions ADD COLUMN IF NOT EXISTS source_backtest JSONB")
             cur.execute(
                 "ALTER TABLE replay_sessions ADD COLUMN IF NOT EXISTS tick_size DOUBLE PRECISION NOT NULL DEFAULT 0.25"
+            )
+            cur.execute(
+                "ALTER TABLE replay_sessions ADD COLUMN IF NOT EXISTS position_size DOUBLE PRECISION NOT NULL DEFAULT 1"
             )
             cur.execute(
                 "ALTER TABLE replay_sessions ADD COLUMN IF NOT EXISTS spread_ticks INTEGER NOT NULL DEFAULT 1"
@@ -90,14 +94,14 @@ def save_replay_session(result: dict) -> None:
         INSERT INTO replay_sessions (
             replay_session_id, name, symbol, interval, start_date, end_date,
             source_backtest, prop_firm_rules, commission, tick_value,
-            tick_size, spread_ticks, volatile_bar_threshold_ticks,
+            tick_size, position_size, spread_ticks, volatile_bar_threshold_ticks,
             volatile_bar_extra_ticks, resting_fill_mode, current_bar_index, status, actions,
             active_order, active_orders, execution_events, trades, metrics, prop_firm_eval,
             equity_curve, created_at, updated_at
         )
         VALUES (
             %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s,
-            %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
+            %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
             %s::jsonb, %s::jsonb, %s, %s, %s
         )
         ON CONFLICT (replay_session_id) DO UPDATE SET
@@ -111,6 +115,7 @@ def save_replay_session(result: dict) -> None:
             commission        = EXCLUDED.commission,
             tick_value        = EXCLUDED.tick_value,
             tick_size         = EXCLUDED.tick_size,
+            position_size     = EXCLUDED.position_size,
             spread_ticks      = EXCLUDED.spread_ticks,
             volatile_bar_threshold_ticks = EXCLUDED.volatile_bar_threshold_ticks,
             volatile_bar_extra_ticks     = EXCLUDED.volatile_bar_extra_ticks,
@@ -145,6 +150,7 @@ def save_replay_session(result: dict) -> None:
                     result["commission"],
                     result["tick_value"],
                     result.get("tick_size", 0.25),
+                    result.get("position_size", 1.0),
                     result.get("spread_ticks", 1),
                     result.get("volatile_bar_threshold_ticks", 0),
                     result.get("volatile_bar_extra_ticks", 0),
@@ -204,6 +210,7 @@ def _row_to_result(row) -> dict:
         "commission": float(row["commission"]),
         "tick_value": float(row["tick_value"]),
         "tick_size": float(row.get("tick_size") or 0.25),
+        "position_size": float(row.get("position_size") or 1.0),
         "spread_ticks": int(row.get("spread_ticks") or 1),
         "volatile_bar_threshold_ticks": int(row.get("volatile_bar_threshold_ticks") or 0),
         "volatile_bar_extra_ticks": int(row.get("volatile_bar_extra_ticks") or 0),

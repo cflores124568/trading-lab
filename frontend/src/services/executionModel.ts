@@ -37,6 +37,7 @@ export interface RestingOrder {
   intent: RestingOrderIntent;
   side: ExecutionSide;
   price: number;
+  quantity?: number;
   submitted_at: string;
   submitted_bar_index: number;
   type: "join_bid" | "join_ask" | "rest_exit" | "bracket_stop" | "bracket_target";
@@ -301,6 +302,7 @@ export function createRestingOrder(args: {
   intent?: RestingOrderIntent;
   side?: ExecutionSide;
   price?: number;
+  quantity?: number;
 }): RestingOrder {
   const resolvedSide = args.side ?? (args.action === "join_bid" ? "buy" : "sell");
 
@@ -309,6 +311,7 @@ export function createRestingOrder(args: {
     intent: args.intent === "exit" ? "exit" : "entry",
     side: resolvedSide,
     price: args.price ?? (resolvedSide === "buy" ? args.quote.bid : args.quote.ask),
+    quantity: args.quantity,
     submitted_at: args.time,
     submitted_bar_index: args.barIndex,
     type: args.action,
@@ -323,6 +326,7 @@ export function createBracketExitOrders(args: {
   time: string;
   stopPrice: number;
   targetPrice: number;
+  quantity?: number;
 }): RestingOrder[] {
   const exitSide: ExecutionSide = args.positionSide === "buy" ? "sell" : "buy";
   const stopId = `${args.bracketId}_stop`;
@@ -333,6 +337,7 @@ export function createBracketExitOrders(args: {
     intent: "exit",
     side: exitSide,
     price: args.targetPrice,
+    quantity: args.quantity,
     submitted_at: args.time,
     submitted_bar_index: args.barIndex,
     type: "bracket_target",
@@ -348,6 +353,7 @@ export function createBracketExitOrders(args: {
     intent: "exit",
     side: exitSide,
     price: args.stopPrice,
+    quantity: args.quantity,
     submitted_at: args.time,
     submitted_bar_index: args.barIndex,
     type: "bracket_stop",

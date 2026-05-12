@@ -666,6 +666,7 @@ export interface ReplaySessionPayload {
   commission: number;
   tick_value: number;
   tick_size?: number;
+  position_size?: number;
   spread_ticks?: number;
   volatile_bar_threshold_ticks?: number;
   volatile_bar_extra_ticks?: number;
@@ -958,6 +959,7 @@ export const executePaperSessionAction = async (
     price?: number;
     stopPrice?: number;
     targetPrice?: number;
+    quantity?: number;
     filledAt?: string;
     actor?: string;
     note?: string;
@@ -971,6 +973,7 @@ export const executePaperSessionAction = async (
       price: payload.price,
       stop_price: payload.stopPrice,
       target_price: payload.targetPrice,
+      quantity: payload.quantity,
       filled_at: payload.filledAt,
       actor: payload.actor ?? "local-user",
       note: payload.note,
