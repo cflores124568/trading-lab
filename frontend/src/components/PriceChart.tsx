@@ -296,6 +296,7 @@ export default function PriceChart(props: Props) {
   let previousDayHighSeries: ISeriesApi<"Line"> | undefined;
   let previousDayLowSeries: ISeriesApi<"Line"> | undefined;
   let volumeSeries: ISeriesApi<"Histogram"> | undefined;
+  let didInitialFit = false;
 
   const filterVisibleLinePoints = (
     points: IndicatorLinePoint[],
@@ -441,7 +442,11 @@ export default function PriceChart(props: Props) {
       settings.volume ? filterVisibleVolumePoints(series.volume, lastVisibleTime) : [],
     );
 
-    chart.timeScale().fitContent();
+    if (!didInitialFit) {
+      // Fit once on first render, then leave the user's manual zoom/scroll alone.
+      chart.timeScale().fitContent();
+      didInitialFit = true;
+    }
   };
 
   onMount(() => {

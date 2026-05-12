@@ -1,10 +1,11 @@
-export type ReplaySessionStatus = "draft" | "active" | "paused" | "completed" | "review";
+export type ReplaySessionStatus = "draft" | "active" | "paused" | "completed" | "review" | "breached";
 
 export function getReplaySessionStatus(input: {
   hasLaunch: boolean;
   isPlaying: boolean;
   isComplete: boolean;
   isReviewMode: boolean;
+  isBreached: boolean;
 }): ReplaySessionStatus {
   if (!input.hasLaunch) {
     return "draft";
@@ -12,6 +13,10 @@ export function getReplaySessionStatus(input: {
 
   if (input.isReviewMode) {
     return "review";
+  }
+
+  if (input.isBreached) {
+    return "breached";
   }
 
   if (input.isPlaying) {
@@ -40,6 +45,10 @@ export function formatReplaySessionStatus(status: string): string {
 
   if (status === "review") {
     return "Review Mode";
+  }
+
+  if (status === "breached") {
+    return "Account Breached";
   }
 
   if (status === "draft") {

@@ -13,10 +13,12 @@ import {
   TrendingDown,
   TrendingUp,
 } from "lucide-solid";
+import { Show } from "solid-js";
 
 interface ChartStripProps {
   isPlaying: boolean;
   statusLabel: string;
+  statusTone?: "sky" | "emerald" | "rose" | "amber";
   currentBar: number;
   totalBars: number;
   currentPriceLabel: string;
@@ -24,6 +26,14 @@ interface ChartStripProps {
   canStartPlayback: boolean;
   onPlayPause: () => void;
   onRestart: () => void;
+}
+
+interface PnLStripProps {
+  realizedPnl: number;
+  unrealizedPnl: number;
+  totalPnl: number;
+  isBreached: boolean;
+  breachLabel?: string | null;
 }
 
 interface ExecutionActionsProps {
@@ -94,13 +104,30 @@ function actionButton(enabled: boolean, tone: "green" | "rose"): string {
   ].join(" ");
 }
 
+function formatSignedMoney(value: number): string {
+  return `${value >= 0 ? "+" : "-"}$${Math.abs(value).toFixed(2)}`;
+}
+
 export function ReplayChartStrip(props: ChartStripProps) {
   const playEnabled = () => props.isPlaying || props.canStartPlayback;
+  const statusToneClass = () => {
+    if (props.statusTone === "emerald") {
+      return "border-emerald-500/60 bg-emerald-500/10 text-emerald-100";
+    }
+    if (props.statusTone === "rose") {
+      return "border-rose-500/60 bg-rose-500/10 text-rose-100";
+    }
+    if (props.statusTone === "amber") {
+      return "border-amber-500/60 bg-amber-500/10 text-amber-100";
+    }
+
+    return "border-sky-400/75 bg-sky-400/12 text-sky-100";
+  };
 
   return (
     <div class="flex flex-wrap items-center gap-3 border-b border-zinc-700/80 bg-zinc-950/78 px-4 py-3">
       <div class="flex flex-wrap items-center gap-2 text-xs">
-        <span class="app-panel-selected rounded-sm border px-3 py-1.5 font-semibold uppercase tracking-[0.16em] text-sky-100">
+        <span class={`app-panel-selected rounded-sm border px-3 py-1.5 font-semibold uppercase tracking-[0.16em] ${statusToneClass()}`}>
           {props.statusLabel}
         </span>
         <span class="rounded-sm border border-zinc-700/80 bg-zinc-900 px-3 py-1.5 text-zinc-400">
@@ -141,6 +168,39 @@ export function ReplayChartStrip(props: ChartStripProps) {
           <RotateCw size={14} />
           Restart
         </button>
+      </div>
+    </div>
+  );
+}
+
+export function ReplayPnLStrip(props: PnLStripProps) {
+  return (
+    <div class="grid gap-2 border-b border-zinc-700/80 bg-zinc-950/70 px-4 py-3 text-xs md:grid-cols-3">
+      <div class="rounded-sm border border-zinc-700/80 bg-zinc-900 px-3 py-2 text-zinc-400">
+        <p>Realized P&amp;L</p>
+        <p class={`app-data mt-1 text-sm font-semibold ${props.realizedPnl >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+          {formatSignedMoney(props.realizedPnl)}
+        </p>
+      </div>
+      <div class="rounded-sm border border-zinc-700/80 bg-zinc-900 px-3 py-2 text-zinc-400">
+        <p>Open P&amp;L</p>
+        <p class={`app-data mt-1 text-sm font-semibold ${props.unrealizedPnl >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+          {formatSignedMoney(props.unrealizedPnl)}
+        </p>
+      </div>
+      <div class="rounded-sm border border-zinc-700/80 bg-zinc-900 px-3 py-2 text-zinc-400">
+        <p class="flex items-center justify-between gap-2">
+          <span>Total P&amp;L</span>
+          <span class="text-zinc-500">{props.isBreached ? "Locked" : "Live"}</span>
+        </p>
+        <p class={`app-data mt-1 text-sm font-semibold ${props.totalPnl >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+          {formatSignedMoney(props.totalPnl)}
+        </p>
+        <Show when={props.isBreached}>
+          <p class="mt-1 text-[11px] text-rose-300">
+            {props.breachLabel ?? "Account breached. Trading is locked for this session."}
+          </p>
+        </Show>
       </div>
     </div>
   );
@@ -362,6 +422,7 @@ export default function ReplayControls(props: Props) {
         <ReplayChartStrip
           isPlaying={props.isPlaying}
           statusLabel={props.statusLabel}
+          statusTone={props.statusTone}
           currentBar={props.currentBar}
           totalBars={props.totalBars}
           currentPriceLabel={props.currentPriceLabel}

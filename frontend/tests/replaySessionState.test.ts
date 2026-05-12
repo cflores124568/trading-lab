@@ -13,6 +13,7 @@ test("replay session status prefers review and completion states in the right or
       isPlaying: false,
       isComplete: false,
       isReviewMode: false,
+      isBreached: false,
     }),
     "draft",
   );
@@ -23,6 +24,7 @@ test("replay session status prefers review and completion states in the right or
       isPlaying: true,
       isComplete: false,
       isReviewMode: false,
+      isBreached: false,
     }),
     "active",
   );
@@ -33,6 +35,7 @@ test("replay session status prefers review and completion states in the right or
       isPlaying: false,
       isComplete: true,
       isReviewMode: false,
+      isBreached: false,
     }),
     "completed",
   );
@@ -43,8 +46,20 @@ test("replay session status prefers review and completion states in the right or
       isPlaying: false,
       isComplete: true,
       isReviewMode: true,
+      isBreached: false,
     }),
     "review",
+  );
+
+  assert.equal(
+    getReplaySessionStatus({
+      hasLaunch: true,
+      isPlaying: true,
+      isComplete: false,
+      isReviewMode: false,
+      isBreached: true,
+    }),
+    "breached",
   );
 });
 
@@ -53,5 +68,6 @@ test("replay session status labels stay human", () => {
   assert.equal(formatReplaySessionStatus("paused"), "Sim Paused");
   assert.equal(formatReplaySessionStatus("completed"), "Sim Finished");
   assert.equal(formatReplaySessionStatus("review"), "Review Mode");
+  assert.equal(formatReplaySessionStatus("breached"), "Account Breached");
   assert.equal(formatReplaySessionStatus("sim_locked"), "Sim Locked");
 });

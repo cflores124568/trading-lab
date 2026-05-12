@@ -18,6 +18,7 @@ import PriceChart, { type PriceChartMarker } from "../components/PriceChart";
 import {
   ReplayChartStrip,
   ReplayExecutionActions,
+  ReplayPnLStrip,
   ReplayTimelineControls,
 } from "../components/ReplayControls";
 import {
@@ -105,6 +106,14 @@ function formatCurrency(value: number): string {
   return `${value >= 0 ? "+" : "-"}$${Math.abs(value).toFixed(2)}`;
 }
 
+function formatBreachTime(value: string | null | undefined): string {
+  if (!value) {
+    return "unknown time";
+  }
+
+  return new Date(value).toLocaleString();
+}
+
 function formatTradePnl(value: number): string {
   return `${value >= 0 ? "+" : ""}$${value.toFixed(2)}`;
 }
@@ -136,6 +145,48 @@ function createReplayAction(
 
 function propEvalTone(passed: boolean): string {
   return passed ? "border-green-700 bg-green-950" : "border-red-700 bg-red-950";
+}
+
+type ReplayBreachInfo = {
+  rule: "daily_loss" | "drawdown";
+  label: string;
+  time: string | null;
+  equity: number | null;
+};
+
+function getReplayBreachInfo(evaluation: PropFirmEvaluation | null | undefined): ReplayBreachInfo | null {
+  if (!evaluation) {
+    return null;
+  }
+
+  const details = evaluation.details as Record<string, unknown>;
+  const firstRule = typeof details.first_breach_rule === "string" ? details.first_breach_rule : null;
+  const dailyLossTime = typeof details.daily_loss_breach_time === "string" ? details.daily_loss_breach_time : null;
+  const dailyLossEquity =
+    typeof details.daily_loss_breach_equity === "number" ? details.daily_loss_breach_equity : null;
+  const drawdownTime = typeof details.drawdown_breach_time === "string" ? details.drawdown_breach_time : null;
+  const drawdownEquity =
+    typeof details.drawdown_breach_equity === "number" ? details.drawdown_breach_equity : null;
+
+  if (evaluation.daily_loss_breached && (firstRule === "daily_loss" || !evaluation.drawdown_breached)) {
+    return {
+      rule: "daily_loss",
+      label: "Daily loss limit breached",
+      time: dailyLossTime,
+      equity: dailyLossEquity,
+    };
+  }
+
+  if (evaluation.drawdown_breached || firstRule === "drawdown") {
+    return {
+      rule: "drawdown",
+      label: "Max drawdown breached",
+      time: drawdownTime,
+      equity: drawdownEquity,
+    };
+  }
+
+  return null;
 }
 
 function groupPresets(presets: PropFirmRules[]): Record<string, PropFirmRules[]> {
@@ -701,6 +752,8 @@ export default function ReplayLabPage() {
     });
   });
   const activeOrders = createMemo(() => replaySession()?.activeOrders ?? []);
+  const replayBreach = createMemo(() => getReplayBreachInfo(replaySession()?.propEvaluation ?? null));
+  const isAccountBreached = createMemo(() => !!replayBreach());
 
   const isSessionComplete = createMemo(() => {
     const session = replaySession();
@@ -713,20 +766,37 @@ export default function ReplayLabPage() {
       isPlaying: isReplayActive(),
       isComplete: isSessionComplete(),
       isReviewMode: isReviewMode(),
+      isBreached: isAccountBreached(),
     }),
   );
 
+  const replayStatusTone = createMemo(() => {
+    if (replayStatus() === "review") {
+      return "amber";
+    }
+
+    if (isAccountBreached()) {
+      return "rose";
+    }
+
+    if (replayStatus() === "active") {
+      return "emerald";
+    }
+
+    return "sky";
+  });
+
   const canEditSetup = createMemo(() => !hasLaunch());
-  const canUnlockReview = createMemo(() => isSessionComplete() && !isReviewMode());
+  const canUnlockReview = createMemo(() => (isSessionComplete() || isAccountBreached()) && !isReviewMode());
   const canSeek = createMemo(() => isReviewMode());
   const canStartPlayback = createMemo(
-    () => !isReviewMode() && replayIndex() < totalBars() - 1,
+    () => !isReviewMode() && !isAccountBreached() && replayIndex() < totalBars() - 1,
   );
   const canStepBack = createMemo(
     () => isReviewMode() && !isReplayActive() && replayIndex() > 0,
   );
   const canStepForward = createMemo(
-    () => !isReplayActive() && replayIndex() < totalBars() - 1,
+    () => !isReplayActive() && replayIndex() < totalBars() - 1 && (!isAccountBreached() || isReviewMode()),
   );
   const canJumpPrevTrade = createMemo(
     () =>
@@ -741,6 +811,7 @@ export default function ReplayLabPage() {
   const canPlaceEntries = createMemo(
     () =>
       !isReviewMode() &&
+      !isAccountBreached() &&
       replayIndex() < totalBars() - 1 &&
       !replaySession()?.position &&
       activeOrders().length === 0,
@@ -748,6 +819,7 @@ export default function ReplayLabPage() {
   const canRestExit = createMemo(
     () =>
       !isReviewMode() &&
+      !isAccountBreached() &&
       replayIndex() < totalBars() - 1 &&
       !!replaySession()?.position &&
       activeOrders().length === 0,
@@ -755,20 +827,27 @@ export default function ReplayLabPage() {
   const canAttachBracket = createMemo(
     () =>
       !isReviewMode() &&
+      !isAccountBreached() &&
       replayIndex() < totalBars() - 1 &&
       !!replaySession()?.position &&
       activeOrders().length === 0,
   );
   const canExitPosition = createMemo(
-    () => !!replaySession()?.position && !isReviewMode(),
+    () => !!replaySession()?.position && !isReviewMode() && !isAccountBreached(),
   );
   const canCancelOrder = createMemo(
-    () => activeOrders().length > 0 && !isReviewMode(),
+    () => activeOrders().length > 0 && !isReviewMode() && !isAccountBreached(),
   );
   const canReplaceOrder = createMemo(
-    () => activeOrders().length === 1 && replayIndex() < totalBars() - 1 && !isReviewMode(),
+    () => activeOrders().length === 1 && replayIndex() < totalBars() - 1 && !isReviewMode() && !isAccountBreached(),
   );
   const replayStatusDetail = createMemo(() => {
+    if (isAccountBreached()) {
+      const breach = replayBreach();
+      const time = breach ? formatBreachTime(breach.time) : "unknown time";
+      return `Account breached on ${time}. Trading is locked for this session, but review mode still works.`;
+    }
+
     if (replayStatus() === "review") {
       return "The run is done, so you can scrub and study it without changing the paper trades.";
     }
@@ -964,7 +1043,7 @@ export default function ReplayLabPage() {
         position: session.position.side === "buy" ? "belowBar" : "aboveBar",
         color: session.position.side === "buy" ? "#34d399" : "#f43f5e",
         shape: "circle",
-        text: `OPEN ${formatTradeLabel(session.position.side, session.position.quantity)} ${formatCurrency(session.position.unrealized_pnl)}`,
+        text: `OPEN ${formatTradeLabel(session.position.side, session.position.quantity)} ${formatCurrency(session.position.unrealized_pnl)} / ${formatCurrency(session.totalPnl)}`,
       });
     }
 
@@ -985,6 +1064,26 @@ export default function ReplayLabPage() {
   );
 
   let announcedComplete = false;
+  let announcedBreach = false;
+
+  createEffect(() => {
+    const breach = replayBreach();
+    if (!breach) {
+      announcedBreach = false;
+      return;
+    }
+
+    if (!announcedBreach) {
+      announcedBreach = true;
+      setBannerError(
+        `${breach.label} at ${formatBreachTime(breach.time)}. Trading is locked for this session.`,
+      );
+    }
+
+    if (isReplayActive()) {
+      setIsReplayActive(false);
+    }
+  });
 
   createEffect(() => {
     const complete = isSessionComplete();
@@ -1013,6 +1112,16 @@ export default function ReplayLabPage() {
     fields: Partial<Pick<ReplayAction, "price" | "stopPrice" | "targetPrice">> = {},
   ) => {
     if (!candles() || totalBars() === 0 || isReviewMode()) {
+      return;
+    }
+
+    if (isAccountBreached()) {
+      const breach = replayBreach();
+      setBannerError(
+        breach
+          ? `${breach.label} at ${formatBreachTime(breach.time)}. Trading is locked for this session.`
+          : "Account breached. Trading is locked for this session.",
+      );
       return;
     }
 
@@ -1187,7 +1296,7 @@ export default function ReplayLabPage() {
       volatile_bar_extra_ticks: config.volatileBarExtraTicks,
       resting_fill_mode: config.restingFillMode,
       current_bar_index: replayIndex(),
-      status: replayStatus(),
+      status: isAccountBreached() ? "breached" : replayStatus(),
       actions: replayActions().map((action) => ({
         id: action.id,
         type: action.type,
@@ -1661,7 +1770,17 @@ export default function ReplayLabPage() {
                           </div>
                         )}
                       </Show>
-                      <div class="rounded-full border border-sky-400/75 bg-sky-400/12 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-sky-100">
+                      <div
+                        class={`rounded-full border px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] ${
+                          replayStatusTone() === "rose"
+                            ? "border-rose-400/75 bg-rose-400/12 text-rose-100"
+                            : replayStatusTone() === "emerald"
+                              ? "border-emerald-400/75 bg-emerald-400/12 text-emerald-100"
+                              : replayStatusTone() === "amber"
+                                ? "border-amber-400/75 bg-amber-400/12 text-amber-100"
+                                : "border-sky-400/75 bg-sky-400/12 text-sky-100"
+                        }`}
+                      >
                         {formatReplaySessionStatus(replayStatus())}
                       </div>
                       <Show when={canUnlockReview()}>
@@ -1690,6 +1809,7 @@ export default function ReplayLabPage() {
                           <ReplayChartStrip
                             isPlaying={isReplayActive()}
                             statusLabel={formatReplaySessionStatus(replayStatus())}
+                            statusTone={replayStatusTone()}
                             currentBar={totalBars() === 0 ? 0 : replayIndex() + 1}
                             totalBars={totalBars()}
                             currentPriceLabel={currentPriceLabel()}
@@ -1710,6 +1830,7 @@ export default function ReplayLabPage() {
                             onRestart={() => {
                               batch(() => {
                                 setBannerNotice(null);
+                                setBannerError(null);
                                 setIsReplayActive(false);
                                 setIsReviewMode(false);
                                 setCurrentIndex(0);
@@ -1719,6 +1840,22 @@ export default function ReplayLabPage() {
                               });
                             }}
                           />
+                        </Show>
+
+                        <Show when={replaySession()}>
+                          {(session) => (
+                            <ReplayPnLStrip
+                              realizedPnl={session().realizedPnl}
+                              unrealizedPnl={session().unrealizedPnl}
+                              totalPnl={session().totalPnl}
+                              isBreached={isAccountBreached()}
+                              breachLabel={
+                                replayBreach()
+                                  ? `${replayBreach()!.label} at ${formatBreachTime(replayBreach()!.time)}. Trading is locked for this session.`
+                                  : null
+                              }
+                            />
+                          )}
                         </Show>
 
                         <div class="p-4">
