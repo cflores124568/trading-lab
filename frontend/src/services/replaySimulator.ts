@@ -478,7 +478,7 @@ export function simulateReplaySession(args: {
       position.side,
       position.entryPrice,
       exitPrice,
-      positionSize,
+      position.quantity,
       tickValue,
       commission,
     );
@@ -504,10 +504,11 @@ export function simulateReplaySession(args: {
     price: number,
     candle: Candle,
     barIndex: number,
+    quantity: number = positionSize,
   ) => {
     position = {
       side,
-      quantity: positionSize,
+      quantity,
       entryPrice: price,
       entryTime: getCandleTime(candle),
       entryBarIndex: barIndex,
@@ -571,7 +572,13 @@ export function simulateReplaySession(args: {
         if (completedOrder.intent === "exit") {
           closePosition(candle, completedOrder.price);
         } else {
-          openPosition(completedOrder.side, completedOrder.price, candle, i);
+          openPosition(
+            completedOrder.side,
+            completedOrder.price,
+            candle,
+            i,
+            completedOrder.quantity ?? positionSize,
+          );
         }
         appendEvent({
           type: "resting_filled",
@@ -732,6 +739,7 @@ export function simulateReplaySession(args: {
           barIndex: i,
           time: getCandleTime(candle),
           quote,
+          quantity: positionSize,
         });
         activeOrders = [nextOrder];
         appendEvent({
@@ -780,6 +788,7 @@ export function simulateReplaySession(args: {
           quote,
           intent: "exit",
           side: exitSide,
+          quantity: exitPosition.quantity,
         });
         activeOrders = [nextOrder];
         appendEvent({
@@ -836,6 +845,7 @@ export function simulateReplaySession(args: {
           time: getCandleTime(candle),
           stopPrice: action.stopPrice,
           targetPrice: action.targetPrice,
+          quantity: bracketPosition.quantity,
         });
         activeOrders = bracketOrders;
         for (const order of bracketOrders) {
@@ -865,7 +875,7 @@ export function simulateReplaySession(args: {
       }
 
       clearActiveOrders();
-      openPosition(nextSide, fillPrice, candle, i);
+      openPosition(nextSide, fillPrice, candle, i, positionSize);
       appendEvent({
         type: "taker_fill",
         action: action.type,

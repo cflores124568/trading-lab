@@ -117,6 +117,31 @@ test("open positions remain mark-to-market when replay has not exited", () => {
   assert.equal(session.equityCurve.at(-1), 100_012.5);
 });
 
+test("replay session carries configured position size through fills", () => {
+  const candles = makeCandles(4);
+  const actions: ReplayAction[] = [
+    { id: "a", barIndex: 1, type: "lift_ask", createdAt: 1 },
+    { id: "b", barIndex: 3, type: "flatten", createdAt: 2 },
+  ];
+
+  const session = simulateReplaySession({
+    candles,
+    currentIndex: 3,
+    actions,
+    initialBalance: 100_000,
+    positionSize: 3,
+    commission: 0,
+    tickValue: 10,
+    propFirmRules: rules,
+  });
+
+  assert.equal(session.trades.length, 1);
+  assert.equal(session.trades[0].quantity, 3);
+  assert.equal(session.trades[0].pnl, 52.5);
+  assert.equal(session.balance, 100_052.5);
+  assert.equal(session.position, null);
+});
+
 test("synthetic taker actions fill at ask and bid", () => {
   const candles = makeCandles(3);
   const actions: ReplayAction[] = [

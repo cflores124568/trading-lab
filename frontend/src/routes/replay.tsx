@@ -6,15 +6,20 @@ import {
   createResource,
   createSignal,
   For,
+  type JSX,
   onCleanup,
   Show,
 } from "solid-js";
-import { CircleCheck, CircleX, TriangleAlert } from "lucide-solid";
+import { ChevronDown, ChevronRight, CircleCheck, CircleX, TriangleAlert } from "lucide-solid";
 import AppShell from "../components/AppShell";
 import ChartIndicatorToggleBar from "../components/ChartIndicatorToggleBar";
 import EquityCurve from "../components/EquityCurve";
 import PriceChart, { type PriceChartMarker } from "../components/PriceChart";
-import ReplayControls from "../components/ReplayControls";
+import {
+  ReplayChartStrip,
+  ReplayExecutionActions,
+  ReplayTimelineControls,
+} from "../components/ReplayControls";
 import {
   BACKTEST_INTERVALS,
   DATABENTO_SYMBOLS,
@@ -65,6 +70,7 @@ import {
   normalizeRestingFillMode,
 } from "../services/executionModel";
 import { buildReplayExecutionAnalytics } from "../services/executionAnalytics";
+import { formatTradeLabel } from "../services/tradeFormatting";
 
 const field =
   "app-input w-full text-sm disabled:opacity-40";
@@ -86,6 +92,7 @@ type ReplayLaunchConfig = {
   commission: number;
   tickValue: number;
   tickSize: number;
+  positionSize: number;
   spreadTicks: number;
   volatileBarThresholdTicks: number;
   volatileBarExtraTicks: number;
@@ -96,6 +103,10 @@ type ReplayLaunchConfig = {
 
 function formatCurrency(value: number): string {
   return `${value >= 0 ? "+" : "-"}$${Math.abs(value).toFixed(2)}`;
+}
+
+function formatTradePnl(value: number): string {
+  return `${value >= 0 ? "+" : ""}$${value.toFixed(2)}`;
 }
 
 function formatTicks(value?: number | null): string {
@@ -168,12 +179,6 @@ function defaultSessionName(config: ReplayLaunchConfig): string {
   return `${config.symbol.symbol} ${config.interval.label} replay${sourceLabel} (${range})`;
 }
 
-function formatRestingFillMode(mode: string | undefined): string {
-  if (mode === "penetrate") return "penetrate";
-  if (mode === "touch_plus_1_bar") return "touch + 1 bar";
-  return "touch";
-}
-
 function formatDailyLossLimit(limit: number | null | undefined): string {
   if (limit == null || limit === 0) {
     return "Off";
@@ -219,6 +224,7 @@ function resolveReplaySymbolInfo(args: {
 function PropEvalPanel(props: {
   title: string;
   evaluation: PropFirmEvaluation;
+  children?: JSX.Element;
 }) {
   const minTradingDaysPassed = () => props.evaluation.min_trading_days_passed ?? true;
 
@@ -264,6 +270,10 @@ function PropEvalPanel(props: {
           </Show>
         </ul>
       </Show>
+
+      <Show when={props.children}>
+        <div class="mt-4 border-t border-current/20 pt-3">{props.children}</div>
+      </Show>
     </div>
   );
 }
@@ -295,6 +305,52 @@ function ReplayStatCard(props: {
   );
 }
 
+function ReplayAccordionSection(props: {
+  index: string;
+  title: string;
+  subtitle: string;
+  meta?: string;
+  open: boolean;
+  onToggle: () => void;
+  children?: JSX.Element;
+}) {
+  return (
+    <section class="app-panel app-panel-section h-full space-y-4">
+      <button
+        type="button"
+        class="flex w-full items-start justify-between gap-4 rounded-2xl border border-zinc-800/80 bg-zinc-950/55 px-4 py-3 text-left transition-colors hover:border-zinc-700 hover:bg-zinc-950/80"
+        aria-expanded={props.open}
+        aria-label={`${props.open ? "Collapse" : "Expand"} ${props.title.toLowerCase()} section`}
+        onClick={props.onToggle}
+      >
+        <div class="space-y-1">
+          <p class="text-sm font-semibold text-zinc-100">
+            {props.index}. {props.title}
+          </p>
+          <p class="text-xs text-zinc-400">{props.subtitle}</p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <Show when={props.meta}>
+            <span class="rounded-full border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] text-zinc-400">
+              {props.meta}
+            </span>
+          </Show>
+          {props.open ? (
+            <ChevronDown size={16} class="mt-1 shrink-0 text-zinc-500" />
+          ) : (
+            <ChevronRight size={16} class="mt-1 shrink-0 text-zinc-500" />
+          )}
+        </div>
+      </button>
+
+      <Show when={props.open}>
+        <div class="space-y-4">{props.children}</div>
+      </Show>
+    </section>
+  );
+}
+
 export default function ReplayLabPage() {
   const params = useParams<{ id?: string }>();
   const [searchParams] = useSearchParams<{ backtestId?: string }>();
@@ -316,11 +372,14 @@ export default function ReplayLabPage() {
   const [preset, setPreset] = createSignal<PropFirmRules | null>(null);
   const [startDate, setStartDate] = createSignal("");
   const [endDate, setEndDate] = createSignal("");
+  const [positionSize, setPositionSize] = createSignal(1);
   const [bannerError, setBannerError] = createSignal<string | null>(null);
   const [bannerNotice, setBannerNotice] = createSignal<string | null>(null);
   const [workspaceSeedNotice, setWorkspaceSeedNotice] = createSignal<string | null>(null);
   const [launchConfig, setLaunchConfig] = createSignal<ReplayLaunchConfig | null>(null);
   const [isSaving, setIsSaving] = createSignal(false);
+  const [setupExpanded, setSetupExpanded] = createSignal(true);
+  const [rulesExpanded, setRulesExpanded] = createSignal(true);
 
   const [isReplayActive, setIsReplayActive] = createSignal(false);
   const [isReviewMode, setIsReviewMode] = createSignal(false);
@@ -441,6 +500,7 @@ export default function ReplayLabPage() {
       setPreset(existing.prop_firm_rules);
       setStartDate(existing.start_date ?? "");
       setEndDate(existing.end_date ?? "");
+      setPositionSize(existing.position_size ?? 1);
       setSpeed(8);
       setIsReplayActive(false);
       setIsReviewMode(existing.status === "review");
@@ -466,6 +526,7 @@ export default function ReplayLabPage() {
         commission: existing.commission,
         tickValue: existing.tick_value,
         tickSize: existing.tick_size ?? matchedSymbol.tick_size ?? 0.25,
+        positionSize: existing.position_size ?? 1,
         spreadTicks: existing.spread_ticks ?? executionDefaults.spreadTicks,
         volatileBarThresholdTicks:
           existing.volatile_bar_threshold_ticks ?? 0,
@@ -508,6 +569,7 @@ export default function ReplayLabPage() {
     const commission = source.trades[0]?.commission ?? 5;
     const tickValue =
       tickValueBySymbol[replaySymbol] ?? resolvedSymbol.tick_value ?? 1;
+    const sourcePositionSize = source.run_config?.position_size ?? 1;
     const executionDefaults = defaultExecutionConfigForSymbol(replaySymbol);
 
     batch(() => {
@@ -524,6 +586,7 @@ export default function ReplayLabPage() {
           commission,
           tickValue,
           tickSize: source.run_config?.tick_size ?? resolvedSymbol.tick_size ?? 0.25,
+          positionSize: sourcePositionSize,
           spreadTicks: executionDefaults.spreadTicks,
           volatileBarThresholdTicks: executionDefaults.volatileBarThresholdTicks,
           volatileBarExtraTicks: executionDefaults.volatileBarExtraTicks,
@@ -552,6 +615,7 @@ export default function ReplayLabPage() {
         commission,
         tickValue,
         tickSize: source.run_config?.tick_size ?? resolvedSymbol.tick_size ?? 0.25,
+        positionSize: sourcePositionSize,
         spreadTicks: executionDefaults.spreadTicks,
         volatileBarThresholdTicks: executionDefaults.volatileBarThresholdTicks,
         volatileBarExtraTicks: executionDefaults.volatileBarExtraTicks,
@@ -591,6 +655,15 @@ export default function ReplayLabPage() {
   const currentCandle = createMemo<Candle | undefined>(() => candles()?.[replayIndex()]);
   const hasLaunch = createMemo(() => !!launchConfig());
 
+  createEffect(() => {
+    if (!hasLaunch()) {
+      return;
+    }
+
+    setSetupExpanded(false);
+    setRulesExpanded(false);
+  });
+
   const replayTradeEntryIndices = createMemo(() =>
     Array.from(
       new Set(
@@ -619,6 +692,7 @@ export default function ReplayLabPage() {
       commission: config.commission,
       tickValue: config.tickValue,
       tickSize: config.tickSize,
+      positionSize: config.positionSize,
       spreadTicks: config.spreadTicks,
       volatileBarThresholdTicks: config.volatileBarThresholdTicks,
       volatileBarExtraTicks: config.volatileBarExtraTicks,
@@ -725,6 +799,7 @@ export default function ReplayLabPage() {
       ["Source", config.sourceBacktest ? `Backtest ${config.sourceBacktest.backtest_id.slice(0, 8)}` : "Standalone"],
       ["Symbol", config.symbol.symbol],
       ["Interval", config.interval.label],
+      ["Contracts", String(config.positionSize)],
       [
         "Range",
         config.startDate || config.endDate
@@ -749,16 +824,6 @@ export default function ReplayLabPage() {
       ["Win Rate", `${(session.metrics.win_rate * 100).toFixed(1)}%`],
       ["Trades", String(session.metrics.total_trades)],
       ["Balance", `$${session.balance.toFixed(2)}`],
-      ["Position", session.position ? session.position.side.toUpperCase() : "FLAT"],
-      [
-        "Order",
-        session.activeOrders.length > 1
-          ? `${session.activeOrders.length} LIVE EXITS`
-          : session.activeOrder
-            ? `${session.activeOrder.intent === "exit" ? "EXIT" : "ENTRY"} ${session.activeOrder.side.toUpperCase()} @ $${session.activeOrder.price.toFixed(2)}`
-            : "NONE",
-      ],
-      ["Resting Fill", formatRestingFillMode(config.restingFillMode)],
     ] as [string, string][];
   });
 
@@ -801,7 +866,7 @@ export default function ReplayLabPage() {
       return "Flat";
     }
 
-    return `${session.position.side.toUpperCase()} from $${session.position.entry_price.toFixed(2)} (${formatCurrency(session.position.unrealized_pnl)})`;
+    return `${formatTradeLabel(session.position.side, session.position.quantity)} from $${session.position.entry_price.toFixed(2)} (${formatCurrency(session.position.unrealized_pnl)})`;
   });
 
   const bidAskLabel = createMemo(() => {
@@ -822,6 +887,7 @@ export default function ReplayLabPage() {
       .map((order) => {
         const armed = order.first_touch_bar_index !== undefined ? " [armed]" : "";
         const replaceTag = order.replace_count ? ` [replace ${order.replace_count}]` : "";
+        const quantity = order.quantity;
         const role =
           order.bracket_role === "target"
             ? "TARGET"
@@ -830,7 +896,8 @@ export default function ReplayLabPage() {
               : order.intent === "exit"
                 ? "EXIT"
                 : "ENTRY";
-        return `${role} ${order.side.toUpperCase()} @ $${order.price.toFixed(2)}${armed}${replaceTag}`;
+        const sizeTag = quantity ? ` ${formatTradeLabel(order.side, quantity)}` : ` ${order.side.toUpperCase()}`;
+        return `${role}${sizeTag} @ $${order.price.toFixed(2)}${armed}${replaceTag}`;
       })
       .join(" | ");
   });
@@ -876,16 +943,17 @@ export default function ReplayLabPage() {
         position: trade.side === "buy" ? "belowBar" : "aboveBar",
         color: trade.side === "buy" ? "#22c55e" : "#fb7185",
         shape: trade.side === "buy" ? "arrowUp" : "arrowDown",
-        text: `YOU ${trade.side.toUpperCase()} @ ${trade.entry_price.toFixed(2)}`,
+        text: `${formatTradeLabel(trade.side, trade.quantity)} @ ${trade.entry_price.toFixed(2)}`,
       });
 
       if (trade.exit_time) {
+        const exitColor = trade.pnl >= 0 ? "#22c55e" : "#fb7185";
         markers.push({
           time: markerTimeFromIso(trade.exit_time),
           position: trade.side === "buy" ? "aboveBar" : "belowBar",
-          color: "#f8fafc",
+          color: exitColor,
           shape: "square",
-          text: `EXIT ${trade.pnl >= 0 ? "+" : ""}${trade.pnl.toFixed(2)}`,
+          text: `EXIT ${formatTradePnl(trade.pnl)}`,
         });
       }
     }
@@ -896,7 +964,7 @@ export default function ReplayLabPage() {
         position: session.position.side === "buy" ? "belowBar" : "aboveBar",
         color: session.position.side === "buy" ? "#34d399" : "#f43f5e",
         shape: "circle",
-        text: `OPEN ${session.position.side.toUpperCase()} ${formatCurrency(session.position.unrealized_pnl)}`,
+        text: `OPEN ${formatTradeLabel(session.position.side, session.position.quantity)} ${formatCurrency(session.position.unrealized_pnl)}`,
       });
     }
 
@@ -1042,6 +1110,10 @@ export default function ReplayLabPage() {
       setBannerError("Start date must be before end date.");
       return;
     }
+    if (!Number.isFinite(positionSize()) || positionSize() <= 0) {
+      setBannerError("Contracts needs to be a real positive number.");
+      return;
+    }
 
     setBannerError(null);
     setBannerNotice(null);
@@ -1062,6 +1134,7 @@ export default function ReplayLabPage() {
         commission: 5,
         tickValue: tickValueBySymbol[selectedSymbol.symbol] ?? selectedSymbol.tick_value ?? 1,
         tickSize: selectedSymbol.tick_size || 0.25,
+        positionSize: positionSize(),
         spreadTicks: executionDefaults.spreadTicks,
         volatileBarThresholdTicks: executionDefaults.volatileBarThresholdTicks,
         volatileBarExtraTicks: executionDefaults.volatileBarExtraTicks,
@@ -1079,6 +1152,7 @@ export default function ReplayLabPage() {
         commission: 5,
         tickValue: tickValueBySymbol[selectedSymbol.symbol] ?? selectedSymbol.tick_value ?? 1,
         tickSize: selectedSymbol.tick_size || 0.25,
+        positionSize: positionSize(),
         spreadTicks: executionDefaults.spreadTicks,
         volatileBarThresholdTicks: executionDefaults.volatileBarThresholdTicks,
         volatileBarExtraTicks: executionDefaults.volatileBarExtraTicks,
@@ -1107,6 +1181,7 @@ export default function ReplayLabPage() {
       commission: config.commission,
       tick_value: config.tickValue,
       tick_size: config.tickSize,
+      position_size: config.positionSize,
       spread_ticks: config.spreadTicks,
       volatile_bar_threshold_ticks: config.volatileBarThresholdTicks,
       volatile_bar_extra_ticks: config.volatileBarExtraTicks,
@@ -1207,60 +1282,86 @@ export default function ReplayLabPage() {
           </div>
         </Show>
 
-        <section class={`${section} app-panel-selected`}>
-          <div class="space-y-2">
-            <p class="app-kicker">
-              {activeSourceBacktest() || sourceBacktestId() ? "Saved Backtest Source" : "Standalone Session"}
-            </p>
-            <h2 class="text-lg font-semibold text-zinc-100">
-              {sessionId()
-                ? "Resume and update a saved replay"
-                : activeSourceBacktest() || sourceBacktestId()
-                  ? "Trade the saved window"
-                  : "Build a standalone replay"}
-            </h2>
-            <p class="max-w-3xl text-sm text-zinc-400">
-              {activeSourceBacktest() || sourceBacktestId()
-                ? "Pinned to the source backtest for later manual-vs-system review."
-                : "Load a historical window into a forward-only sim."}
-            </p>
-          </div>
-
-          <div class="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-            <For each={sessionSummary()}>
-              {([key, value]) => (
-                <div class="rounded-2xl border border-zinc-700/80 bg-zinc-950/65 px-4 py-3">
-                  <p class="app-metric-label">{key}</p>
-                  <p class="mt-2 text-sm font-medium text-zinc-100">{value}</p>
-                </div>
-              )}
-            </For>
-            <Show when={!launchConfig()}>
-              <div class="rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/40 px-4 py-3 md:col-span-3 xl:col-span-6">
-                <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Next Move</p>
-                <p class="mt-2 text-sm text-zinc-300">
-                  {sourceBacktestId()
-                    ? "Loading the saved backtest context, then locking the sim to that exact historical run."
-                    : `Launch a simulated-live session to load up to ${SESSION_LIMIT.toLocaleString()} bars from the selected historical window.`}
+        <Show
+          when={launchConfig()}
+          fallback={
+            <section class={`${section} app-panel-selected`}>
+              <div class="space-y-2">
+                <p class="app-kicker">
+                  {activeSourceBacktest() || sourceBacktestId() ? "Saved Backtest Source" : "Standalone Session"}
+                </p>
+                <h2 class="text-lg font-semibold text-zinc-100">
+                  {sessionId()
+                    ? "Resume and update a saved replay"
+                    : activeSourceBacktest() || sourceBacktestId()
+                      ? "Trade the saved window"
+                      : "Build a standalone replay"}
+                </h2>
+                <p class="max-w-3xl text-sm text-zinc-400">
+                  {activeSourceBacktest() || sourceBacktestId()
+                    ? "Pinned to the source backtest for later manual-vs-system review."
+                    : "Load a historical window into a forward-only sim."}
                 </p>
               </div>
-            </Show>
-          </div>
-        </section>
+
+              <div class="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+                <For each={sessionSummary()}>
+                  {([key, value]) => (
+                    <div class="rounded-2xl border border-zinc-700/80 bg-zinc-950/65 px-4 py-3">
+                      <p class="app-metric-label">{key}</p>
+                      <p class="mt-2 text-sm font-medium text-zinc-100">{value}</p>
+                    </div>
+                  )}
+                </For>
+                <div class="rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/40 px-4 py-3 md:col-span-3 xl:col-span-6">
+                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Next Move</p>
+                  <p class="mt-2 text-sm text-zinc-300">
+                    {sourceBacktestId()
+                      ? "Loading the saved backtest context, then locking the sim to that exact historical run."
+                      : `Launch a simulated-live session to load up to ${SESSION_LIMIT.toLocaleString()} bars from the selected historical window.`}
+                  </p>
+                </div>
+              </div>
+            </section>
+          }
+        >
+          <section class={`${section} app-panel-selected !py-4`}>
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+              <p class="app-kicker mr-1">
+                {activeSourceBacktest() || sourceBacktestId() ? "Saved Backtest Source" : "Standalone Session"}
+              </p>
+              <For each={sessionSummary()}>
+                {([key, value], index) => (
+                  <>
+                    <Show when={index() > 0}>
+                      <span class="text-zinc-700">·</span>
+                    </Show>
+                    <span class="text-zinc-500">
+                      {key} <span class="ml-1 font-medium text-zinc-100">{value}</span>
+                    </span>
+                  </>
+                )}
+              </For>
+            </div>
+          </section>
+        </Show>
 
         <div class="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
-          <section class={`${section} h-full`}>
-            <div class="space-y-1">
-              <p class="text-sm font-semibold text-zinc-100">1. Session Setup</p>
-              <p class="text-xs text-zinc-400">
-                {activeSourceBacktest() || sourceBacktestId()
-                  ? "Symbol, range, and rules come from the source run."
-                  : "Name the sim and choose the market window."}
-              </p>
-              <Show when={workspaceSeedNotice() && !(activeSourceBacktest() || sourceBacktestId())}>
-                <p class="text-xs text-cyan-300">{workspaceSeedNotice()}</p>
-              </Show>
-            </div>
+          <ReplayAccordionSection
+            index="1"
+            title="Session Setup"
+            subtitle={
+              activeSourceBacktest() || sourceBacktestId()
+                ? "Symbol, range, and rules stay pinned to the source run."
+                : "Name the sim and pick the market window."
+            }
+            meta={symbol()?.symbol ?? "Setup"}
+            open={setupExpanded()}
+            onToggle={() => setSetupExpanded((value) => !value)}
+          >
+            <Show when={workspaceSeedNotice() && !(activeSourceBacktest() || sourceBacktestId())}>
+              <p class="text-xs text-cyan-300">{workspaceSeedNotice()}</p>
+            </Show>
 
             <div>
               <label class={label}>Session name</label>
@@ -1282,7 +1383,7 @@ export default function ReplayLabPage() {
                   fallback={<div class="h-9 animate-pulse rounded bg-zinc-800" />}
                 >
                   <div class="rounded-lg border border-yellow-700 bg-yellow-950 px-4 py-3 text-sm text-yellow-300">
-                    No DB-backed symbols found. Import market data first to launch a replay session.
+                    No DB-backed symbols found. Import market data first.
                   </div>
                 </Show>
               }
@@ -1314,7 +1415,7 @@ export default function ReplayLabPage() {
               </div>
             </Show>
 
-            <div class="grid gap-3 md:grid-cols-3">
+            <div class="grid gap-2 md:grid-cols-3">
               <div>
                 <label class={label}>Interval</label>
                 <select
@@ -1337,7 +1438,7 @@ export default function ReplayLabPage() {
               </div>
 
               <div>
-                <label class={label}>Start date (optional)</label>
+                <label class={label}>Start date</label>
                 <input
                   type="date"
                   class={field}
@@ -1348,7 +1449,7 @@ export default function ReplayLabPage() {
               </div>
 
               <div>
-                <label class={label}>End date (optional)</label>
+                <label class={label}>End date</label>
                 <input
                   type="date"
                   class={field}
@@ -1359,23 +1460,46 @@ export default function ReplayLabPage() {
               </div>
             </div>
 
+            <div class="grid gap-3 md:grid-cols-[160px_1fr]">
+              <div>
+                <label class={label}>Contracts</label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  class={field}
+                  value={positionSize()}
+                  disabled={!canEditSetup()}
+                  onInput={(event) => {
+                    const next = Number(event.currentTarget.value);
+                    setPositionSize(Number.isFinite(next) && next > 0 ? next : 1);
+                  }}
+                />
+              </div>
+              <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                <p class="text-sm text-zinc-400">
+                  This is the contract count used for every entry in the replay.
+                </p>
+              </div>
+            </div>
+
             <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
               <p class="text-sm text-zinc-400">
                 {activeSourceBacktest() || sourceBacktestId()
-                  ? "Replay stays linked to the saved system run."
-                  : `Limit: ${SESSION_LIMIT.toLocaleString()} bars. Future candles stay hidden while you trade.`}
+                  ? "Linked to the saved run."
+                  : `Future candles stay hidden. Limit: ${SESSION_LIMIT.toLocaleString()} bars.`}
               </p>
             </div>
-          </section>
+          </ReplayAccordionSection>
 
-          <section class={`${section} h-full`}>
-            <div class="space-y-1">
-              <p class="text-sm font-semibold text-zinc-100">2. Ruleset And Launch</p>
-              <p class="text-xs text-zinc-400">
-                Choose guardrails, then launch or save.
-              </p>
-            </div>
-
+          <ReplayAccordionSection
+            index="2"
+            title="Ruleset And Launch"
+            subtitle="Pick guardrails, then launch or save."
+            meta={preset()?.name ?? "Rules"}
+            open={rulesExpanded()}
+            onToggle={() => setRulesExpanded((value) => !value)}
+          >
             <Show
               when={presets() && presets()!.length > 0}
               fallback={<div class="h-9 animate-pulse rounded bg-zinc-800" />}
@@ -1411,7 +1535,7 @@ export default function ReplayLabPage() {
               <Show when={preset()}>
                 {(selectedPreset) => (
                   <div class="space-y-3">
-                    <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4">
+                    <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-3 py-3">
                       <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Selected Challenge</p>
                       <p class="mt-2 text-sm font-semibold text-zinc-100">{selectedPreset().name}</p>
                     </div>
@@ -1428,7 +1552,7 @@ export default function ReplayLabPage() {
                         ["Min days", selectedPreset().min_trading_days ?? "—"],
                         ["Drawdown", selectedPreset().drawdown_type ?? "eod"],
                       ] as [string, string | number][]).map(([key, value]) => (
-                        <div class="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-3">
+                        <div class="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2.5">
                           <p class="text-xs text-zinc-400">{key}</p>
                           <p class="mt-1 text-sm font-mono text-zinc-100">{value}</p>
                         </div>
@@ -1440,10 +1564,10 @@ export default function ReplayLabPage() {
             </Show>
 
             <Show when={!canEditSetup()}>
-              <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-4 text-sm text-zinc-400">
+              <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 text-sm text-zinc-400">
                 {activeSourceBacktest()
-                  ? "This session is pinned to its source backtest. Use `Restart` to trade the same tape again or `New Replay` for a different run."
-                  : "This market window is locked for the active run. Use `Restart` to trade it again or `New Replay` to build a different session."}
+                  ? "Pinned to the source backtest."
+                  : "This market window is locked for the active run."}
               </div>
             </Show>
 
@@ -1491,7 +1615,7 @@ export default function ReplayLabPage() {
                 </button>
               </div>
             </div>
-          </section>
+          </ReplayAccordionSection>
         </div>
 
         <Show when={launchConfig()}>
@@ -1509,6 +1633,23 @@ export default function ReplayLabPage() {
                         {config().sourceBacktest
                           ? "Trading the saved backtest window."
                           : "Trading a historical window forward-only."}
+                      </p>
+                      <p class="text-xs text-zinc-500">
+                        <span class="app-data text-zinc-300">${config().commission.toFixed(2)}</span> commission
+                        <span class="mx-2 text-zinc-700">·</span>
+                        <span class="app-data text-zinc-300">${config().tickValue.toFixed(2)}</span> tick value
+                        <span class="mx-2 text-zinc-700">·</span>
+                        <span class="app-data text-zinc-300">{config().positionSize}</span> contracts
+                        <span class="mx-2 text-zinc-700">·</span>
+                        <span class="text-zinc-300">{config().propFirmRules.name}</span>
+                        <Show when={config().sourceBacktest}>
+                          {(source) => (
+                            <>
+                              <span class="mx-2 text-zinc-700">·</span>
+                              <span class="text-zinc-400">{source().strategy_type?.replace(/_/g, " ") ?? "Saved run"}</span>
+                            </>
+                          )}
+                        </Show>
                       </p>
                     </div>
 
@@ -1538,104 +1679,127 @@ export default function ReplayLabPage() {
                     </div>
                   </div>
 
-                  <div class="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
-                    <div class="space-y-5">
+                  <div class="space-y-5">
                       <ChartIndicatorToggleBar
                         settings={indicatorSettings()}
                         onToggle={toggleIndicator}
                       />
 
-                      <div class="overflow-hidden rounded-3xl border border-zinc-700/80 bg-zinc-950/76 p-4">
-                        <Show
-                          when={candles.error}
-                          fallback={
-                            <Show
-                              when={!candles.loading && candles() && candles()!.length > 0}
-                              fallback={
-                                <div class="flex h-[520px] items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-950 px-6 text-center">
-                                  <p class="text-sm text-zinc-500">
-                                    {candles.loading
-                                      ? "Loading replay candles…"
-                                      : "No candles were returned for that historical request."}
-                                  </p>
-                                </div>
+                      <div class="overflow-hidden rounded-3xl border border-zinc-700/80 bg-zinc-950/76">
+                        <Show when={candles() && candles()!.length > 0}>
+                          <ReplayChartStrip
+                            isPlaying={isReplayActive()}
+                            statusLabel={formatReplaySessionStatus(replayStatus())}
+                            currentBar={totalBars() === 0 ? 0 : replayIndex() + 1}
+                            totalBars={totalBars()}
+                            currentPriceLabel={currentPriceLabel()}
+                            bidAskLabel={bidAskLabel()}
+                            canStartPlayback={canStartPlayback()}
+                            onPlayPause={() => {
+                              if (isReplayActive()) {
+                                setIsReplayActive(false);
+                                return;
                               }
-                            >
-                              <PriceChart
-                                candles={candles() as Candle[]}
-                                markers={chartMarkers()}
-                                visibleIndex={replayIndex()}
-                                height={520}
-                                indicators={indicatorSettings()}
-                                indicatorLegend="full"
-                                class="rounded-2xl"
-                              />
-                            </Show>
-                          }
-                        >
-                          {(error) => (
-                            <div class="flex h-[520px] items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-950 px-6 text-center">
-                              <p class="text-sm text-red-400">Replay data failed to load: {error().message}</p>
-                            </div>
-                          )}
+
+                              if (!canStartPlayback()) {
+                                return;
+                              }
+
+                              setIsReplayActive(true);
+                            }}
+                            onRestart={() => {
+                              batch(() => {
+                                setBannerNotice(null);
+                                setIsReplayActive(false);
+                                setIsReviewMode(false);
+                                setCurrentIndex(0);
+                                setReplayActions([]);
+                                setBracketStopPrice("");
+                                setBracketTargetPrice("");
+                              });
+                            }}
+                          />
+                        </Show>
+
+                        <div class="p-4">
+                          <Show
+                            when={candles.error}
+                            fallback={
+                              <Show
+                                when={!candles.loading && candles() && candles()!.length > 0}
+                                fallback={
+                                  <div class="flex h-[520px] items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-950 px-6 text-center">
+                                    <p class="text-sm text-zinc-500">
+                                      {candles.loading
+                                        ? "Loading replay candles…"
+                                        : "No candles were returned for that historical request."}
+                                    </p>
+                                  </div>
+                                }
+                              >
+                                <PriceChart
+                                  candles={candles() as Candle[]}
+                                  markers={chartMarkers()}
+                                  visibleIndex={replayIndex()}
+                                  height={520}
+                                  indicators={indicatorSettings()}
+                                  indicatorLegend="full"
+                                  class="rounded-2xl"
+                                />
+                              </Show>
+                            }
+                          >
+                            {(error) => (
+                              <div class="flex h-[520px] items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-950 px-6 text-center">
+                                <p class="text-sm text-red-400">Replay data failed to load: {error().message}</p>
+                              </div>
+                            )}
+                          </Show>
+                        </div>
+
+                        <Show when={candles() && candles()!.length > 0}>
+                          <ReplayExecutionActions
+                            canLiftAsk={!isReviewMode()}
+                            canHitBid={!isReviewMode()}
+                            canJoinBid={canPlaceEntries()}
+                            canJoinAsk={canPlaceEntries()}
+                            canRestExit={canRestExit()}
+                            canReplaceOrder={canReplaceOrder()}
+                            canCancelOrder={canCancelOrder()}
+                            canFlatten={canExitPosition() || canCancelOrder()}
+                            onLiftAsk={() => recordReplayAction("lift_ask")}
+                            onHitBid={() => recordReplayAction("hit_bid")}
+                            onJoinBid={() => recordReplayAction("join_bid")}
+                            onJoinAsk={() => recordReplayAction("join_ask")}
+                            onRestExit={() => recordReplayAction("rest_exit")}
+                            onReplace={() => recordReplayAction("replace")}
+                            onCancel={() => recordReplayAction("cancel")}
+                            onFlatten={() => recordReplayAction("flatten")}
+                          />
                         </Show>
                       </div>
 
                       <Show when={candles() && candles()!.length > 0}>
-                        <ReplayControls
-                          isPlaying={isReplayActive()}
+                        <ReplayTimelineControls
                           speed={speed()}
-                          statusLabel={formatReplaySessionStatus(replayStatus())}
-                          statusDetail={replayStatusDetail()}
                           progress={replayProgress()}
                           currentBar={totalBars() === 0 ? 0 : replayIndex() + 1}
                           totalBars={totalBars()}
+                          statusDetail={replayStatusDetail()}
                           currentTimeLabel={currentTimeLabel()}
-                          currentPriceLabel={currentPriceLabel()}
-                          bidAskLabel={bidAskLabel()}
                           positionLabel={positionLabel()}
                           activeOrderLabel={activeOrderLabel()}
+                          isPlaying={isReplayActive()}
                           canSeek={canSeek()}
                           canStartPlayback={canStartPlayback()}
                           canStepBack={canStepBack()}
                           canStepForward={canStepForward()}
                           canJumpPrevTrade={canJumpPrevTrade()}
                           canJumpNextTrade={canJumpNextTrade()}
-                          canLiftAsk={!isReviewMode()}
-                          canHitBid={!isReviewMode()}
-                          canJoinBid={canPlaceEntries()}
-                          canJoinAsk={canPlaceEntries()}
-                          canRestExit={canRestExit()}
-                          canReplaceOrder={canReplaceOrder()}
-                          canCancelOrder={canCancelOrder()}
-                          canFlatten={canExitPosition() || canCancelOrder()}
-                          onPlayPause={() => {
-                            if (isReplayActive()) {
-                              setIsReplayActive(false);
-                              return;
-                            }
-
-                            if (!canStartPlayback()) {
-                              return;
-                            }
-
-                            setIsReplayActive(true);
-                          }}
                           onSpeedChange={setSpeed}
                           onSeek={(progress) =>
                             canSeek() ? seekToIndex(getReplayIndexFromProgress(progress, totalBars())) : undefined
                           }
-                          onRestart={() => {
-                            batch(() => {
-                              setBannerNotice(null);
-                              setIsReplayActive(false);
-                              setIsReviewMode(false);
-                              setCurrentIndex(0);
-                              setReplayActions([]);
-                              setBracketStopPrice("");
-                              setBracketTargetPrice("");
-                            });
-                          }}
                           onStepBack={() => {
                             if (canStepBack()) {
                               seekToIndex(replayIndex() - 1);
@@ -1648,141 +1812,72 @@ export default function ReplayLabPage() {
                           }}
                           onJumpPrevTrade={() => jumpToTrade("prev")}
                           onJumpNextTrade={() => jumpToTrade("next")}
-                          onLiftAsk={() => recordReplayAction("lift_ask")}
-                          onHitBid={() => recordReplayAction("hit_bid")}
-                          onJoinBid={() => recordReplayAction("join_bid")}
-                          onJoinAsk={() => recordReplayAction("join_ask")}
-                          onRestExit={() => recordReplayAction("rest_exit")}
-                          onReplace={() => recordReplayAction("replace")}
-                          onCancel={() => recordReplayAction("cancel")}
-                          onFlatten={() => recordReplayAction("flatten")}
                         />
                       </Show>
-                    </div>
-
-                    <div class="space-y-4">
-                      <div class="rounded-3xl border border-zinc-700/80 bg-zinc-950/65 p-5">
-                        <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Session Pulse</p>
-                        <div class="mt-4 grid gap-3">
-                          <ReplayStatCard
-                            label="Current Price"
-                            value={currentPriceLabel()}
-                            detail="Most recent visible close in the replay tape."
-                          />
-                          <ReplayStatCard
-                            label="Position"
-                            value={positionLabel()}
-                            tone={replaySession()?.position ? "good" : "default"}
-                            detail="Open position state and unrealized mark-to-market."
-                          />
-                          <ReplayStatCard
-                            label="Replay Status"
-                            value={formatReplaySessionStatus(replayStatus())}
-                            detail={replayStatusDetail()}
-                          />
-                        </div>
-                      </div>
-
-                      <div class="rounded-3xl border border-zinc-700/80 bg-zinc-950/65 p-5">
-                        <div class="flex items-center justify-between gap-3">
-                          <div>
-                            <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Bracket Builder</p>
-                            <p class="mt-1 text-sm text-zinc-400">
-                              Attach a stop/target OCO pair to the open replay trade.
-                            </p>
-                          </div>
-                          <div class="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-400">
-                            {activeOrders().length} live order{activeOrders().length === 1 ? "" : "s"}
-                          </div>
-                        </div>
-
-                        <div class="mt-4 space-y-3">
-                          <div class="grid gap-3 md:grid-cols-2">
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={bracketStopPrice()}
-                              onInput={(event) => setBracketStopPrice(event.currentTarget.value)}
-                              placeholder="Stop price"
-                              class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
-                            />
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={bracketTargetPrice()}
-                              onInput={(event) => setBracketTargetPrice(event.currentTarget.value)}
-                              placeholder="Target price"
-                              class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
-                            />
-                          </div>
-
-                          <button
-                            type="button"
-                            disabled={!canAttachBracket()}
-                            onClick={attachReplayBracket}
-                            class="w-full rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
-                          >
-                            Attach Bracket
-                          </button>
-
-                          <Show when={activeOrders().length > 0}>
-                            <div class="space-y-2 rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-3">
-                              <For each={activeOrders()}>
-                                {(order) => (
-                                  <div class="rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-xs text-zinc-300">
-                                    {order.bracket_role === "target"
-                                      ? "TARGET"
-                                      : order.bracket_role === "stop"
-                                        ? "STOP"
-                                        : order.intent === "exit"
-                                          ? "EXIT"
-                                          : "ENTRY"}{" "}
-                                    {order.side.toUpperCase()} @ ${order.price.toFixed(2)}
-                                  </div>
-                                )}
-                              </For>
+                      <Show when={!!replaySession()?.position || activeOrders().length > 0}>
+                        <div class="rounded-3xl border border-zinc-700/80 bg-zinc-950/65 p-5">
+                          <div class="flex items-center justify-between gap-3">
+                            <div>
+                              <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Bracket Builder</p>
+                              <p class="mt-1 text-sm text-zinc-400">
+                                Attach a stop/target OCO pair to the open replay trade.
+                              </p>
                             </div>
-                          </Show>
-                        </div>
-                      </div>
+                            <div class="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-400">
+                              {activeOrders().length} live order{activeOrders().length === 1 ? "" : "s"}
+                            </div>
+                          </div>
 
-                      <div class="rounded-3xl border border-zinc-700/80 bg-zinc-950/65 p-5">
-                        <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Run Context</p>
-                        <div class="mt-4 grid gap-3">
-                          <div class="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-3">
-                            <p class="text-xs text-zinc-500">Commission</p>
-                            <p class="app-data mt-1 text-sm font-semibold text-zinc-100">
-                              ${config().commission.toFixed(2)}
-                            </p>
-                          </div>
-                          <div class="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-3">
-                            <p class="text-xs text-zinc-500">Tick Value</p>
-                            <p class="app-data mt-1 text-sm font-semibold text-zinc-100">
-                              ${config().tickValue.toFixed(2)}
-                            </p>
-                          </div>
-                          <div class="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-3">
-                            <p class="text-xs text-zinc-500">Ruleset</p>
-                            <p class="mt-1 text-sm font-semibold text-zinc-100">
-                              {config().propFirmRules.name}
-                            </p>
-                          </div>
-                          <Show when={config().sourceBacktest}>
-                            {(source) => (
-                              <div class="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-3">
-                                <p class="text-xs text-zinc-500">Source Backtest</p>
-                                <p class="app-data mt-1 text-sm font-semibold text-zinc-100">
-                                  {source().backtest_id}
-                                </p>
-                                <p class="mt-1 text-xs text-zinc-500">
-                                  {source().strategy_type?.replace(/_/g, " ") ?? "Saved run"}
-                                </p>
+                          <div class="mt-4 space-y-3">
+                            <div class="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={bracketStopPrice()}
+                                onInput={(event) => setBracketStopPrice(event.currentTarget.value)}
+                                placeholder="Stop price"
+                                class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                              />
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={bracketTargetPrice()}
+                                onInput={(event) => setBracketTargetPrice(event.currentTarget.value)}
+                                placeholder="Target price"
+                                class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                              />
+                              <button
+                                type="button"
+                                disabled={!canAttachBracket()}
+                                onClick={attachReplayBracket}
+                                class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                              >
+                                Attach Bracket
+                              </button>
+                            </div>
+
+                            <Show when={activeOrders().length > 0}>
+                              <div class="grid gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 md:grid-cols-2">
+                                <For each={activeOrders()}>
+                                  {(order) => (
+                                    <div class="rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-xs text-zinc-300">
+                                      {order.bracket_role === "target"
+                                        ? "TARGET"
+                                        : order.bracket_role === "stop"
+                                          ? "STOP"
+                                          : order.intent === "exit"
+                                            ? "EXIT"
+                                            : "ENTRY"}{" "}
+                                      {formatTradeLabel(order.side, order.quantity)}{" "}
+                                      @ ${order.price.toFixed(2)}
+                                    </div>
+                                  )}
+                                </For>
                               </div>
-                            )}
-                          </Show>
+                            </Show>
+                          </div>
                         </div>
-                      </div>
-                    </div>
+                      </Show>
                   </div>
                 </div>
               </section>
@@ -1790,7 +1885,7 @@ export default function ReplayLabPage() {
               <Show when={replaySession()}>
                 {(session) => (
                   <>
-                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
                       <For each={replayMetrics()}>
                         {([key, value]) => (
                           <ReplayStatCard
@@ -1882,25 +1977,22 @@ export default function ReplayLabPage() {
                         </div>
                       </div>
 
-                      <div class="grid gap-4">
-                        <PropEvalPanel title="Replay Prop Eval" evaluation={session().propEvaluation} />
-                        <div class="rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
-                          <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Persistence And Review</p>
-                          <p class="mt-2 text-sm text-zinc-400">Save the run, then review after completion.</p>
+                      <PropEvalPanel title="Replay Prop Eval" evaluation={session().propEvaluation}>
+                        <div class="space-y-2 text-sm">
                           <Show when={activeSourceBacktest()}>
                             {(source) => (
-                              <p class="mt-3 text-sm text-zinc-400">
-                                Linked to backtest `{source().backtest_id.slice(0, 8)}`.
+                              <p class="text-zinc-400">
+                                Linked to backtest `{source().backtest_id.slice(0, 8)}`. Save the run, then review after completion.
                               </p>
                             )}
                           </Show>
-                          <div class="mt-4 flex flex-wrap gap-2">
+                          <Show when={!activeSourceBacktest()}>
+                            <p class="text-zinc-400">Save the run, then review after completion.</p>
+                          </Show>
+                          <div class="flex flex-wrap items-center gap-2">
                             <Show when={compareHref()}>
                               {(href) => (
-                                <A
-                                  href={href()}
-                                  class="app-button-compact-primary"
-                                >
+                                <A href={href()} class="app-button-compact-primary">
                                   Compare Vs System
                                 </A>
                               )}
@@ -1912,7 +2004,7 @@ export default function ReplayLabPage() {
                             </Show>
                           </div>
                         </div>
-                      </div>
+                      </PropEvalPanel>
                     </div>
 
                     <div class="app-panel overflow-hidden">
@@ -2024,7 +2116,7 @@ export default function ReplayLabPage() {
                                       trade.side === "buy" ? "text-green-400" : "text-red-400"
                                     }`}
                                   >
-                                    {trade.side}
+                                    {formatTradeLabel(trade.side, trade.quantity)}
                                   </td>
                                   <td class="app-data text-xs text-zinc-500">
                                     {trade.entry_time}
