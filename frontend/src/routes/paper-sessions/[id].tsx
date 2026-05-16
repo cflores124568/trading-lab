@@ -904,7 +904,7 @@ export default function PaperSessionDetailPage() {
                       <p class="app-kicker">Entry Mix</p>
                       <p class="mt-2 text-sm font-semibold text-stone-100">
                         {executionAnalytics()
-                          ? `${executionAnalytics()!.summary.makerEntries} maker / ${executionAnalytics()!.summary.takerEntries} taker`
+                          ? `${executionAnalytics()!.summary.makerEntries} limit / ${executionAnalytics()!.summary.takerEntries} market`
                           : "0 / 0"}
                       </p>
                       <p class="mt-1 text-xs text-stone-500">How the session has been getting in.</p>
@@ -913,10 +913,10 @@ export default function PaperSessionDetailPage() {
                       <p class="app-kicker">Exit Mix</p>
                       <p class="mt-2 text-sm font-semibold text-stone-100">
                         {executionAnalytics()
-                          ? `${executionAnalytics()!.summary.makerExits} maker / ${executionAnalytics()!.summary.takerExits} taker`
+                          ? `${executionAnalytics()!.summary.makerExits} limit / ${executionAnalytics()!.summary.takerExits} market`
                           : "0 / 0"}
                       </p>
-                      <p class="mt-1 text-xs text-stone-500">Resting exits now count as maker closes too.</p>
+                      <p class="mt-1 text-xs text-stone-500">Resting exits now count as limit closes too.</p>
                     </div>
                     <div class="app-subpanel px-4 py-4">
                       <p class="app-kicker">Avg Entry Slip</p>

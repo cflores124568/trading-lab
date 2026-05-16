@@ -640,7 +640,7 @@ export default function BackTestConfigForm() {
             </p>
             <Show when={executionMode() === "synthetic_quotes"}>
               <p class="text-xs text-stone-500">
-                Synthetic mode prices taker fills off bid/ask. Slippage still applies on bracket
+                Synthetic mode prices market fills off bid/ask. Slippage still applies on bracket
                 exits so old configs stay comparable.
               </p>
             </Show>

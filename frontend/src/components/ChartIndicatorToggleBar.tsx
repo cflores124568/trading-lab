@@ -41,12 +41,7 @@ export default function ChartIndicatorToggleBar(props: Props) {
   return (
     <div class="rounded-md border border-stone-800 bg-stone-950/60 p-4">
       <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div class="space-y-1">
-          <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Chart Studies</p>
-          <p class="text-sm text-stone-400">
-            Keep the chart focused. Turn on only the context you actually need.
-          </p>
-        </div>
+        <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Chart Studies</p>
 
         <div class="flex flex-wrap gap-2">
           {indicatorOptions.map((option) => (

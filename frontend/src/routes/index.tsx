@@ -69,22 +69,6 @@ export default function Dashboard() {
 
     return Array.from(counts.entries()).sort((left, right) => right[1] - left[1]);
   });
-  const primarySymbol = createMemo(() => symbolMix()[0]?.[0] ?? "n/a");
-  const primaryInterval = createMemo(() => intervalMix()[0]?.[0] ?? "n/a");
-  const workspaceMode = createMemo(() => {
-    const live = activePanels().filter((panel) => panel.query.mode === "live").length;
-    const historical = activePanels().filter((panel) => panel.query.mode === "historical").length;
-
-    if (live > historical) {
-      return "live leaning";
-    }
-
-    if (historical > live) {
-      return "historical leaning";
-    }
-
-    return "balanced";
-  });
   const handleWorkspaceChange = (workspaceId: string) => {
     setWorkspace("selectedWorkspaceId", workspaceId);
   };
@@ -374,71 +358,40 @@ export default function Dashboard() {
         </>
       }
     >
-      <div class="rounded-[1.5rem] border border-stone-800/80 bg-[radial-gradient(circle_at_top_left,rgba(231,229,228,0.06),transparent_36%),linear-gradient(180deg,rgba(12,10,9,0.98),rgba(12,10,9,0.9))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.28)] lg:p-6">
-        <div class="flex flex-col gap-4">
-          <div class="max-w-3xl space-y-2">
-            <p class="app-kicker text-stone-200">Workspace snapshot</p>
-            <p class="max-w-2xl text-sm leading-6 text-stone-400">
-              Setup lives in the toolbar. This keeps the active mix visible without
-              piling on another wall of cards.
-            </p>
+      <div class="rounded-2xl border border-stone-800/80 bg-stone-950/70 px-4 py-3">
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2 text-stone-100">
+            <SquareChartGantt size={16} class="text-stone-200" />
+            <p class="text-sm font-semibold">Panel stack</p>
           </div>
-
-          <div class="grid gap-3 sm:grid-cols-3">
-            <div class="rounded-2xl bg-stone-950/55 px-4 py-3">
-              <p class="app-metric-label">Panel Count</p>
-              <p class="app-data mt-2 text-2xl font-semibold leading-none text-stone-100">
-                {activePanels().length}
-              </p>
+          <p class="text-xs text-stone-500">
+            {activePanels().length} panels · {activeWorkspace().selectedPreset}
+          </p>
+        </div>
+        <div class="mt-3 flex flex-wrap gap-2">
+          {activePanels().map((panel, index) => (
+            <div class="rounded-full border border-stone-800 bg-stone-900/70 px-3 py-2 text-xs text-stone-300">
+              <span class="font-semibold text-stone-100">Panel {index + 1}</span>
+              <span class="mx-2 text-stone-600">·</span>
+              <span>{panel.title}</span>
+              <span class="mx-2 text-stone-600">·</span>
+              <span class="uppercase tracking-[0.16em] text-stone-500">
+                {panel.query.symbol} {panel.query.interval}
+              </span>
             </div>
-            <div class="rounded-2xl bg-stone-950/55 px-4 py-3">
-              <p class="app-metric-label">Primary Mix</p>
-              <p class="app-data mt-2 text-base font-semibold text-stone-100">
-                {primarySymbol()} <span class="text-stone-500">/</span> {primaryInterval()}
-              </p>
-            </div>
-            <div class="rounded-2xl bg-stone-950/55 px-4 py-3">
-              <p class="app-metric-label">Workspace Mode</p>
-              <p class="mt-2 text-base font-semibold capitalize text-stone-100">{workspaceMode()}</p>
-            </div>
-          </div>
-
-          <div class="rounded-2xl border border-stone-800/80 bg-stone-950/70 px-4 py-3">
-            <div class="flex items-center justify-between gap-3">
-              <div class="flex items-center gap-2 text-stone-100">
-                <SquareChartGantt size={16} class="text-stone-200" />
-                <p class="text-sm font-semibold">Panel stack</p>
-              </div>
-              <p class="text-xs text-stone-500">
-                {activePanels().length} panels · {activeWorkspace().selectedPreset}
-              </p>
-            </div>
-            <div class="mt-3 flex flex-wrap gap-2">
-              {activePanels().map((panel, index) => (
-                <div class="rounded-full border border-stone-800 bg-stone-900/70 px-3 py-2 text-xs text-stone-300">
-                  <span class="font-semibold text-stone-100">Panel {index + 1}</span>
-                  <span class="mx-2 text-stone-600">·</span>
-                  <span>{panel.title}</span>
-                  <span class="mx-2 text-stone-600">·</span>
-                  <span class="uppercase tracking-[0.16em] text-stone-500">
-                    {panel.query.symbol} {panel.query.interval}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <div class="mt-4 flex flex-wrap gap-2">
-              {symbolMix().map(([symbol, count]) => (
-                <span class="rounded-full border border-stone-700 bg-stone-900 px-2.5 py-1.5 text-xs font-medium text-stone-200">
-                  {symbol} x{count}
-                </span>
-              ))}
-              {intervalMix().map(([interval, count]) => (
-                <span class="rounded-full border border-stone-700 bg-stone-900 px-2.5 py-1.5 text-xs font-medium text-stone-200">
-                  {interval} x{count}
-                </span>
-              ))}
-            </div>
-          </div>
+          ))}
+        </div>
+        <div class="mt-4 flex flex-wrap gap-2">
+          {symbolMix().map(([symbol, count]) => (
+            <span class="rounded-full border border-stone-700 bg-stone-900 px-2.5 py-1.5 text-xs font-medium text-stone-200">
+              {symbol} x{count}
+            </span>
+          ))}
+          {intervalMix().map(([interval, count]) => (
+            <span class="rounded-full border border-stone-700 bg-stone-900 px-2.5 py-1.5 text-xs font-medium text-stone-200">
+              {interval} x{count}
+            </span>
+          ))}
         </div>
       </div>
 

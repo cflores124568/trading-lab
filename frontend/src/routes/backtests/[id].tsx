@@ -1680,7 +1680,6 @@ export default function BacktestDetail() {
                           <ReplayControls
                             isPlaying={isReplayActive()}
                             speed={speed()}
-                            statusLabel="Backtest Replay"
                             statusDetail="Review mode is unlocked for this saved run."
                             progress={replayProgress()}
                             currentBar={totalBars() === 0 ? 0 : replayIndex() + 1}

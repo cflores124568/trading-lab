@@ -19,6 +19,7 @@ import {
   CircleCheck,
   CircleX,
   DollarSign,
+  Eye,
   History,
   Plus,
   Rocket,
@@ -72,10 +73,7 @@ import {
   simulateReplaySession,
   type ReplayAction,
 } from "../services/replaySimulator";
-import {
-  formatReplaySessionStatus,
-  getReplaySessionStatus,
-} from "../services/replaySessionState";
+import { getReplaySessionStatus } from "../services/replaySessionState";
 import {
   defaultPriceChartIndicatorSettings,
   type PriceChartIndicatorSettings,
@@ -411,7 +409,7 @@ function ReplayStatCard(props: {
 function ReplayAccordionSection(props: {
   index: string;
   title: string;
-  subtitle: string;
+  subtitle?: string;
   meta?: JSX.Element;
   icon?: JSX.Element;
   open: boolean;
@@ -419,7 +417,7 @@ function ReplayAccordionSection(props: {
   children?: JSX.Element;
 }) {
   return (
-    <section class="app-panel app-panel-section h-full space-y-4">
+    <section class="app-panel app-panel-section self-start space-y-4">
       <button
         type="button"
         class="flex w-full items-start justify-between gap-4 rounded-2xl border border-stone-800/80 bg-stone-950/55 px-4 py-3 text-left transition-colors hover:border-stone-700 hover:bg-stone-950/80"
@@ -437,7 +435,9 @@ function ReplayAccordionSection(props: {
             <p class="text-sm font-semibold text-stone-100">
               {props.index}. {props.title}
             </p>
-            <p class="text-xs text-stone-400">{props.subtitle}</p>
+            <Show when={props.subtitle}>
+              <p class="text-xs text-stone-400">{props.subtitle}</p>
+            </Show>
           </div>
         </div>
 
@@ -829,22 +829,6 @@ export default function ReplayLabPage() {
       isBreached: isAccountBreached(),
     }),
   );
-
-  const replayStatusTone = createMemo(() => {
-    if (replayStatus() === "review") {
-      return "amber";
-    }
-
-    if (isAccountBreached()) {
-      return "rose";
-    }
-
-    if (replayStatus() === "active") {
-      return "emerald";
-    }
-
-    return "sky";
-  });
 
   const canEditSetup = createMemo(() => !hasLaunch());
   const canUnlockReview = createMemo(() => (isSessionComplete() || isAccountBreached()) && !isReviewMode());
@@ -1538,7 +1522,7 @@ export default function ReplayLabPage() {
             subtitle={
               activeSourceBacktest() || sourceBacktestId()
                 ? "Symbol, range, and rules stay pinned to the source run."
-                : "Name the sim and pick the market window."
+                : undefined
             }
             icon={<Settings2 size={14} />}
             meta={symbol()?.symbol ?? "Setup"}
@@ -1646,27 +1630,20 @@ export default function ReplayLabPage() {
               </div>
             </div>
 
-            <div class="grid gap-3 md:grid-cols-[160px_1fr]">
-              <div>
-                <label class={label}>Contracts</label>
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  class={field}
-                  value={positionSize()}
-                  disabled={!canEditSetup()}
-                  onInput={(event) => {
-                    const next = Number(event.currentTarget.value);
-                    setPositionSize(Number.isFinite(next) && next > 0 ? next : 1);
-                  }}
-                />
-              </div>
-              <div class="rounded-2xl border border-stone-800 bg-stone-950/60 px-4 py-3">
-                <p class="text-sm text-stone-400">
-                  This is the contract count used for every entry in the replay.
-                </p>
-              </div>
+            <div class="w-40">
+              <label class={label}>Contracts</label>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                class={field}
+                value={positionSize()}
+                disabled={!canEditSetup()}
+                onInput={(event) => {
+                  const next = Number(event.currentTarget.value);
+                  setPositionSize(Number.isFinite(next) && next > 0 ? next : 1);
+                }}
+              />
             </div>
 
             <div class="rounded-2xl border border-stone-800 bg-stone-950/60 px-4 py-3">
@@ -1681,7 +1658,6 @@ export default function ReplayLabPage() {
           <ReplayAccordionSection
             index="2"
             title="Ruleset And Launch"
-            subtitle="Pick guardrails, then launch or save."
             icon={<ShieldCheck size={14} />}
             meta={
               preset() ? (
@@ -1722,16 +1698,15 @@ export default function ReplayLabPage() {
               <Show when={preset()}>
                 {(selectedPreset) => (
                   <div class="space-y-3">
-                    <div class="rounded-2xl border border-stone-800 bg-stone-950/60 px-3 py-3">
-                      <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Selected Challenge</p>
-                      <div class="mt-2 flex items-center gap-2">
-                        <FirmLogo
-                          firmName={selectedPreset().name}
-                          heightClass="h-5"
-                          class="shrink-0"
-                        />
-                        <p class="text-sm font-semibold text-stone-100">{selectedPreset().name}</p>
-                      </div>
+                    <div class="flex items-center gap-3 rounded-2xl border border-stone-800 bg-stone-950/60 px-3 py-3">
+                      <FirmLogo
+                        firmName={selectedPreset().name}
+                        heightClass="h-6"
+                        class="shrink-0"
+                      />
+                      <p class="app-data text-base font-semibold text-stone-100">
+                        ${selectedPreset().account_size.toLocaleString()}
+                      </p>
                     </div>
 
                     <div class="grid grid-cols-2 gap-2">
@@ -1878,19 +1853,12 @@ export default function ReplayLabPage() {
                           </div>
                         )}
                       </Show>
-                      <div
-                        class={`rounded-full border px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] ${
-                          replayStatusTone() === "rose"
-                            ? "border-rose-400/75 bg-rose-400/12 text-rose-100"
-                            : replayStatusTone() === "emerald"
-                              ? "border-green-400/75 bg-green-400/12 text-green-100"
-                              : replayStatusTone() === "amber"
-                                ? "border-amber-400/75 bg-amber-400/12 text-amber-100"
-                                : "border-stone-200/75 bg-stone-100/10 text-stone-50"
-                        }`}
-                      >
-                        {formatReplaySessionStatus(replayStatus())}
-                      </div>
+                      <Show when={isReviewMode()}>
+                        <div class="flex items-center gap-2 rounded-full border border-stone-700 bg-stone-950 px-3 py-2 text-xs font-medium uppercase tracking-[0.16em] text-stone-300">
+                          <Eye size={14} />
+                          Review Mode
+                        </div>
+                      </Show>
                       <Show when={canUnlockReview()}>
                         <button
                           type="button"
@@ -1916,8 +1884,6 @@ export default function ReplayLabPage() {
                         <Show when={candles() && candles()!.length > 0}>
                           <ReplayChartStrip
                             isPlaying={isReplayActive()}
-                            statusLabel={formatReplaySessionStatus(replayStatus())}
-                            statusTone={replayStatusTone()}
                             currentBar={totalBars() === 0 ? 0 : replayIndex() + 1}
                             totalBars={totalBars()}
                             currentPriceLabel={currentPriceLabel()}
@@ -2153,7 +2119,7 @@ export default function ReplayLabPage() {
                         label="Entry Mix"
                         value={
                           executionAnalytics()
-                            ? `${executionAnalytics()!.summary.makerEntries} maker / ${executionAnalytics()!.summary.takerEntries} taker`
+                            ? `${executionAnalytics()!.summary.makerEntries} limit / ${executionAnalytics()!.summary.takerEntries} market`
                             : "0 / 0"
                         }
                         detail="How your entries got filled under the synthetic book."
@@ -2162,7 +2128,7 @@ export default function ReplayLabPage() {
                         label="Exit Mix"
                         value={
                           executionAnalytics()
-                            ? `${executionAnalytics()!.summary.makerExits} maker / ${executionAnalytics()!.summary.takerExits} taker`
+                            ? `${executionAnalytics()!.summary.makerExits} limit / ${executionAnalytics()!.summary.takerExits} market`
                             : "0 / 0"
                         }
                         detail="Useful once you start mixing resting exits later."

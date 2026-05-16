@@ -16,8 +16,6 @@ import { Show } from "solid-js";
 
 interface ChartStripProps {
   isPlaying: boolean;
-  statusLabel: string;
-  statusTone?: "sky" | "emerald" | "rose" | "amber";
   currentBar: number;
   totalBars: number;
   currentPriceLabel: string;
@@ -109,26 +107,10 @@ function formatSignedMoney(value: number): string {
 
 export function ReplayChartStrip(props: ChartStripProps) {
   const playEnabled = () => props.isPlaying || props.canStartPlayback;
-  const statusToneClass = () => {
-    if (props.statusTone === "emerald") {
-      return "border-green-500/60 bg-green-500/10 text-green-100";
-    }
-    if (props.statusTone === "rose") {
-      return "border-rose-500/60 bg-rose-500/10 text-rose-100";
-    }
-    if (props.statusTone === "amber") {
-      return "border-amber-500/60 bg-amber-500/10 text-amber-100";
-    }
-
-    return "border-stone-200/75 bg-stone-100/10 text-stone-50";
-  };
 
   return (
     <div class="flex flex-wrap items-center gap-3 border-b border-stone-700/80 bg-stone-950/78 px-4 py-3">
       <div class="flex flex-wrap items-center gap-2 text-xs">
-        <span class={`app-panel-selected rounded-sm border px-3 py-1.5 font-semibold uppercase tracking-[0.16em] ${statusToneClass()}`}>
-          {props.statusLabel}
-        </span>
         <span class="rounded-sm border border-stone-700/80 bg-stone-900 px-3 py-1.5 text-stone-400">
           Bar <span class="app-data ml-1 text-stone-100">{props.currentBar} / {props.totalBars}</span>
         </span>
@@ -418,8 +400,6 @@ export default function ReplayControls(props: Props) {
       <div class="app-panel overflow-hidden rounded-md">
         <ReplayChartStrip
           isPlaying={props.isPlaying}
-          statusLabel={props.statusLabel}
-          statusTone={props.statusTone}
           currentBar={props.currentBar}
           totalBars={props.totalBars}
           currentPriceLabel={props.currentPriceLabel}
