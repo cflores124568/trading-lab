@@ -21,6 +21,14 @@ function formatPercent(value: number | undefined): string {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+function formatProfitFactor(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "∞";
+  }
+
+  return value.toFixed(2);
+}
+
 function winnerTone(isWinner: boolean): string {
   return isWinner ? "app-panel-selected border-stone-200/85" : "border-stone-700/80 bg-stone-950/70";
 }
@@ -71,7 +79,7 @@ export default function BacktestComparePage() {
       getValue: (bt: CompareBacktest) => `${(bt.metrics.max_drawdown * 100).toFixed(1)}%`,
     },
     { label: "Sharpe Ratio", getValue: (bt: CompareBacktest) => bt.metrics.sharpe_ratio.toFixed(2) },
-    { label: "Profit Factor", getValue: (bt: CompareBacktest) => bt.metrics.profit_factor.toFixed(2) },
+    { label: "Profit Factor", getValue: (bt: CompareBacktest) => formatProfitFactor(bt.metrics.profit_factor) },
     { label: "Total Trades", getValue: (bt: CompareBacktest) => String(bt.metrics.total_trades ?? "—") },
     {
       label: "Best Trade",

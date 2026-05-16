@@ -68,6 +68,14 @@ function formatNumber(value?: number | null, digits = 2): string {
   return value.toFixed(digits);
 }
 
+function formatProfitFactor(value?: number | null): string {
+  if (value === null || value === undefined || Number.isNaN(value) || !Number.isFinite(value)) {
+    return "∞";
+  }
+
+  return value.toFixed(2);
+}
+
 function formatTicks(value?: number | null): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return "n/a";
@@ -1247,7 +1255,7 @@ export default function PaperSessionDetailPage() {
                       <div class="app-subpanel px-4 py-4">
                         <p class="text-sm font-medium text-stone-100">Performance</p>
                         <p class="mt-3 text-sm text-stone-300">
-                          Profit factor: {formatNumber(numberFromUnknown(metricsSnapshot().profit_factor))}
+                          Profit factor: {formatProfitFactor(numberFromUnknown(metricsSnapshot().profit_factor))}
                         </p>
                         <p class="mt-1 text-sm text-stone-300">
                           Max drawdown: {formatPercent(numberFromUnknown(metricsSnapshot().max_drawdown), 2)}

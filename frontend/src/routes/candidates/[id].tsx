@@ -40,6 +40,14 @@ function formatNumber(value?: number | null, digits = 2): string {
   return value.toFixed(digits);
 }
 
+function formatProfitFactor(value?: number | null): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "∞";
+  }
+
+  return value.toFixed(2);
+}
+
 function formatTimestamp(value?: string | null): string {
   if (!value) {
     return "n/a";
@@ -293,7 +301,7 @@ export default function CandidateDetailPage() {
                 )}
                 {metricCard(
                   "Profit Factor",
-                  formatNumber(entry().profit_factor, 2),
+                  formatProfitFactor(entry().profit_factor),
                   `Score ${formatNumber(entry().score, 2)}`,
                 )}
                 {metricCard(

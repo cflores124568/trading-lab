@@ -37,6 +37,14 @@ function formatNumber(value?: number | null, digits = 2): string {
   return value.toFixed(digits);
 }
 
+function formatProfitFactor(value?: number | null): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "∞";
+  }
+
+  return value.toFixed(2);
+}
+
 function statusTone(status: ExperimentResult["status"]): string {
   switch (status) {
     case "completed":
@@ -428,7 +436,7 @@ export default function ExperimentDetailPage() {
                                 {formatPercent(run.max_drawdown, 2)}
                               </td>
                               <td class="px-3 py-3 font-mono text-xs">
-                                {formatNumber(run.profit_factor, 2)}
+                                {formatProfitFactor(run.profit_factor)}
                               </td>
                               <td class="px-3 py-3 text-xs">
                                 <Show

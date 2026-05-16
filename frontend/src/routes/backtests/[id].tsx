@@ -156,8 +156,8 @@ function formatPercent(value: number | null | undefined, digits = 1, fallback = 
   return `${(value * 100).toFixed(digits)}%`;
 }
 
-function formatRatio(value: number): string {
-  if (!Number.isFinite(value)) {
+function formatRatio(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
     return "∞";
   }
 
