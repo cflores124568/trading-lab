@@ -10,9 +10,28 @@ import {
   onCleanup,
   Show,
 } from "solid-js";
-import { ChevronDown, ChevronRight, CircleCheck, CircleX, TriangleAlert } from "lucide-solid";
+import {
+  Activity,
+  Archive,
+  CalendarDays,
+  ChevronDown,
+  ChevronRight,
+  CircleCheck,
+  CircleX,
+  DollarSign,
+  History,
+  Plus,
+  Rocket,
+  Settings2,
+  ShieldCheck,
+  Target,
+  TrendingDown,
+  TriangleAlert,
+} from "lucide-solid";
 import AppShell from "../components/AppShell";
 import ChartIndicatorToggleBar from "../components/ChartIndicatorToggleBar";
+import FirmLogo from "../components/FirmLogo";
+import { firmLogoSrc } from "../utils/firmLogo";
 import EquityCurve from "../components/EquityCurve";
 import PriceChart, { type PriceChartMarker } from "../components/PriceChart";
 import {
@@ -72,10 +91,11 @@ import {
 } from "../services/executionModel";
 import { buildReplayExecutionAnalytics } from "../services/executionAnalytics";
 import { formatTradeLabel } from "../services/tradeFormatting";
+import PropPresetSelect from "../components/PropPresetSelect";
 
 const field =
   "app-input w-full text-sm disabled:opacity-40";
-const label = "block mb-1 text-xs text-zinc-400";
+const label = "block mb-1 text-xs text-stone-400";
 const section = "app-panel app-panel-section space-y-4";
 const SESSION_LIMIT = 10_000;
 
@@ -143,8 +163,17 @@ function createReplayAction(
   };
 }
 
-function propEvalTone(passed: boolean): string {
-  return passed ? "border-green-700 bg-green-950" : "border-red-700 bg-red-950";
+function propEvalTone(breached: boolean): string {
+  return breached ? "border-red-700 bg-red-950" : "border-green-700/60 bg-green-950/50";
+}
+
+function formatUsd(value: number): string {
+  const sign = value < 0 ? "-" : "";
+  return `${sign}$${Math.abs(value).toFixed(0)}`;
+}
+
+function formatPct(value: number, digits = 2): string {
+  return `${(value * 100).toFixed(digits)}%`;
 }
 
 type ReplayBreachInfo = {
@@ -277,22 +306,60 @@ function PropEvalPanel(props: {
   evaluation: PropFirmEvaluation;
   children?: JSX.Element;
 }) {
-  const minTradingDaysPassed = () => props.evaluation.min_trading_days_passed ?? true;
+  const breached = () =>
+    props.evaluation.daily_loss_breached || props.evaluation.drawdown_breached;
+
+  const details = () => props.evaluation.details as Record<string, unknown>;
+  const profitPct = () => Number(details().actual_profit_pct ?? 0);
+  const profitTargetPct = () => Number(details().profit_target_pct ?? 0);
+  const drawdownPct = () => Number(details().actual_drawdown_pct ?? 0);
+  const drawdownLimitPct = () => Number(details().max_drawdown_limit_pct ?? 0);
+  const accountSize = () => Number(details().account_size ?? 0);
+  const profitUsd = () => accountSize() * profitPct();
+  const profitTargetUsd = () => accountSize() * profitTargetPct();
 
   return (
-    <div class={`rounded-lg border p-4 ${propEvalTone(props.evaluation.passed)}`}>
+    <div class={`rounded-lg border p-4 ${propEvalTone(breached())}`}>
       <div class="mb-2 flex items-center gap-2">
-        {props.evaluation.passed ? (
-          <CircleCheck class="text-green-400" />
-        ) : (
+        {breached() ? (
           <CircleX size={18} class="text-red-400" />
+        ) : (
+          <CircleCheck class="text-green-400" />
         )}
         <p class="font-semibold">
-          {props.title}: {props.evaluation.passed ? "Passed" : "Failed"}
+          {props.title}: {breached() ? "Breached" : "No Breach"}
         </p>
       </div>
 
-      <Show when={!props.evaluation.passed}>
+      <Show
+        when={breached()}
+        fallback={
+          <ul class="mt-2 space-y-1 text-sm text-stone-300">
+            <li class="flex items-center justify-between gap-3">
+              <span class="text-stone-400">Session P&amp;L</span>
+              <span class={profitUsd() >= 0 ? "text-green-300" : "text-red-300"}>
+                {formatUsd(profitUsd())} ({formatPct(profitPct())})
+              </span>
+            </li>
+            <li class="flex items-center justify-between gap-3">
+              <span class="text-stone-400">Profit target</span>
+              <span class="text-stone-300">
+                {formatUsd(profitTargetUsd())} ({formatPct(profitTargetPct(), 0)})
+              </span>
+            </li>
+            <li class="flex items-center justify-between gap-3">
+              <span class="text-stone-400">Drawdown used</span>
+              <span class="text-stone-300">
+                {formatPct(drawdownPct())} / {formatPct(drawdownLimitPct(), 0)}
+              </span>
+            </li>
+            <li class="mt-1 text-xs text-stone-500">
+              Single-session view. Profit target, consistency, and minimum trading
+              days resolve across the full eval, not one replay.
+            </li>
+          </ul>
+        }
+      >
         <ul class="mt-2 space-y-1 text-sm text-red-300">
           <Show when={props.evaluation.daily_loss_breached}>
             <li class="flex items-center gap-1.5">
@@ -302,21 +369,6 @@ function PropEvalPanel(props: {
           <Show when={props.evaluation.drawdown_breached}>
             <li class="flex items-center gap-1.5">
               <TriangleAlert size={13} /> Max drawdown breached
-            </li>
-          </Show>
-          <Show when={!props.evaluation.consistency_passed}>
-            <li class="flex items-center gap-1.5">
-              <TriangleAlert size={13} /> Consistency rule failed
-            </li>
-          </Show>
-          <Show when={!minTradingDaysPassed()}>
-            <li class="flex items-center gap-1.5">
-              <TriangleAlert size={13} /> Minimum trading days not reached
-            </li>
-          </Show>
-          <Show when={!props.evaluation.profit_target_hit}>
-            <li class="flex items-center gap-1.5">
-              <TriangleAlert size={13} /> Profit target not reached
             </li>
           </Show>
         </ul>
@@ -336,21 +388,21 @@ function ReplayStatCard(props: {
   detail?: string;
 }) {
   return (
-    <div class="rounded-2xl border border-zinc-800 bg-zinc-950/70 px-4 py-4">
-      <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">{props.label}</p>
+    <div class="rounded-2xl border border-stone-800 bg-stone-950/70 px-4 py-4">
+      <p class="text-xs uppercase tracking-[0.18em] text-stone-500">{props.label}</p>
       <p
         class={`mt-2 font-mono text-2xl font-semibold ${
           props.tone === "good"
-            ? "text-emerald-300"
+            ? "text-green-300"
             : props.tone === "bad"
               ? "text-red-300"
-              : "text-zinc-100"
+              : "text-stone-100"
         }`}
       >
         {props.value}
       </p>
       <Show when={props.detail}>
-        <p class="mt-2 text-xs text-zinc-500">{props.detail}</p>
+        <p class="mt-2 text-xs text-stone-500">{props.detail}</p>
       </Show>
     </div>
   );
@@ -360,7 +412,8 @@ function ReplayAccordionSection(props: {
   index: string;
   title: string;
   subtitle: string;
-  meta?: string;
+  meta?: JSX.Element;
+  icon?: JSX.Element;
   open: boolean;
   onToggle: () => void;
   children?: JSX.Element;
@@ -369,28 +422,35 @@ function ReplayAccordionSection(props: {
     <section class="app-panel app-panel-section h-full space-y-4">
       <button
         type="button"
-        class="flex w-full items-start justify-between gap-4 rounded-2xl border border-zinc-800/80 bg-zinc-950/55 px-4 py-3 text-left transition-colors hover:border-zinc-700 hover:bg-zinc-950/80"
+        class="flex w-full items-start justify-between gap-4 rounded-2xl border border-stone-800/80 bg-stone-950/55 px-4 py-3 text-left transition-colors hover:border-stone-700 hover:bg-stone-950/80"
         aria-expanded={props.open}
         aria-label={`${props.open ? "Collapse" : "Expand"} ${props.title.toLowerCase()} section`}
         onClick={props.onToggle}
       >
-        <div class="space-y-1">
-          <p class="text-sm font-semibold text-zinc-100">
-            {props.index}. {props.title}
-          </p>
-          <p class="text-xs text-zinc-400">{props.subtitle}</p>
+        <div class="flex items-start gap-3">
+          <Show when={props.icon}>
+            <span class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-stone-800 bg-stone-900/60 text-stone-200">
+              {props.icon}
+            </span>
+          </Show>
+          <div class="space-y-1">
+            <p class="text-sm font-semibold text-stone-100">
+              {props.index}. {props.title}
+            </p>
+            <p class="text-xs text-stone-400">{props.subtitle}</p>
+          </div>
         </div>
 
         <div class="flex items-center gap-2">
           <Show when={props.meta}>
-            <span class="rounded-full border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] text-zinc-400">
+            <span class="inline-flex items-center gap-1.5 rounded-full border border-stone-800 bg-stone-900 px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] text-stone-400">
               {props.meta}
             </span>
           </Show>
           {props.open ? (
-            <ChevronDown size={16} class="mt-1 shrink-0 text-zinc-500" />
+            <ChevronDown size={16} class="mt-1 shrink-0 text-stone-500" />
           ) : (
-            <ChevronRight size={16} class="mt-1 shrink-0 text-zinc-500" />
+            <ChevronRight size={16} class="mt-1 shrink-0 text-stone-500" />
           )}
         </div>
       </button>
@@ -1144,7 +1204,6 @@ export default function ReplayLabPage() {
     }
 
     setBannerNotice(null);
-    setIsReplayActive(false);
     setReplayActions((previous) => [...previous, createReplayAction(type, replayIndex(), fields)]);
   };
 
@@ -1370,20 +1429,23 @@ export default function ReplayLabPage() {
         <>
           <A
             href="/replay-sessions"
-            class="app-button-secondary"
+            class="app-button-secondary inline-flex items-center gap-1.5"
           >
+            <History size={14} class="shrink-0" />
             Replay Sessions
           </A>
           <A
             href="/replay"
-            class="app-button-secondary"
+            class="app-button-secondary inline-flex items-center gap-1.5"
           >
+            <Plus size={14} class="shrink-0" />
             New Replay
           </A>
           <A
             href="/backtests"
-            class="app-button-primary"
+            class="app-button-primary inline-flex items-center gap-1.5"
           >
+            <Archive size={14} class="shrink-0" />
             Saved Backtests
           </A>
         </>
@@ -1397,7 +1459,7 @@ export default function ReplayLabPage() {
         </Show>
 
         <Show when={bannerNotice()}>
-          <div class="rounded-xl border border-emerald-700 bg-emerald-950/80 px-4 py-3 text-sm text-emerald-300">
+          <div class="rounded-xl border border-green-700 bg-green-950/80 px-4 py-3 text-sm text-green-300">
             {bannerNotice()}
           </div>
         </Show>
@@ -1410,14 +1472,14 @@ export default function ReplayLabPage() {
                 <p class="app-kicker">
                   {activeSourceBacktest() || sourceBacktestId() ? "Saved Backtest Source" : "Standalone Session"}
                 </p>
-                <h2 class="text-lg font-semibold text-zinc-100">
+                <h2 class="text-lg font-semibold text-stone-100">
                   {sessionId()
                     ? "Resume and update a saved replay"
                     : activeSourceBacktest() || sourceBacktestId()
                       ? "Trade the saved window"
                       : "Build a standalone replay"}
                 </h2>
-                <p class="max-w-3xl text-sm text-zinc-400">
+                <p class="max-w-3xl text-sm text-stone-400">
                   {activeSourceBacktest() || sourceBacktestId()
                     ? "Pinned to the source backtest for later manual-vs-system review."
                     : "Load a historical window into a forward-only sim."}
@@ -1427,15 +1489,18 @@ export default function ReplayLabPage() {
               <div class="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
                 <For each={sessionSummary()}>
                   {([key, value]) => (
-                    <div class="rounded-2xl border border-zinc-700/80 bg-zinc-950/65 px-4 py-3">
+                    <div class="rounded-2xl border border-stone-700/80 bg-stone-950/65 px-4 py-3">
                       <p class="app-metric-label">{key}</p>
-                      <p class="mt-2 text-sm font-medium text-zinc-100">{value}</p>
+                      <p class="mt-2 text-sm font-medium text-stone-100">{value}</p>
                     </div>
                   )}
                 </For>
-                <div class="rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/40 px-4 py-3 md:col-span-3 xl:col-span-6">
-                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Next Move</p>
-                  <p class="mt-2 text-sm text-zinc-300">
+                <div class="rounded-2xl border border-dashed border-stone-800 bg-stone-950/40 px-4 py-3 md:col-span-3 xl:col-span-6">
+                  <p class="inline-flex items-center gap-1.5 text-xs uppercase tracking-[0.18em] text-stone-500">
+                    <Rocket size={12} class="shrink-0 text-green-300" />
+                    Next Move
+                  </p>
+                  <p class="mt-2 text-sm text-stone-300">
                     {sourceBacktestId()
                       ? "Loading the saved backtest context, then locking the sim to that exact historical run."
                       : `Launch a simulated-live session to load up to ${SESSION_LIMIT.toLocaleString()} bars from the selected historical window.`}
@@ -1454,10 +1519,10 @@ export default function ReplayLabPage() {
                 {([key, value], index) => (
                   <>
                     <Show when={index() > 0}>
-                      <span class="text-zinc-700">·</span>
+                      <span class="text-stone-700">·</span>
                     </Show>
-                    <span class="text-zinc-500">
-                      {key} <span class="ml-1 font-medium text-zinc-100">{value}</span>
+                    <span class="text-stone-500">
+                      {key} <span class="ml-1 font-medium text-stone-100">{value}</span>
                     </span>
                   </>
                 )}
@@ -1475,6 +1540,7 @@ export default function ReplayLabPage() {
                 ? "Symbol, range, and rules stay pinned to the source run."
                 : "Name the sim and pick the market window."
             }
+            icon={<Settings2 size={14} />}
             meta={symbol()?.symbol ?? "Setup"}
             open={setupExpanded()}
             onToggle={() => setSetupExpanded((value) => !value)}
@@ -1500,7 +1566,7 @@ export default function ReplayLabPage() {
               fallback={
                 <Show
                   when={!symbols.loading}
-                  fallback={<div class="h-9 animate-pulse rounded bg-zinc-800" />}
+                  fallback={<div class="h-9 animate-pulse rounded bg-stone-800" />}
                 >
                   <div class="rounded-lg border border-yellow-700 bg-yellow-950 px-4 py-3 text-sm text-yellow-300">
                     No DB-backed symbols found. Import market data first.
@@ -1596,15 +1662,15 @@ export default function ReplayLabPage() {
                   }}
                 />
               </div>
-              <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                <p class="text-sm text-zinc-400">
+              <div class="rounded-2xl border border-stone-800 bg-stone-950/60 px-4 py-3">
+                <p class="text-sm text-stone-400">
                   This is the contract count used for every entry in the replay.
                 </p>
               </div>
             </div>
 
-            <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-              <p class="text-sm text-zinc-400">
+            <div class="rounded-2xl border border-stone-800 bg-stone-950/60 px-4 py-3">
+              <p class="text-sm text-stone-400">
                 {activeSourceBacktest() || sourceBacktestId()
                   ? "Linked to the saved run."
                   : `Future candles stay hidden. Limit: ${SESSION_LIMIT.toLocaleString()} bars.`}
@@ -1616,67 +1682,93 @@ export default function ReplayLabPage() {
             index="2"
             title="Ruleset And Launch"
             subtitle="Pick guardrails, then launch or save."
-            meta={preset()?.name ?? "Rules"}
+            icon={<ShieldCheck size={14} />}
+            meta={
+              preset() ? (
+                <>
+                  <Show
+                    when={firmLogoSrc(preset()!.name)}
+                    fallback={<ShieldCheck size={12} class="shrink-0 text-green-300" />}
+                  >
+                    <FirmLogo firmName={preset()!.name} heightClass="h-4" class="shrink-0" />
+                  </Show>
+                  <span class="truncate">{preset()!.name}</span>
+                </>
+              ) : (
+                "Rules"
+              )
+            }
             open={rulesExpanded()}
             onToggle={() => setRulesExpanded((value) => !value)}
           >
             <Show
               when={presets() && presets()!.length > 0}
-              fallback={<div class="h-9 animate-pulse rounded bg-zinc-800" />}
+              fallback={<div class="h-9 animate-pulse rounded bg-stone-800" />}
             >
               <div>
                 <label class={label}>Preset</label>
-                <select
-                  class={field}
+                <PropPresetSelect
+                  presets={presets() ?? []}
                   value={preset()?.name ?? ""}
                   disabled={!canEditSetup()}
-                  onChange={(event) => {
-                    const selected = presets()?.find(
-                      (item) => item.name === event.currentTarget.value,
-                    );
+                  placeholder="Select a preset…"
+                  onChange={(name) => {
+                    const selected = presets()?.find((item) => item.name === name);
                     setPreset(selected ?? null);
                   }}
-                >
-                  <option value="" disabled>
-                    Select a preset…
-                  </option>
-                  <For each={Object.entries(groupPresets(presets() ?? []))}>
-                    {([firm, firmPresets]) => (
-                      <optgroup label={firm}>
-                        <For each={firmPresets}>
-                          {(item) => <option value={item.name}>{item.name}</option>}
-                        </For>
-                      </optgroup>
-                    )}
-                  </For>
-                </select>
+                />
               </div>
 
               <Show when={preset()}>
                 {(selectedPreset) => (
                   <div class="space-y-3">
-                    <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-3 py-3">
-                      <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Selected Challenge</p>
-                      <p class="mt-2 text-sm font-semibold text-zinc-100">{selectedPreset().name}</p>
+                    <div class="rounded-2xl border border-stone-800 bg-stone-950/60 px-3 py-3">
+                      <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Selected Challenge</p>
+                      <div class="mt-2 flex items-center gap-2">
+                        <FirmLogo
+                          firmName={selectedPreset().name}
+                          heightClass="h-5"
+                          class="shrink-0"
+                        />
+                        <p class="text-sm font-semibold text-stone-100">{selectedPreset().name}</p>
+                      </div>
                     </div>
 
                     <div class="grid grid-cols-2 gap-2">
                       {([
-                        ["Account", `$${selectedPreset().account_size.toLocaleString()}`],
+                        [
+                          "Account",
+                          `$${selectedPreset().account_size.toLocaleString()}`,
+                          DollarSign,
+                        ],
                         [
                           "Daily loss",
                           formatDailyLossLimit(selectedPreset().daily_loss_limit),
+                          TrendingDown,
                         ],
-                        ["Max DD", `${(selectedPreset().max_drawdown * 100).toFixed(0)}%`],
-                        ["Target", `${(selectedPreset().profit_target * 100).toFixed(0)}%`],
-                        ["Min days", selectedPreset().min_trading_days ?? "—"],
-                        ["Drawdown", selectedPreset().drawdown_type ?? "eod"],
-                      ] as [string, string | number][]).map(([key, value]) => (
-                        <div class="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2.5">
-                          <p class="text-xs text-zinc-400">{key}</p>
-                          <p class="mt-1 text-sm font-mono text-zinc-100">{value}</p>
-                        </div>
-                      ))}
+                        [
+                          "Max DD",
+                          `${(selectedPreset().max_drawdown * 100).toFixed(0)}%`,
+                          TriangleAlert,
+                        ],
+                        [
+                          "Target",
+                          `${(selectedPreset().profit_target * 100).toFixed(0)}%`,
+                          Target,
+                        ],
+                        ["Min days", selectedPreset().min_trading_days ?? "—", CalendarDays],
+                        ["Drawdown", selectedPreset().drawdown_type ?? "eod", Activity],
+                      ] as [string, string | number, typeof DollarSign][]).map(
+                        ([key, value, Icon]) => (
+                          <div class="rounded-xl border border-stone-800 bg-stone-950/60 px-3 py-2.5">
+                            <p class="inline-flex items-center gap-1.5 text-xs text-stone-400">
+                              <Icon size={11} class="shrink-0 text-stone-500" />
+                              {key}
+                            </p>
+                            <p class="mt-1 text-sm font-mono text-stone-100">{value}</p>
+                          </div>
+                        ),
+                      )}
                     </div>
                   </div>
                 )}
@@ -1684,7 +1776,7 @@ export default function ReplayLabPage() {
             </Show>
 
             <Show when={!canEditSetup()}>
-              <div class="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 text-sm text-zinc-400">
+              <div class="rounded-2xl border border-stone-800 bg-stone-950/60 px-4 py-3 text-sm text-stone-400">
                 {activeSourceBacktest()
                   ? "Pinned to the source backtest."
                   : "This market window is locked for the active run."}
@@ -1705,7 +1797,7 @@ export default function ReplayLabPage() {
                 <button
                   class={
                     "app-button-primary w-full justify-center " +
-                    (!(canLaunch() && canEditSetup()) ? "cursor-not-allowed bg-zinc-700 text-zinc-400 hover:bg-zinc-700" : "")
+                    (!(canLaunch() && canEditSetup()) ? "cursor-not-allowed bg-stone-700 text-stone-400 hover:bg-stone-700" : "")
                   }
                   disabled={!canLaunch() || !canEditSetup()}
                   onClick={launchReplay}
@@ -1721,8 +1813,8 @@ export default function ReplayLabPage() {
                   class={
                     "inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition-colors " +
                     (canSave()
-                      ? "bg-emerald-500 text-zinc-950 hover:bg-emerald-400"
-                      : "cursor-not-allowed bg-zinc-700 text-zinc-400")
+                      ? "bg-green-500 text-stone-950 hover:bg-green-400"
+                      : "cursor-not-allowed bg-stone-700 text-stone-400")
                   }
                   disabled={!canSave()}
                   onClick={saveSession}
@@ -1745,28 +1837,33 @@ export default function ReplayLabPage() {
                 <div class="space-y-6">
                   <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
                     <div class="space-y-2">
-                      <p class="text-xs uppercase tracking-[0.18em] text-sky-300">Current Session</p>
-                      <h2 class="text-2xl font-semibold text-zinc-100">
+                      <p class="text-xs uppercase tracking-[0.18em] text-stone-200">Current Session</p>
+                      <h2 class="text-2xl font-semibold text-stone-100">
                         {sessionName() || defaultSessionName(config())}
                       </h2>
-                      <p class="max-w-3xl text-sm text-zinc-400">
+                      <p class="max-w-3xl text-sm text-stone-400">
                         {config().sourceBacktest
                           ? "Trading the saved backtest window."
                           : "Trading a historical window forward-only."}
                       </p>
-                      <p class="text-xs text-zinc-500">
-                        <span class="app-data text-zinc-300">${config().commission.toFixed(2)}</span> commission
-                        <span class="mx-2 text-zinc-700">·</span>
-                        <span class="app-data text-zinc-300">${config().tickValue.toFixed(2)}</span> tick value
-                        <span class="mx-2 text-zinc-700">·</span>
-                        <span class="app-data text-zinc-300">{config().positionSize}</span> contracts
-                        <span class="mx-2 text-zinc-700">·</span>
-                        <span class="text-zinc-300">{config().propFirmRules.name}</span>
+                      <p class="text-xs text-stone-500">
+                        <span class="app-data text-stone-300">${config().commission.toFixed(2)}</span> commission
+                        <span class="mx-2 text-stone-700">·</span>
+                        <span class="app-data text-stone-300">${config().tickValue.toFixed(2)}</span> tick value
+                        <span class="mx-2 text-stone-700">·</span>
+                        <span class="app-data text-stone-300">{config().positionSize}</span> contracts
+                        <span class="mx-2 text-stone-700">·</span>
+                        <Show
+                          when={firmLogoSrc(config().propFirmRules.name)}
+                          fallback={<span class="text-stone-300">{config().propFirmRules.name}</span>}
+                        >
+                          <FirmLogo firmName={config().propFirmRules.name} heightClass="h-4" class="relative top-[2px]" />
+                        </Show>
                         <Show when={config().sourceBacktest}>
                           {(source) => (
                             <>
-                              <span class="mx-2 text-zinc-700">·</span>
-                              <span class="text-zinc-400">{source().strategy_type?.replace(/_/g, " ") ?? "Saved run"}</span>
+                              <span class="mx-2 text-stone-700">·</span>
+                              <span class="text-stone-400">{source().strategy_type?.replace(/_/g, " ") ?? "Saved run"}</span>
                             </>
                           )}
                         </Show>
@@ -1776,7 +1873,7 @@ export default function ReplayLabPage() {
                     <div class="flex flex-wrap items-center gap-2">
                       <Show when={config().sourceBacktest}>
                         {(source) => (
-                          <div class="rounded-full border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs font-medium uppercase tracking-[0.16em] text-zinc-400">
+                          <div class="rounded-full border border-stone-700 bg-stone-950 px-3 py-2 text-xs font-medium uppercase tracking-[0.16em] text-stone-400">
                             Backtest {source().backtest_id.slice(0, 8)}
                           </div>
                         )}
@@ -1786,10 +1883,10 @@ export default function ReplayLabPage() {
                           replayStatusTone() === "rose"
                             ? "border-rose-400/75 bg-rose-400/12 text-rose-100"
                             : replayStatusTone() === "emerald"
-                              ? "border-emerald-400/75 bg-emerald-400/12 text-emerald-100"
+                              ? "border-green-400/75 bg-green-400/12 text-green-100"
                               : replayStatusTone() === "amber"
                                 ? "border-amber-400/75 bg-amber-400/12 text-amber-100"
-                                : "border-sky-400/75 bg-sky-400/12 text-sky-100"
+                                : "border-stone-200/75 bg-stone-100/10 text-stone-50"
                         }`}
                       >
                         {formatReplaySessionStatus(replayStatus())}
@@ -1815,7 +1912,7 @@ export default function ReplayLabPage() {
                         onToggle={toggleIndicator}
                       />
 
-                      <div class="overflow-hidden rounded-3xl border border-zinc-700/80 bg-zinc-950/76">
+                      <div class="overflow-hidden rounded-3xl border border-stone-700/80 bg-stone-950/76">
                         <Show when={candles() && candles()!.length > 0}>
                           <ReplayChartStrip
                             isPlaying={isReplayActive()}
@@ -1876,8 +1973,8 @@ export default function ReplayLabPage() {
                               <Show
                                 when={!candles.loading && candles() && candles()!.length > 0}
                                 fallback={
-                                  <div class="flex h-[520px] items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-950 px-6 text-center">
-                                    <p class="text-sm text-zinc-500">
+                                  <div class="flex h-[520px] items-center justify-center rounded-2xl border border-stone-800 bg-stone-950 px-6 text-center">
+                                    <p class="text-sm text-stone-500">
                                       {candles.loading
                                         ? "Loading replay candles…"
                                         : "No candles were returned for that historical request."}
@@ -1898,7 +1995,7 @@ export default function ReplayLabPage() {
                             }
                           >
                             {(error) => (
-                              <div class="flex h-[520px] items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-950 px-6 text-center">
+                              <div class="flex h-[520px] items-center justify-center rounded-2xl border border-stone-800 bg-stone-950 px-6 text-center">
                                 <p class="text-sm text-red-400">Replay data failed to load: {error().message}</p>
                               </div>
                             )}
@@ -1963,15 +2060,15 @@ export default function ReplayLabPage() {
                         />
                       </Show>
                       <Show when={!!replaySession()?.position || activeOrders().length > 0}>
-                        <div class="rounded-3xl border border-zinc-700/80 bg-zinc-950/65 p-5">
+                        <div class="rounded-3xl border border-stone-700/80 bg-stone-950/65 p-5">
                           <div class="flex items-center justify-between gap-3">
                             <div>
-                              <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Bracket Builder</p>
-                              <p class="mt-1 text-sm text-zinc-400">
+                              <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Bracket Builder</p>
+                              <p class="mt-1 text-sm text-stone-400">
                                 Attach a stop/target OCO pair to the open replay trade.
                               </p>
                             </div>
-                            <div class="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-400">
+                            <div class="rounded-full border border-stone-800 bg-stone-900 px-3 py-1 text-xs text-stone-400">
                               {activeOrders().length} live order{activeOrders().length === 1 ? "" : "s"}
                             </div>
                           </div>
@@ -1984,7 +2081,7 @@ export default function ReplayLabPage() {
                                 value={bracketStopPrice()}
                                 onInput={(event) => setBracketStopPrice(event.currentTarget.value)}
                                 placeholder="Stop price"
-                                class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                                class="w-full rounded-2xl border border-stone-700 bg-stone-950 px-4 py-3 text-sm text-stone-100 outline-none transition-colors focus:border-stone-500"
                               />
                               <input
                                 type="number"
@@ -1992,23 +2089,23 @@ export default function ReplayLabPage() {
                                 value={bracketTargetPrice()}
                                 onInput={(event) => setBracketTargetPrice(event.currentTarget.value)}
                                 placeholder="Target price"
-                                class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                                class="w-full rounded-2xl border border-stone-700 bg-stone-950 px-4 py-3 text-sm text-stone-100 outline-none transition-colors focus:border-stone-500"
                               />
                               <button
                                 type="button"
                                 disabled={!canAttachBracket()}
                                 onClick={attachReplayBracket}
-                                class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                                class="rounded-xl border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 transition-colors hover:border-stone-500 hover:bg-stone-900 disabled:cursor-not-allowed disabled:border-stone-800 disabled:bg-stone-900 disabled:text-stone-500"
                               >
                                 Attach Bracket
                               </button>
                             </div>
 
                             <Show when={activeOrders().length > 0}>
-                              <div class="grid gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 md:grid-cols-2">
+                              <div class="grid gap-2 rounded-2xl border border-stone-800 bg-stone-900/60 px-4 py-3 md:grid-cols-2">
                                 <For each={activeOrders()}>
                                   {(order) => (
-                                    <div class="rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-xs text-zinc-300">
+                                    <div class="rounded-xl border border-stone-800 bg-stone-950/70 px-3 py-2 text-xs text-stone-300">
                                       {order.bracket_role === "target"
                                         ? "TARGET"
                                         : order.bracket_role === "stop"
@@ -2119,7 +2216,7 @@ export default function ReplayLabPage() {
 
                     <div class="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
                       <div class="app-panel app-panel-section">
-                        <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Replay Equity Curve</p>
+                        <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Replay Equity Curve</p>
                         <div class="mt-4">
                           <EquityCurve data={session().equityCurve} />
                         </div>
@@ -2129,13 +2226,13 @@ export default function ReplayLabPage() {
                         <div class="space-y-2 text-sm">
                           <Show when={activeSourceBacktest()}>
                             {(source) => (
-                              <p class="text-zinc-400">
+                              <p class="text-stone-400">
                                 Linked to backtest `{source().backtest_id.slice(0, 8)}`. Save the run, then review after completion.
                               </p>
                             )}
                           </Show>
                           <Show when={!activeSourceBacktest()}>
-                            <p class="text-zinc-400">Save the run, then review after completion.</p>
+                            <p class="text-stone-400">Save the run, then review after completion.</p>
                           </Show>
                           <div class="flex flex-wrap items-center gap-2">
                             <Show when={compareHref()}>
@@ -2146,7 +2243,7 @@ export default function ReplayLabPage() {
                               )}
                             </Show>
                             <Show when={activeSourceBacktest() && !compareHref()}>
-                              <p class="text-xs text-zinc-500">
+                              <p class="text-xs text-stone-500">
                                 Save the session and unlock review mode to open the compare screen.
                               </p>
                             </Show>
@@ -2156,9 +2253,9 @@ export default function ReplayLabPage() {
                     </div>
 
                     <div class="app-panel overflow-hidden">
-                      <div class="border-b border-zinc-700/80 px-4 py-3">
-                        <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Execution Tape</p>
-                        <p class="mt-1 text-sm text-zinc-400">
+                      <div class="border-b border-stone-700/80 px-4 py-3">
+                        <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Execution Tape</p>
+                        <p class="mt-1 text-sm text-stone-400">
                           Synthetic order lifecycle, fills, and ignores ({session().executionEvents.length})
                         </p>
                       </div>
@@ -2178,7 +2275,7 @@ export default function ReplayLabPage() {
                             when={(executionAnalytics()?.tape.length ?? 0) > 0}
                             fallback={
                               <tr>
-                                <td class="px-3 py-3 text-zinc-500" colSpan={6}>
+                                <td class="px-3 py-3 text-stone-500" colSpan={6}>
                                   No execution events yet. The tape fills in once you start placing actions.
                                 </td>
                               </tr>
@@ -2187,35 +2284,35 @@ export default function ReplayLabPage() {
                             <For each={[...(executionAnalytics()?.tape ?? [])].reverse().slice(0, 14)}>
                               {(row) => (
                                 <tr>
-                                  <td class="app-data text-xs text-zinc-500">{row.time}</td>
-                                  <td class="text-zinc-200">
+                                  <td class="app-data text-xs text-stone-500">{row.time}</td>
+                                  <td class="text-stone-200">
                                     {row.action}
                                     <Show when={row.side}>
-                                      <span class="ml-2 text-xs uppercase tracking-[0.18em] text-zinc-500">
+                                      <span class="ml-2 text-xs uppercase tracking-[0.18em] text-stone-500">
                                         {row.side}
                                       </span>
                                     </Show>
                                   </td>
-                                  <td class="text-zinc-400">
+                                  <td class="text-stone-400">
                                     {row.role === "n/a" ? row.category : `${row.role} ${row.liquidity}`}
                                   </td>
-                                  <td class="app-data text-right text-zinc-200">
+                                  <td class="app-data text-right text-stone-200">
                                     {row.price === null ? "n/a" : row.price.toFixed(2)}
                                   </td>
                                   <td
                                     class={`app-data text-right ${
                                       row.slippageTicks === null
-                                        ? "text-zinc-500"
+                                        ? "text-stone-500"
                                         : row.slippageTicks < 0
-                                          ? "text-emerald-300"
+                                          ? "text-green-300"
                                           : row.slippageTicks > 0
                                             ? "text-red-300"
-                                            : "text-zinc-200"
+                                            : "text-stone-200"
                                     }`}
                                   >
                                     {formatTicks(row.slippageTicks)}
                                   </td>
-                                  <td class="text-zinc-400">{row.note ?? " "}</td>
+                                  <td class="text-stone-400">{row.note ?? " "}</td>
                                 </tr>
                               )}
                             </For>
@@ -2225,9 +2322,9 @@ export default function ReplayLabPage() {
                     </div>
 
                     <div class="app-panel overflow-hidden">
-                      <div class="border-b border-zinc-700/80 px-4 py-3">
-                        <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Trade Log</p>
-                        <p class="mt-1 text-sm text-zinc-400">
+                      <div class="border-b border-stone-700/80 px-4 py-3">
+                        <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Trade Log</p>
+                        <p class="mt-1 text-sm text-stone-400">
                           Replay Trades ({session().trades.length})
                         </p>
                       </div>
@@ -2248,7 +2345,7 @@ export default function ReplayLabPage() {
                             when={session().trades.length > 0}
                             fallback={
                               <tr>
-                                <td class="px-3 py-3 text-zinc-500" colSpan={7}>
+                                <td class="px-3 py-3 text-stone-500" colSpan={7}>
                                   No replay trades yet. Use the controls above to place manual
                                   decisions.
                                 </td>
@@ -2258,7 +2355,7 @@ export default function ReplayLabPage() {
                             <For each={session().trades}>
                               {(trade: Trade) => (
                                 <tr>
-                                  <td class="app-data text-zinc-500">{trade.trade_id}</td>
+                                  <td class="app-data text-stone-500">{trade.trade_id}</td>
                                   <td
                                     class={`font-medium ${
                                       trade.side === "buy" ? "text-green-400" : "text-red-400"
@@ -2266,10 +2363,10 @@ export default function ReplayLabPage() {
                                   >
                                     {formatTradeLabel(trade.side, trade.quantity)}
                                   </td>
-                                  <td class="app-data text-xs text-zinc-500">
+                                  <td class="app-data text-xs text-stone-500">
                                     {trade.entry_time}
                                   </td>
-                                  <td class="app-data text-xs text-zinc-500">
+                                  <td class="app-data text-xs text-stone-500">
                                     {trade.exit_time}
                                   </td>
                                   <td class="app-data text-right">
