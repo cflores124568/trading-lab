@@ -6,6 +6,7 @@ import {
   findJumpTarget,
   getReplayIndexFromProgress,
   getReplayProgress,
+  sanitizeReplayMetrics,
   simulateReplaySession,
   type ReplayAction,
 } from "../src/services/replaySimulator.ts";
@@ -224,6 +225,32 @@ test("replay session carries configured position size through fills", () => {
   assert.equal(session.trades[0].pnl, 52.5);
   assert.equal(session.balance, 100_052.5);
   assert.equal(session.position, null);
+});
+
+test("saved replay metrics stay JSON-safe after an all-win run", () => {
+  const candles = makeCandles(4);
+  const actions: ReplayAction[] = [
+    { id: "a", barIndex: 0, type: "lift_ask", createdAt: 1 },
+    { id: "b", barIndex: 3, type: "flatten", createdAt: 2 },
+  ];
+
+  const session = simulateReplaySession({
+    candles,
+    currentIndex: 3,
+    actions,
+    initialBalance: 100_000,
+    commission: 0,
+    tickValue: 10,
+    tickSize: 0.25,
+    spreadTicks: 1,
+    propFirmRules: rules,
+  });
+
+  assert.equal(session.metrics.profit_factor, Number.POSITIVE_INFINITY);
+
+  const sanitized = sanitizeReplayMetrics(session.metrics);
+  assert.equal(sanitized.profit_factor, null);
+  assert.equal(JSON.parse(JSON.stringify(sanitized)).profit_factor, null);
 });
 
 test("synthetic taker actions fill at ask and bid", () => {

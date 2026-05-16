@@ -1,4 +1,4 @@
-import type { Candle, PropFirmEvaluation, PropFirmRules, Trade } from "./api";
+import type { Candle, PerformanceMetrics, PropFirmEvaluation, PropFirmRules, Trade } from "./api";
 import {
   createBracketExitOrders,
   createRestingOrder,
@@ -54,6 +54,24 @@ export interface ReplayMetrics {
   avg_trade_duration: number;
   best_trade: number;
   worst_trade: number;
+}
+
+export function sanitizeReplayMetrics(metrics: ReplayMetrics): PerformanceMetrics {
+  return {
+    total_trades: Number.isFinite(metrics.total_trades) ? metrics.total_trades : 0,
+    winning_trades: Number.isFinite(metrics.winning_trades) ? metrics.winning_trades : 0,
+    losing_trades: Number.isFinite(metrics.losing_trades) ? metrics.losing_trades : 0,
+    win_rate: Number.isFinite(metrics.win_rate) ? metrics.win_rate : 0,
+    total_pnl: Number.isFinite(metrics.total_pnl) ? metrics.total_pnl : 0,
+    average_pnl: Number.isFinite(metrics.average_pnl) ? metrics.average_pnl : 0,
+    profit_factor: Number.isFinite(metrics.profit_factor) ? metrics.profit_factor : null,
+    max_drawdown: Number.isFinite(metrics.max_drawdown) ? metrics.max_drawdown : 0,
+    sharpe_ratio: Number.isFinite(metrics.sharpe_ratio) ? metrics.sharpe_ratio : 0,
+    sortino_ratio: Number.isFinite(metrics.sortino_ratio) ? metrics.sortino_ratio : 0,
+    avg_trade_duration: Number.isFinite(metrics.avg_trade_duration) ? metrics.avg_trade_duration : 0,
+    best_trade: Number.isFinite(metrics.best_trade) ? metrics.best_trade : 0,
+    worst_trade: Number.isFinite(metrics.worst_trade) ? metrics.worst_trade : 0,
+  };
 }
 
 export interface ReplayPosition {

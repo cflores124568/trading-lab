@@ -70,6 +70,7 @@ import {
   findJumpTarget,
   getReplayIndexFromProgress,
   getReplayProgress,
+  sanitizeReplayMetrics,
   simulateReplaySession,
   type ReplayAction,
 } from "../services/replaySimulator";
@@ -1553,7 +1554,7 @@ export default function ReplayLabPage() {
       active_orders: session.activeOrders.map((order) => ({ ...order })),
       execution_events: session.executionEvents.map((event) => ({ ...event })),
       trades: session.trades,
-      metrics: session.metrics,
+      metrics: sanitizeReplayMetrics(session.metrics),
       prop_firm_eval: session.propEvaluation,
       equity_curve: session.equityCurve,
     };

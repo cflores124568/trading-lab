@@ -80,7 +80,7 @@ class PerformanceMetrics(BaseModel):
     win_rate: float
     total_pnl: float
     average_pnl: float
-    profit_factor: float
+    profit_factor: Optional[float] = None
     max_drawdown: float
     sharpe_ratio: float
     sortino_ratio: float

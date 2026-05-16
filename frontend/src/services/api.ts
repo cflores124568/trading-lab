@@ -134,7 +134,7 @@ export interface PerformanceMetrics {
   win_rate: number;
   total_pnl: number;
   average_pnl: number;
-  profit_factor: number;
+  profit_factor: number | null;
   max_drawdown: number;
   sharpe_ratio: number;
   sortino_ratio: number;
