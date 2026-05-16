@@ -187,7 +187,7 @@ export default function ChartPanel(props: Props) {
       return "border-red-800 bg-red-950/60 text-red-200";
     }
 
-    return "border-emerald-800/70 bg-emerald-950/40 text-emerald-200";
+    return "border-green-800/70 bg-green-950/40 text-green-200";
   });
 
   const setMode = (mode: "live" | "historical") => {
@@ -224,7 +224,7 @@ export default function ChartPanel(props: Props) {
       }`}
       style={{ "border-radius": "0" }}
     >
-      <div class="border-b border-zinc-700/80 bg-zinc-950/92 px-4 py-3">
+      <div class="border-b border-stone-700/80 bg-stone-950/92 px-4 py-3">
         <div class="flex flex-col gap-2.5 xl:flex-row xl:items-center xl:justify-between">
           <div class="min-w-0 flex-1">
             <div class="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -234,28 +234,28 @@ export default function ChartPanel(props: Props) {
                   draggable
                   title="Drag to reorder panel"
                   aria-label="Drag to reorder panel"
-                  class="inline-flex h-7 w-7 cursor-grab items-center justify-center rounded-sm border border-zinc-700 bg-zinc-950 text-zinc-500 transition-colors hover:border-zinc-600 hover:text-zinc-200 active:cursor-grabbing"
+                  class="inline-flex h-7 w-7 cursor-grab items-center justify-center rounded-sm border border-stone-700 bg-stone-950 text-stone-500 transition-colors hover:border-stone-600 hover:text-stone-200 active:cursor-grabbing"
                   onDragStart={props.onReorderDragStart}
                   onDragEnd={props.onReorderDragEnd}
                 >
                   <GripVertical size={15} />
                 </button>
               </Show>
-              <h3 class="truncate text-sm font-semibold text-zinc-100">{props.panel.title}</h3>
-              <span class="rounded-sm border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-200">
+              <h3 class="truncate text-sm font-semibold text-stone-100">{props.panel.title}</h3>
+              <span class="rounded-sm border border-stone-700 bg-stone-900 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-200">
                 {query().symbol}
               </span>
-              <span class="rounded-sm border border-zinc-700/80 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-400">
+              <span class="rounded-sm border border-stone-700/80 bg-stone-950 px-2 py-1 text-[11px] text-stone-400">
                 <span class="app-data">{query().interval}</span> · {modeLabel()}
               </span>
               <span class={`rounded-sm border px-2 py-1 text-[11px] font-medium ${panelStateTone()}`}>
                 {panelStateLabel()}
               </span>
-              <span class="text-xs text-zinc-500">
+              <span class="text-xs text-stone-500">
                 {enabledStudyCount()} studies
               </span>
             </div>
-            <p class="mt-1 truncate text-xs text-zinc-500">{panelSummary()}</p>
+            <p class="mt-1 truncate text-xs text-stone-500">{panelSummary()}</p>
           </div>
 
           <div class="flex flex-wrap items-center gap-1.5">
@@ -264,8 +264,8 @@ export default function ChartPanel(props: Props) {
               title="Switch to live mode"
               class={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-xs font-medium transition-colors ${
                 query().mode === "live"
-                  ? "app-card-selected border-sky-400/80 text-sky-100"
-                  : "border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-600 hover:bg-zinc-800 hover:text-zinc-100"
+                  ? "app-card-selected border-stone-200/80 text-stone-50"
+                  : "border-stone-700 bg-stone-900 text-stone-400 hover:border-stone-600 hover:bg-stone-800 hover:text-stone-100"
               }`}
               onClick={() => setMode("live")}
             >
@@ -277,8 +277,8 @@ export default function ChartPanel(props: Props) {
               title="Switch to historical mode"
               class={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-xs font-medium transition-colors ${
               query().mode === "historical"
-                ? "app-card-selected border-sky-400/80 text-sky-100"
-                : "border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-600 hover:bg-zinc-800 hover:text-zinc-100"
+                ? "app-card-selected border-stone-200/80 text-stone-50"
+                : "border-stone-700 bg-stone-900 text-stone-400 hover:border-stone-600 hover:bg-stone-800 hover:text-stone-100"
               }`}
               onClick={() => setMode("historical")}
             >
@@ -290,8 +290,8 @@ export default function ChartPanel(props: Props) {
               title={showControls() ? "Hide panel controls" : "Show panel controls"}
               class={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-xs font-medium transition-colors ${
                 showControls()
-                  ? "border-sky-400/75 bg-sky-400/10 text-sky-100"
-                  : "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100"
+                  ? "border-stone-200/75 bg-stone-100/10 text-stone-50"
+                  : "border-stone-700 bg-stone-900 text-stone-300 hover:border-stone-500 hover:text-stone-100"
               }`}
               onClick={() => setShowControls((current) => !current)}
             >
@@ -304,17 +304,17 @@ export default function ChartPanel(props: Props) {
                 type="button"
                 title="Panel actions"
                 aria-label="Panel actions"
-                class="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-stone-700 bg-stone-950 px-2.5 py-1.5 text-xs font-medium text-stone-400 transition-colors hover:border-stone-600 hover:text-stone-200"
                 onClick={() => setShowMenu((current) => !current)}
               >
                 <Ellipsis size={15} />
               </button>
 
               <Show when={showMenu()}>
-                <div class="absolute right-0 top-[calc(100%+0.5rem)] z-30 w-48 rounded-sm border border-zinc-800 bg-zinc-950/98 p-2 shadow-2xl shadow-black/40">
+                <div class="absolute right-0 top-[calc(100%+0.5rem)] z-30 w-48 rounded-sm border border-stone-800 bg-stone-950/98 p-2 shadow-2xl shadow-black/40">
                   <button
                     type="button"
-                    class="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-900"
+                    class="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm text-stone-200 transition-colors hover:bg-stone-900"
                     onClick={() => {
                       setShowMenu(false);
                       props.onToggleExpand();
@@ -325,7 +325,7 @@ export default function ChartPanel(props: Props) {
                   </button>
                   <button
                     type="button"
-                    class="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-900 disabled:cursor-not-allowed disabled:text-zinc-600"
+                    class="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm text-stone-200 transition-colors hover:bg-stone-900 disabled:cursor-not-allowed disabled:text-stone-600"
                     onClick={() => {
                       setShowMenu(false);
                       props.onDuplicate();
@@ -356,16 +356,16 @@ export default function ChartPanel(props: Props) {
       </div>
 
       <Show when={showControls()}>
-        <div class="border-b border-zinc-700/80 bg-zinc-950/78 px-4 py-3">
+        <div class="border-b border-stone-700/80 bg-stone-950/78 px-4 py-3">
           <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <label class="space-y-1 xl:col-span-2">
-              <span class="block text-xs text-zinc-500">Panel title</span>
+              <span class="block text-xs text-stone-500">Panel title</span>
               <input
                 type="text"
                 class={field}
                 value={titleDraft()}
                 maxLength={MAX_PANEL_TITLE_LENGTH}
-                placeholder="Higher Timeframe Bias"
+                placeholder="NQ 15m"
                 onInput={(event) => setTitleDraft(event.currentTarget.value)}
                 onBlur={commitTitle}
                 onKeyDown={(event) => {
@@ -387,7 +387,7 @@ export default function ChartPanel(props: Props) {
               fallback={
                 <>
                   <label class="space-y-1">
-                    <span class="block text-xs text-zinc-500">Symbol</span>
+                    <span class="block text-xs text-stone-500">Symbol</span>
                     <select
                       class={field}
                       value={query().symbol}
@@ -402,7 +402,7 @@ export default function ChartPanel(props: Props) {
                   </label>
 
                   <label class="space-y-1">
-                    <span class="block text-xs text-zinc-500">Interval</span>
+                    <span class="block text-xs text-stone-500">Interval</span>
                     <select
                       class={field}
                       value={query().interval}
@@ -417,7 +417,7 @@ export default function ChartPanel(props: Props) {
                   </label>
 
                   <label class="space-y-1">
-                    <span class="block text-xs text-zinc-500">Start Date</span>
+                    <span class="block text-xs text-stone-500">Start Date</span>
                     <input
                       type="date"
                       class={field}
@@ -433,7 +433,7 @@ export default function ChartPanel(props: Props) {
                   </label>
 
                   <label class="space-y-1">
-                    <span class="block text-xs text-zinc-500">End Date</span>
+                    <span class="block text-xs text-stone-500">End Date</span>
                     <input
                       type="date"
                       class={field}
@@ -452,7 +452,7 @@ export default function ChartPanel(props: Props) {
             >
               <>
                 <label class="space-y-1">
-                  <span class="block text-xs text-zinc-500">Symbol</span>
+                  <span class="block text-xs text-stone-500">Symbol</span>
                   <select
                     class={field}
                     value={query().symbol}
@@ -467,7 +467,7 @@ export default function ChartPanel(props: Props) {
                 </label>
 
                 <label class="space-y-1">
-                  <span class="block text-xs text-zinc-500">Interval</span>
+                  <span class="block text-xs text-stone-500">Interval</span>
                   <select
                     class={field}
                     value={query().interval}
@@ -482,7 +482,7 @@ export default function ChartPanel(props: Props) {
                 </label>
 
                 <label class="space-y-1">
-                  <span class="block text-xs text-zinc-500">Lookback</span>
+                  <span class="block text-xs text-stone-500">Lookback</span>
                   <select
                     class={field}
                     value={liveQuery()?.period ?? DEFAULT_PERIOD.value}
@@ -503,7 +503,7 @@ export default function ChartPanel(props: Props) {
             </Show>
           </div>
 
-          <div class="mt-3 border-t border-zinc-800 pt-3">
+          <div class="mt-3 border-t border-stone-800 pt-3">
             <ChartIndicatorToggleBar
               settings={indicatorSettings()}
               onToggle={toggleIndicator}
@@ -540,8 +540,8 @@ export default function ChartPanel(props: Props) {
 
       <Show when={!candles.loading && (candles()?.length ?? 0) === 0 && !candles.error}>
         <div class="min-h-0 flex-1 px-4 py-5">
-          <p class="text-sm font-semibold text-zinc-100">No candles returned</p>
-          <p class="mt-1 text-sm text-zinc-400">
+          <p class="text-sm font-semibold text-stone-100">No candles returned</p>
+          <p class="mt-1 text-sm text-stone-400">
             Try a wider date range or switch to another interval so the panel has something to
             work with.
           </p>

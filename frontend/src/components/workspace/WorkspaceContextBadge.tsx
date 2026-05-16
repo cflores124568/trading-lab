@@ -1,5 +1,7 @@
 import { createMemo, Show } from "solid-js";
 import { loadActiveWorkspaceContext } from "./workspacePersistence";
+import FirmLogo from "../FirmLogo";
+import { firmLogoSrc } from "../../utils/firmLogo";
 
 interface Props {
   compact?: boolean;
@@ -24,19 +26,24 @@ export default function WorkspaceContextBadge(props: Props) {
     <Show when={context()}>
       {(activeContext) => (
         <div class={`app-panel app-panel-selected rounded-lg ${props.compact ? "px-3 py-2" : "px-4 py-3"}`}>
-          <p class="text-[11px] uppercase tracking-[0.18em] text-sky-300">
+          <p class="text-[11px] uppercase tracking-[0.18em] text-stone-200">
             Current Workspace Context
           </p>
-          <p class="mt-1 text-sm font-semibold text-zinc-100">{activeContext().workspaceName}</p>
-          <p class="mt-1 text-xs text-zinc-400">{queryLabel()}</p>
+          <p class="mt-1 text-sm font-semibold text-stone-100">{activeContext().workspaceName}</p>
+          <p class="mt-1 text-xs text-stone-400">{queryLabel()}</p>
           <div class="mt-2 flex flex-wrap gap-1.5 text-[11px]">
-            <span class="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-300">
-              Firm: {activeContext().accountProfile.propFirm || "Not set"}
+            <span class="inline-flex items-center gap-1.5 rounded-full border border-stone-700 bg-stone-900 px-2 py-1 text-stone-300">
+              <Show
+                when={firmLogoSrc(activeContext().accountProfile.propFirm)}
+                fallback={<>Firm: {activeContext().accountProfile.propFirm || "Not set"}</>}
+              >
+                <FirmLogo firmName={activeContext().accountProfile.propFirm} heightClass="h-3.5" />
+              </Show>
             </span>
-            <span class="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-300">
+            <span class="rounded-full border border-stone-700 bg-stone-900 px-2 py-1 text-stone-300">
               Account: {activeContext().accountProfile.accountLabel || "Not set"}
             </span>
-            <span class="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-300">
+            <span class="rounded-full border border-stone-700 bg-stone-900 px-2 py-1 text-stone-300">
               Stage: {activeContext().accountProfile.accountStage || "Not set"}
             </span>
           </div>

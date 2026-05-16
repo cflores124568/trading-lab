@@ -67,7 +67,7 @@ export default function WorkspaceLaunchControl(props: Props) {
   return (
     <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
       <label class="space-y-1">
-        <span class="block text-xs text-zinc-400">Workspace target</span>
+        <span class="block text-xs text-stone-400">Workspace target</span>
         <select
           class="app-input min-w-[220px] text-sm"
           value={workspaceId()}

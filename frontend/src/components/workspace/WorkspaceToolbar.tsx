@@ -38,8 +38,8 @@ interface Props {
 }
 
 const field =
-  "w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 " +
-  "focus:outline-none focus:ring-1 focus:ring-zinc-500";
+  "w-full rounded-lg border border-stone-700 bg-stone-800 px-3 py-2 text-sm text-stone-100 " +
+  "focus:outline-none focus:ring-1 focus:ring-stone-500";
 
 function LayoutPreview(props: { preset: WorkspacePreset }) {
   if (props.preset === "focus") {
@@ -130,25 +130,25 @@ export default function WorkspaceToolbar(props: Props) {
   };
 
   return (
-    <div class="border-b border-zinc-700/80 bg-zinc-950/82 px-4 py-4 lg:px-5">
+    <div class="border-b border-stone-700/80 bg-stone-950/82 px-4 py-4 lg:px-5">
       <div class="flex flex-col gap-2.5">
         <div class="app-panel app-panel-selected flex flex-col gap-3 rounded-2xl p-4 xl:flex-row xl:items-center xl:justify-between">
           <div class="flex flex-wrap items-center gap-3">
             <div class="min-w-0">
-              <p class="app-kicker text-sky-300">Current Workspace</p>
-              <p class="truncate text-sm font-semibold text-zinc-50">{props.workspaceName}</p>
+              <p class="app-kicker text-stone-200">Current Workspace</p>
+              <p class="truncate text-sm font-semibold text-stone-50">{props.workspaceName}</p>
             </div>
-            <div class="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-400">
+            <div class="rounded-full border border-stone-700 bg-stone-900 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-stone-400">
               {props.workspaceCount} {props.workspaceCount === 1 ? "Workspace" : "Workspaces"}
             </div>
-            <div class="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-400">
+            <div class="rounded-full border border-stone-700 bg-stone-900 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-stone-400">
               {props.panelCount} {props.panelCount === 1 ? "Panel" : "Panels"}
             </div>
             <div
               class={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] ${
                 props.workspaceId === props.defaultWorkspaceId
-                  ? "border-sky-400/80 bg-sky-400/15 text-sky-100"
-                  : "border-zinc-800 bg-zinc-950 text-zinc-500"
+                  ? "border-stone-200/80 bg-stone-100/12 text-stone-50"
+                  : "border-stone-800 bg-stone-950 text-stone-500"
               }`}
             >
               {props.workspaceId === props.defaultWorkspaceId ? (
@@ -164,7 +164,7 @@ export default function WorkspaceToolbar(props: Props) {
           <div class="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              class="inline-flex items-center gap-2 rounded-xl bg-[#b7ebe5] px-3 py-2 text-sm font-semibold text-zinc-950 shadow-[0_10px_24px_rgba(183,235,229,0.16)] transition-colors hover:bg-[#d8fffb] disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-600"
+              class="inline-flex items-center gap-2 rounded-xl bg-stone-100 px-3 py-2 text-sm font-semibold text-stone-950 shadow-[0_10px_24px_rgba(231,229,228,0.14)] transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-stone-800 disabled:text-stone-600"
               onClick={props.onAddChart}
               disabled={!props.canAddChart}
             >
@@ -173,7 +173,7 @@ export default function WorkspaceToolbar(props: Props) {
             </button>
             <button
               type="button"
-              class="inline-flex items-center gap-2 rounded-xl border border-zinc-600 px-3 py-2 text-sm font-semibold text-zinc-100 transition-colors hover:border-zinc-400 hover:bg-zinc-900"
+              class="inline-flex items-center gap-2 rounded-xl border border-stone-600 px-3 py-2 text-sm font-semibold text-stone-100 transition-colors hover:border-stone-400 hover:bg-stone-900"
               onClick={props.onCreateWorkspace}
             >
               <CopyPlus size={15} />
@@ -182,7 +182,7 @@ export default function WorkspaceToolbar(props: Props) {
             {props.canDeleteWorkspace ? (
               <button
                 type="button"
-                class="inline-flex items-center gap-2 rounded-xl border border-zinc-800 px-3 py-2 text-sm font-medium text-zinc-400 transition-colors hover:border-red-800 hover:bg-red-950/40 hover:text-red-200"
+                class="inline-flex items-center gap-2 rounded-xl border border-stone-800 px-3 py-2 text-sm font-medium text-stone-400 transition-colors hover:border-red-800 hover:bg-red-950/40 hover:text-red-200"
                 onClick={props.onDeleteWorkspace}
               >
                 <Trash2 size={15} />
@@ -194,7 +194,7 @@ export default function WorkspaceToolbar(props: Props) {
 
         <div class="grid gap-2.5 xl:grid-cols-[minmax(220px,0.85fr)_minmax(220px,0.85fr)_auto]">
           <label class="space-y-1">
-            <span class="block text-xs text-zinc-500">Switch workspace</span>
+            <span class="block text-xs text-stone-500">Switch workspace</span>
             <select
               class={field}
               value={props.workspaceId}
@@ -207,7 +207,7 @@ export default function WorkspaceToolbar(props: Props) {
           </label>
 
           <label class="space-y-1">
-            <span class="block text-xs text-zinc-500">Rename current</span>
+            <span class="block text-xs text-stone-500">Rename current</span>
             <input
               type="text"
               class={field}
@@ -231,8 +231,8 @@ export default function WorkspaceToolbar(props: Props) {
           </label>
 
           <div class="space-y-1">
-            <span class="block text-xs text-zinc-500">Layout</span>
-            <div class="grid gap-2 rounded-xl border border-zinc-700/80 bg-zinc-950/78 p-2 sm:grid-cols-3">
+            <span class="block text-xs text-stone-500">Layout</span>
+            <div class="grid gap-2 rounded-xl border border-stone-700/80 bg-stone-950/78 p-2 sm:grid-cols-3">
               {props.options.map((option) => {
                 const active = props.preset === option.value;
                 return (
@@ -240,20 +240,20 @@ export default function WorkspaceToolbar(props: Props) {
                     type="button"
                     class={`flex min-w-[124px] items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors ${
                       active
-                        ? "app-card-selected border-sky-400/70 text-zinc-50"
-                        : "border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-zinc-700 hover:bg-zinc-800 hover:text-zinc-100"
+                        ? "app-card-selected border-stone-200/75 text-stone-50"
+                        : "border-stone-800 bg-stone-900 text-stone-400 hover:border-stone-700 hover:bg-stone-800 hover:text-stone-100"
                     }`}
                     title={option.description}
                     onClick={() => props.onPresetChange(option.value)}
                   >
-                    <span class={active ? "text-sky-200" : "text-zinc-500"}>
+                    <span class={active ? "text-stone-200" : "text-stone-500"}>
                       <LayoutPreview preset={option.value} />
                     </span>
                     <span>
                       <span class="block text-xs font-semibold uppercase tracking-[0.14em]">
                         {option.label}
                       </span>
-                      <span class={active ? "block text-[11px] text-sky-100" : "block text-[11px] text-zinc-500"}>
+                      <span class={active ? "block text-[11px] text-stone-200" : "block text-[11px] text-stone-500"}>
                         {active ? "Active" : "Switch"}
                       </span>
                     </span>
@@ -264,26 +264,26 @@ export default function WorkspaceToolbar(props: Props) {
           </div>
         </div>
 
-        <div class="rounded-2xl border border-zinc-800/80 bg-zinc-950/55 p-4">
+        <div class="rounded-2xl border border-stone-800/80 bg-stone-950/55 p-4">
           <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div class="space-y-1">
-              <p class="app-kicker text-sky-300">Account and risk</p>
-              <p class="text-sm font-medium text-zinc-100">
+              <p class="app-kicker text-stone-200">Account and risk</p>
+              <p class="text-sm font-medium text-stone-100">
                 {props.accountProfile.propFirm || "No prop firm"}{" "}
-                <span class="text-zinc-600">·</span>{" "}
+                <span class="text-stone-600">·</span>{" "}
                 {props.accountProfile.accountLabel || "No account label"}{" "}
-                <span class="text-zinc-600">·</span>{" "}
+                <span class="text-stone-600">·</span>{" "}
                 {props.accountProfile.accountStage || "No stage"}
               </p>
-              <p class="text-xs text-zinc-500">
+              <p class="text-xs text-stone-500">
                 Daily loss {dailyLossDraft() || "n/a"}{" "}
-                <span class="text-zinc-600">·</span> Max DD {maxDrawdownDraft() || "n/a"}{" "}
-                <span class="text-zinc-600">·</span> Target {profitTargetDraft() || "n/a"}
+                <span class="text-stone-600">·</span> Max DD {maxDrawdownDraft() || "n/a"}{" "}
+                <span class="text-stone-600">·</span> Target {profitTargetDraft() || "n/a"}
               </p>
             </div>
             <button
               type="button"
-              class="inline-flex items-center justify-center rounded-lg border border-zinc-700 px-3 py-2 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-900 hover:text-zinc-100"
+              class="inline-flex items-center justify-center rounded-lg border border-stone-700 px-3 py-2 text-xs font-medium text-stone-300 transition-colors hover:border-stone-500 hover:bg-stone-900 hover:text-stone-100"
               onClick={() => setAccountOpen((current) => !current)}
             >
               {accountOpen() ? "Hide details" : "Edit details"}
@@ -294,7 +294,7 @@ export default function WorkspaceToolbar(props: Props) {
             <>
               <div class="mt-4 grid gap-3 xl:grid-cols-3">
                 <label class="space-y-1">
-                  <span class="block text-xs text-zinc-500">Prop firm</span>
+                  <span class="block text-xs text-stone-500">Prop firm</span>
                   <input
                     type="text"
                     class={field}
@@ -306,7 +306,7 @@ export default function WorkspaceToolbar(props: Props) {
                 </label>
 
                 <label class="space-y-1">
-                  <span class="block text-xs text-zinc-500">Account label</span>
+                  <span class="block text-xs text-stone-500">Account label</span>
                   <input
                     type="text"
                     class={field}
@@ -318,7 +318,7 @@ export default function WorkspaceToolbar(props: Props) {
                 </label>
 
                 <label class="space-y-1">
-                  <span class="block text-xs text-zinc-500">Stage</span>
+                  <span class="block text-xs text-stone-500">Stage</span>
                   <input
                     type="text"
                     class={field}
@@ -330,7 +330,7 @@ export default function WorkspaceToolbar(props: Props) {
                 </label>
 
                 <label class="space-y-1">
-                  <span class="block text-xs text-zinc-500">Daily loss limit</span>
+                  <span class="block text-xs text-stone-500">Daily loss limit</span>
                   <input
                     type="number"
                     inputMode="decimal"
@@ -347,7 +347,7 @@ export default function WorkspaceToolbar(props: Props) {
                 </label>
 
                 <label class="space-y-1">
-                  <span class="block text-xs text-zinc-500">Max drawdown</span>
+                  <span class="block text-xs text-stone-500">Max drawdown</span>
                   <input
                     type="number"
                     inputMode="decimal"
@@ -364,7 +364,7 @@ export default function WorkspaceToolbar(props: Props) {
                 </label>
 
                 <label class="space-y-1">
-                  <span class="block text-xs text-zinc-500">Profit target</span>
+                  <span class="block text-xs text-stone-500">Profit target</span>
                   <input
                     type="number"
                     inputMode="decimal"
@@ -382,7 +382,7 @@ export default function WorkspaceToolbar(props: Props) {
               </div>
 
               <label class="mt-3 space-y-1">
-                <span class="block text-xs text-zinc-500">Account notes</span>
+                <span class="block text-xs text-stone-500">Account notes</span>
                 <textarea
                   class={`${field} min-h-16 resize-y`}
                   value={props.accountProfile.notes}
@@ -395,13 +395,13 @@ export default function WorkspaceToolbar(props: Props) {
           ) : null}
         </div>
 
-        <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-800 bg-zinc-950/55 px-3 py-2 text-xs text-zinc-500">
+        <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-stone-800 bg-stone-950/55 px-3 py-2 text-xs text-stone-500">
           <span>
             This workspace auto-saves. Use Save as New when you want a separate version.
           </span>
           <button
             type="button"
-            class="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-900 hover:text-zinc-100 disabled:cursor-default disabled:border-zinc-800 disabled:text-zinc-600"
+            class="inline-flex items-center gap-1.5 rounded-lg border border-stone-700 px-2.5 py-1.5 text-xs font-medium text-stone-300 transition-colors hover:border-stone-500 hover:bg-stone-900 hover:text-stone-100 disabled:cursor-default disabled:border-stone-800 disabled:text-stone-600"
             onClick={() => props.onDefaultWorkspaceChange(props.workspaceId)}
             disabled={props.workspaceId === props.defaultWorkspaceId}
           >

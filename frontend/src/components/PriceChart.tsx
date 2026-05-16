@@ -586,7 +586,7 @@ export default function PriceChart(props: Props) {
 
   return (
     <div
-      class={`relative w-full overflow-hidden border border-zinc-700/80 bg-zinc-950 ${props.class ?? ""}`}
+      class={`relative w-full overflow-hidden border border-stone-700/80 bg-stone-950 ${props.class ?? ""}`}
       style={{
         "border-radius": "0",
         ...(props.height ? { height: `${props.height}px` } : {}),
@@ -596,36 +596,36 @@ export default function PriceChart(props: Props) {
 
       {indicatorLegendMode() !== "hidden" && activeCandle() ? (
         <div
-          class={`pointer-events-none absolute left-3 top-3 z-10 max-w-[min(320px,calc(100%-1.5rem))] border border-zinc-800/90 bg-zinc-950/82 shadow-xl shadow-black/25 backdrop-blur ${
+          class={`pointer-events-none absolute left-3 top-3 z-10 max-w-[min(320px,calc(100%-1.5rem))] border border-stone-800/90 bg-stone-950/82 shadow-xl shadow-black/25 backdrop-blur ${
             indicatorLegendMode() === "full" ? "px-3 py-2.5" : "px-2.5 py-2"
           }`}
           style={{ "border-radius": "0" }}
         >
           <div class="flex items-center justify-between gap-4">
-            <span class="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500">
+            <span class="text-[10px] font-medium uppercase tracking-[0.18em] text-stone-500">
               {hoveredTime() ? "Hover" : "Latest"}
             </span>
-            <span class="app-data text-[10px] text-zinc-500">
+            <span class="app-data text-[10px] text-stone-500">
               {formatLegendTime(activeCandle()?.time)}
             </span>
           </div>
 
           {indicatorLegendMode() === "full" ? (
-            <div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 border-b border-zinc-800/80 pb-2 text-[11px]">
-              <span class="text-zinc-500">Open</span>
-              <span class="app-data text-right text-zinc-200">
+            <div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 border-b border-stone-800/80 pb-2 text-[11px]">
+              <span class="text-stone-500">Open</span>
+              <span class="app-data text-right text-stone-200">
                 {formatPrice(activeCandle()!.open)}
               </span>
-              <span class="text-zinc-500">High</span>
-              <span class="app-data text-right text-zinc-200">
+              <span class="text-stone-500">High</span>
+              <span class="app-data text-right text-stone-200">
                 {formatPrice(activeCandle()!.high)}
               </span>
-              <span class="text-zinc-500">Low</span>
-              <span class="app-data text-right text-zinc-200">
+              <span class="text-stone-500">Low</span>
+              <span class="app-data text-right text-stone-200">
                 {formatPrice(activeCandle()!.low)}
               </span>
-              <span class="text-zinc-500">Close</span>
-              <span class="app-data text-right text-zinc-100">
+              <span class="text-stone-500">Close</span>
+              <span class="app-data text-right text-stone-100">
                 {formatPrice(activeCandle()!.close)}
               </span>
             </div>
@@ -638,8 +638,8 @@ export default function PriceChart(props: Props) {
                   class="h-2 w-2 rounded-full"
                   style={{ "background-color": row.color }}
                 />
-                <span class="truncate text-zinc-400">{row.label}</span>
-                <span class="app-data text-right font-medium text-zinc-100">{row.value}</span>
+                <span class="truncate text-stone-400">{row.label}</span>
+                <span class="app-data text-right font-medium text-stone-100">{row.value}</span>
               </div>
             ))}
           </div>

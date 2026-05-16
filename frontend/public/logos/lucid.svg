@@ -1,0 +1,8 @@
+<svg width="260" height="52" viewBox="0 0 260 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Diamond mark -->
+  <polygon points="20,4 36,26 20,48 4,26" fill="none" stroke="white" stroke-width="2.5"/>
+  <polygon points="20,13 29,26 20,39 11,26" fill="white" opacity="0.85"/>
+  <!-- Wordmark -->
+  <text x="48" y="33" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="700" letter-spacing="2" fill="white">LUCID</text>
+  <text x="48" y="49" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="400" letter-spacing="4" fill="white" opacity="0.65">TRADING</text>
+</svg>

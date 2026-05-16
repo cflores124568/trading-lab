@@ -27,8 +27,8 @@ export default function ChartIndicatorToggleBar(props: Props) {
             onClick={() => props.onToggle(option.key)}
             class={`rounded-sm border px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] transition-colors ${
               props.settings[option.key]
-                ? "border-sky-500 bg-sky-500/15 text-sky-100"
-                : "border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+                ? "border-stone-200 bg-stone-100/12 text-stone-50"
+                : "border-stone-700 bg-stone-900 text-stone-400 hover:border-stone-500 hover:text-stone-200"
             }`}
           >
             {option.label}
@@ -39,11 +39,11 @@ export default function ChartIndicatorToggleBar(props: Props) {
   }
 
   return (
-    <div class="rounded-md border border-zinc-800 bg-zinc-950/60 p-4">
+    <div class="rounded-md border border-stone-800 bg-stone-950/60 p-4">
       <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div class="space-y-1">
-          <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Chart Studies</p>
-          <p class="text-sm text-zinc-400">
+          <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Chart Studies</p>
+          <p class="text-sm text-stone-400">
             Keep the chart focused. Turn on only the context you actually need.
           </p>
         </div>
@@ -55,8 +55,8 @@ export default function ChartIndicatorToggleBar(props: Props) {
             onClick={() => props.onToggle(option.key)}
             class={`rounded-sm border px-3 py-2 text-xs font-medium uppercase tracking-[0.16em] transition-colors ${
               props.settings[option.key]
-                ? "border-sky-500 bg-sky-500/15 text-sky-100"
-                : "border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+                ? "border-stone-200 bg-stone-100/12 text-stone-50"
+                : "border-stone-700 bg-stone-900 text-stone-400 hover:border-stone-500 hover:text-stone-200"
               }`}
             >
               {option.label}

@@ -41,9 +41,9 @@ export default function ReplaySessionListPage() {
           <Show
             when={(sessions() ?? []).length > 0}
             fallback={
-              <div class="app-panel app-panel-section py-20 text-center text-sm text-zinc-500">
+              <div class="app-panel app-panel-section py-20 text-center text-sm text-stone-500">
                 No replay sessions yet.{" "}
-                <A href="/replay" class="text-zinc-100 hover:underline">
+                <A href="/replay" class="text-stone-100 hover:underline">
                   Launch your first saved session
                 </A>
               </div>
@@ -55,12 +55,12 @@ export default function ReplaySessionListPage() {
                   <div class="app-panel app-panel-interactive px-5 py-4">
                     <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div class="space-y-2">
-                        <p class="text-sm font-semibold text-zinc-100">{session.name}</p>
-                        <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                        <p class="text-sm font-semibold text-stone-100">{session.name}</p>
+                        <p class="text-xs uppercase tracking-[0.18em] text-stone-500">
                           {session.symbol} · <span class="app-data">{session.interval}</span> ·{" "}
-                          <span class="text-sky-200">{formatReplaySessionStatus(session.status)}</span>
+                          <span class="text-green-200">{formatReplaySessionStatus(session.status)}</span>
                         </p>
-                        <p class="text-sm text-zinc-400">{formatRange(session)}</p>
+                        <p class="text-sm text-stone-400">{formatRange(session)}</p>
                         <Show when={session.source_backtest}>
                           {(source) => (
                             <p class="app-meta-text">
@@ -68,13 +68,13 @@ export default function ReplaySessionListPage() {
                             </p>
                           )}
                         </Show>
-                        <p class="app-data text-xs text-zinc-500">
+                        <p class="app-data text-xs text-stone-500">
                           Updated {new Date(session.updated_at).toLocaleString()}
                         </p>
                       </div>
 
                       <div class="grid grid-cols-3 gap-3 text-right">
-                        <div class="rounded-xl border border-zinc-700/80 bg-zinc-950/70 px-3 py-2">
+                        <div class="rounded-xl border border-stone-700/80 bg-stone-950/70 px-3 py-2">
                           <p class="app-metric-label">Total PnL</p>
                           <p
                             class={`app-data mt-1 text-2xl font-semibold ${
@@ -84,22 +84,22 @@ export default function ReplaySessionListPage() {
                             {formatMoney(session.total_pnl)}
                           </p>
                         </div>
-                        <div class="rounded-xl border border-zinc-700/80 bg-zinc-950/70 px-3 py-2">
+                        <div class="rounded-xl border border-stone-700/80 bg-stone-950/70 px-3 py-2">
                           <p class="app-metric-label">Trades</p>
-                          <p class="app-data mt-1 text-xl font-semibold text-zinc-100">
+                          <p class="app-data mt-1 text-xl font-semibold text-stone-100">
                             {session.total_trades}
                           </p>
                         </div>
-                        <div class="rounded-xl border border-zinc-700/80 bg-zinc-950/70 px-3 py-2">
+                        <div class="rounded-xl border border-stone-700/80 bg-stone-950/70 px-3 py-2">
                           <p class="app-metric-label">Saved Bar</p>
-                          <p class="app-data mt-1 text-xl font-semibold text-zinc-100">
+                          <p class="app-data mt-1 text-xl font-semibold text-stone-100">
                             {session.current_bar_index + 1}
                           </p>
                         </div>
                       </div>
                     </div>
 
-                    <div class="mt-4 flex items-center justify-end gap-2 border-t border-zinc-700/80 pt-4">
+                    <div class="mt-4 flex items-center justify-end gap-2 border-t border-stone-700/80 pt-4">
                       <WorkspaceLaunchControl
                         intent={{
                           source: "replay-session",

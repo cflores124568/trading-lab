@@ -8,12 +8,12 @@ import { loadActiveWorkspaceContext } from "./workspace/workspacePersistence";
 
 // Shared input styles 
 const field =
-  "w-full rounded-sm border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 " +
-  "focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:cursor-not-allowed disabled:opacity-40";
+  "w-full rounded-sm border border-stone-700 bg-stone-800 px-3 py-2 text-sm text-stone-100 " +
+  "focus:outline-none focus:ring-1 focus:ring-stone-500 disabled:cursor-not-allowed disabled:opacity-40";
 const numericField = `${field} app-data`;
-const label = "mb-1 block text-[11px] uppercase tracking-[0.16em] text-zinc-500";
+const label = "mb-1 block text-[11px] uppercase tracking-[0.16em] text-stone-500";
 const sectionBase = "app-panel app-panel-section space-y-4 rounded-md p-4 lg:p-5";
-const runStatCard = "rounded-sm border border-zinc-800 bg-zinc-950/60 px-3 py-2";
+const runStatCard = "rounded-sm border border-stone-800 bg-stone-950/60 px-3 py-2";
 
 const strategyDescriptions: Record<StrategyValue, string> = {
   ma_crossover: "Use fast and slow moving-average crossovers to capture trend shifts.",
@@ -95,8 +95,8 @@ function formatStepValue(value: number, step: number): string {
 function StatCard(props: { label: string; value: string; mono?: boolean }) {
   return (
     <div class={runStatCard}>
-      <p class="text-[11px] uppercase tracking-[0.18em] text-zinc-500">{props.label}</p>
-      <p class={`mt-1 text-sm font-medium text-zinc-100 ${props.mono ? "app-data" : ""}`}>
+      <p class="text-[11px] uppercase tracking-[0.18em] text-stone-500">{props.label}</p>
+      <p class={`mt-1 text-sm font-medium text-stone-100 ${props.mono ? "app-data" : ""}`}>
         {props.value}
       </p>
     </div>
@@ -135,7 +135,7 @@ function StepperInput(props: {
       <div class="flex items-stretch gap-2">
         <button
           type="button"
-          class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-zinc-700 bg-zinc-950 text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-900 hover:text-zinc-100"
+          class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-stone-700 bg-stone-950 text-stone-300 transition-colors hover:border-stone-500 hover:bg-stone-900 hover:text-stone-100"
           onClick={() => bump(-1)}
           aria-label={`Decrease ${props.label}`}
         >
@@ -152,7 +152,7 @@ function StepperInput(props: {
         />
         <button
           type="button"
-          class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-zinc-700 bg-zinc-950 text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-900 hover:text-zinc-100"
+          class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-stone-700 bg-stone-950 text-stone-300 transition-colors hover:border-stone-500 hover:bg-stone-900 hover:text-stone-100"
           onClick={() => bump(1)}
           aria-label={`Increase ${props.label}`}
         >
@@ -287,7 +287,7 @@ export default function BackTestConfigForm() {
   const strategyParams = createMemo(() => STRATEGY_PARAMS[strategy()]);
   const collapsibleHeader =
     "flex w-full items-start justify-between gap-3 rounded-sm text-left transition-colors " +
-    "focus:outline-none focus:ring-1 focus:ring-zinc-500";
+    "focus:outline-none focus:ring-1 focus:ring-stone-500";
 
   async function handleSubmit() {
     const sym = symbol();
@@ -363,11 +363,11 @@ export default function BackTestConfigForm() {
         </div>
       </Show>
 
-      <section class="app-panel rounded-md border-l-4 border-zinc-700/80 p-4 space-y-4 lg:p-5">
+      <section class="app-panel rounded-md border-l-4 border-stone-700/80 p-4 space-y-4 lg:p-5">
         <div class="space-y-2">
           <p class="app-kicker">Run Plan</p>
-          <h2 class="text-lg font-medium text-zinc-100">Build the next saved run</h2>
-          <p class="max-w-3xl text-sm text-zinc-400">
+          <h2 class="text-lg font-medium text-stone-100">Build the next saved run</h2>
+          <p class="max-w-3xl text-sm text-stone-400">
             Pick a market, set the strategy, and score it against prop-firm rules.
           </p>
           <Show when={marketSeedNotice()}>
@@ -382,10 +382,10 @@ export default function BackTestConfigForm() {
         </div>
       </section>
 
-      <section class={`${sectionBase} border-l-4 border-zinc-700/80`}>
+      <section class={`${sectionBase} border-l-4 border-stone-700/80`}>
         <div class="space-y-1">
-          <p class="text-sm font-medium text-zinc-100">1. Market</p>
-          <p class="text-xs text-zinc-400">Contract, interval, and optional date range.</p>
+          <p class="text-sm font-medium text-stone-100">1. Market</p>
+          <p class="text-xs text-stone-400">Contract, interval, and optional date range.</p>
         </div>
 
         <Show
@@ -393,7 +393,7 @@ export default function BackTestConfigForm() {
           fallback={
             <Show
               when={!symbols.loading}
-              fallback={<div class="h-9 rounded-sm bg-zinc-800 animate-pulse" />}
+              fallback={<div class="h-9 rounded-sm bg-stone-800 animate-pulse" />}
             >
               <div class="rounded-sm border border-yellow-700 bg-yellow-950 px-4 py-3 text-sm text-yellow-300">
                 No symbols found. Make sure your database is configured and data has been imported
@@ -464,7 +464,7 @@ export default function BackTestConfigForm() {
         </div>
       </section>
 
-      <section class={`${sectionBase} border-l-4 border-zinc-700/80`}>
+      <section class={`${sectionBase} border-l-4 border-stone-700/80`}>
         <button
           type="button"
           class={collapsibleHeader}
@@ -473,13 +473,13 @@ export default function BackTestConfigForm() {
           onClick={() => setShowStrategy((value) => !value)}
         >
           <div class="space-y-1">
-            <p class="text-sm font-medium text-zinc-100">2. Strategy</p>
-            <p class="text-xs text-zinc-400">Signal model and execution parameters.</p>
+            <p class="text-sm font-medium text-stone-100">2. Strategy</p>
+            <p class="text-xs text-stone-400">Signal model and execution parameters.</p>
           </div>
           {showStrategy() ? (
-            <ChevronDown size={16} class="mt-1 shrink-0 text-zinc-500" />
+            <ChevronDown size={16} class="mt-1 shrink-0 text-stone-500" />
           ) : (
-            <ChevronRight size={16} class="mt-1 shrink-0 text-zinc-500" />
+            <ChevronRight size={16} class="mt-1 shrink-0 text-stone-500" />
           )}
         </button>
 
@@ -498,12 +498,12 @@ export default function BackTestConfigForm() {
               </select>
             </div>
 
-            <div class="rounded-sm border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-              <p class="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+            <div class="rounded-sm border border-stone-800 bg-stone-950/60 px-4 py-3">
+              <p class="text-[11px] uppercase tracking-[0.18em] text-stone-500">
                 Selected Strategy
               </p>
-              <p class="mt-2 text-sm font-medium text-zinc-100">{selectedStrategy().label}</p>
-              <p class="mt-1 text-sm text-zinc-400">{strategyDescriptions[strategy()]}</p>
+              <p class="mt-2 text-sm font-medium text-stone-100">{selectedStrategy().label}</p>
+              <p class="mt-1 text-sm text-stone-400">{strategyDescriptions[strategy()]}</p>
             </div>
 
             <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
@@ -523,7 +523,7 @@ export default function BackTestConfigForm() {
         </Show>
       </section>
 
-      <section class={`${sectionBase} border-l-4 border-zinc-700/80`}>
+      <section class={`${sectionBase} border-l-4 border-stone-700/80`}>
         <button
           type="button"
           class={collapsibleHeader}
@@ -532,15 +532,15 @@ export default function BackTestConfigForm() {
           onClick={() => setShowExecution((value) => !value)}
         >
           <div class="space-y-1">
-            <p class="text-sm font-medium text-zinc-100">3. Execution</p>
-            <p class="text-xs text-zinc-400">
+            <p class="text-sm font-medium text-stone-100">3. Execution</p>
+            <p class="text-xs text-stone-400">
               Futures contract specs and conservative fill assumptions.
             </p>
           </div>
           {showExecution() ? (
-            <ChevronDown size={16} class="mt-1 shrink-0 text-zinc-500" />
+            <ChevronDown size={16} class="mt-1 shrink-0 text-stone-500" />
           ) : (
-            <ChevronRight size={16} class="mt-1 shrink-0 text-zinc-500" />
+            <ChevronRight size={16} class="mt-1 shrink-0 text-stone-500" />
           )}
         </button>
 
@@ -634,12 +634,12 @@ export default function BackTestConfigForm() {
               />
             </div>
 
-            <p class="text-xs text-zinc-500">
+            <p class="text-xs text-stone-500">
               Brackets are measured from entry in ticks. If one candle tags both the stop and
               target, I treat it as stop-first so the sim stays conservative.
             </p>
             <Show when={executionMode() === "synthetic_quotes"}>
-              <p class="text-xs text-zinc-500">
+              <p class="text-xs text-stone-500">
                 Synthetic mode prices taker fills off bid/ask. Slippage still applies on bracket
                 exits so old configs stay comparable.
               </p>
@@ -648,7 +648,7 @@ export default function BackTestConfigForm() {
         </Show>
       </section>
 
-      <section class={`${sectionBase} border-l-4 border-zinc-700/80`}>
+      <section class={`${sectionBase} border-l-4 border-stone-700/80`}>
         <button
           type="button"
           class={collapsibleHeader}
@@ -657,22 +657,22 @@ export default function BackTestConfigForm() {
           onClick={() => setShowPropFirm((value) => !value)}
         >
           <div class="space-y-1">
-            <p class="text-sm font-medium text-zinc-100">4. Prop Firm Rules</p>
-            <p class="text-xs text-zinc-400">
+            <p class="text-sm font-medium text-stone-100">4. Prop Firm Rules</p>
+            <p class="text-xs text-stone-400">
               Select the evaluation ruleset you want this strategy run to survive.
             </p>
           </div>
           {showPropFirm() ? (
-            <ChevronDown size={16} class="mt-1 shrink-0 text-zinc-500" />
+            <ChevronDown size={16} class="mt-1 shrink-0 text-stone-500" />
           ) : (
-            <ChevronRight size={16} class="mt-1 shrink-0 text-zinc-500" />
+            <ChevronRight size={16} class="mt-1 shrink-0 text-stone-500" />
           )}
         </button>
 
         <Show when={showPropFirm()}>
           <Show
             when={presets() && presets()!.length > 0}
-            fallback={<div class="h-9 rounded-sm bg-zinc-800 animate-pulse" />}
+            fallback={<div class="h-9 rounded-sm bg-stone-800 animate-pulse" />}
           >
             <div class="space-y-4">
               <div>
@@ -703,11 +703,11 @@ export default function BackTestConfigForm() {
               <Show when={preset()}>
                 {(p) => (
                   <div class="space-y-3">
-                    <div class="rounded-sm border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                      <p class="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                    <div class="rounded-sm border border-stone-800 bg-stone-950/60 px-4 py-3">
+                      <p class="text-[11px] uppercase tracking-[0.18em] text-stone-500">
                         Selected Challenge
                       </p>
-                      <p class="mt-2 text-sm font-medium text-zinc-100">{p().name}</p>
+                      <p class="mt-2 text-sm font-medium text-stone-100">{p().name}</p>
                     </div>
 
                     <div class="grid gap-2 md:grid-cols-3">
@@ -726,19 +726,19 @@ export default function BackTestConfigForm() {
         </Show>
       </section>
 
-      <section class={`${sectionBase} border-l-4 border-zinc-700/80`}>
+      <section class={`${sectionBase} border-l-4 border-stone-700/80`}>
         <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div class="space-y-1">
-            <p class="text-sm font-medium text-zinc-100">5. Launch</p>
-            <p class="text-xs text-zinc-400">Run and save the result.</p>
+            <p class="text-sm font-medium text-stone-100">5. Launch</p>
+            <p class="text-xs text-stone-400">Run and save the result.</p>
           </div>
 
           <button
             class={
               "w-full rounded-sm px-5 py-3 text-sm font-semibold transition-colors md:w-auto " +
               (loading()
-                ? "cursor-not-allowed bg-zinc-700 text-zinc-400"
-                : "bg-zinc-100 text-zinc-900 hover:bg-white")
+                ? "cursor-not-allowed bg-stone-700 text-stone-400"
+                : "bg-stone-100 text-stone-900 hover:bg-white")
             }
             disabled={!canRun()}
             onClick={handleSubmit}

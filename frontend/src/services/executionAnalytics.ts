@@ -118,7 +118,10 @@ function fillLiquidityFromReplayEvent(event: ExecutionEvent): LiquidityRole | nu
 }
 
 function normalizeReplayActionLabel(event: ExecutionEvent): string {
-  return normalizeExecutionAction(event.action).replace(/_/g, " ");
+  const action = normalizeExecutionAction(event.action);
+  if (action === "lift_ask") return "MKT BUY";
+  if (action === "hit_bid") return "MKT SELL";
+  return action.replace(/_/g, " ");
 }
 
 function replayEventRole(event: ExecutionEvent): FillRole | "n/a" {
@@ -492,10 +495,14 @@ function actionLabelFromEvent(event: PaperEventResult): string {
   const payload = paperPayloadRecord(event.payload);
   const rawAction = stringFromUnknown(payload.action);
   if (rawAction) {
+    if (rawAction === "lift_ask") return "MKT BUY";
+    if (rawAction === "hit_bid") return "MKT SELL";
     return rawAction.replace(/_/g, " ");
   }
   const orderType = stringFromUnknown(paperPayloadRecord(payload.order).type);
   if (orderType) {
+    if (orderType === "lift_ask") return "MKT BUY";
+    if (orderType === "hit_bid") return "MKT SELL";
     return orderType.replace(/_/g, " ");
   }
   return event.event_type.replace(/_/g, " ");

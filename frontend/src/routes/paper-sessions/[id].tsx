@@ -1,6 +1,8 @@
 import { A, useParams } from "@solidjs/router";
 import { batch, createEffect, createMemo, createResource, createSignal, For, Show } from "solid-js";
 import AppShell from "../../components/AppShell";
+import FirmLogo from "../../components/FirmLogo";
+import { firmLogoSrc } from "../../utils/firmLogo";
 import {
   createPaperSessionEvent,
   executePaperSessionAction,
@@ -25,11 +27,11 @@ function statusTone(status: string): string {
     case "running":
       return "border-amber-700 bg-amber-950/40 text-amber-200";
     case "ready":
-      return "border-sky-700 bg-sky-950/40 text-sky-200";
+      return "border-green-700 bg-green-950/40 text-green-200";
     case "paused":
-      return "border-zinc-700 bg-zinc-900 text-zinc-200";
+      return "border-stone-700 bg-stone-900 text-stone-200";
     case "stopped":
-      return "border-zinc-800 bg-zinc-950/70 text-zinc-300";
+      return "border-stone-800 bg-stone-950/70 text-stone-300";
     case "failed":
       return "border-red-700 bg-red-950/40 text-red-200";
     default:
@@ -213,9 +215,9 @@ function runnerModeTone(mode?: string | null): string {
     case "running":
       return "border-amber-700 bg-amber-950/40 text-amber-200";
     case "paused":
-      return "border-zinc-700 bg-zinc-900 text-zinc-200";
+      return "border-stone-700 bg-stone-900 text-stone-200";
     case "completed":
-      return "border-emerald-700 bg-emerald-950/40 text-emerald-200";
+      return "border-green-700 bg-green-950/40 text-green-200";
     case "failed":
       return "border-red-700 bg-red-950/40 text-red-200";
     default:
@@ -235,13 +237,13 @@ function statusActions(status: PaperSessionStatus): Array<{
           label: "Mark Ready",
           status: "ready",
           tone:
-            "border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 hover:border-zinc-500 hover:bg-zinc-900",
+            "border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 hover:border-stone-500 hover:bg-stone-900",
         },
         {
           label: "Stop",
           status: "stopped",
           tone:
-            "border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 hover:border-zinc-500 hover:bg-zinc-900",
+            "border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 hover:border-stone-500 hover:bg-stone-900",
         },
         {
           label: "Mark Failed",
@@ -255,19 +257,19 @@ function statusActions(status: PaperSessionStatus): Array<{
         {
           label: "Start Running",
           status: "running",
-          tone: "bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-white",
+          tone: "bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-950 hover:bg-white",
         },
         {
           label: "Pause",
           status: "paused",
           tone:
-            "border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 hover:border-zinc-500 hover:bg-zinc-900",
+            "border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 hover:border-stone-500 hover:bg-stone-900",
         },
         {
           label: "Stop",
           status: "stopped",
           tone:
-            "border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 hover:border-zinc-500 hover:bg-zinc-900",
+            "border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 hover:border-stone-500 hover:bg-stone-900",
         },
         {
           label: "Mark Failed",
@@ -282,13 +284,13 @@ function statusActions(status: PaperSessionStatus): Array<{
           label: "Pause",
           status: "paused",
           tone:
-            "border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 hover:border-zinc-500 hover:bg-zinc-900",
+            "border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 hover:border-stone-500 hover:bg-stone-900",
         },
         {
           label: "Stop",
           status: "stopped",
           tone:
-            "border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 hover:border-zinc-500 hover:bg-zinc-900",
+            "border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 hover:border-stone-500 hover:bg-stone-900",
         },
         {
           label: "Mark Failed",
@@ -303,18 +305,18 @@ function statusActions(status: PaperSessionStatus): Array<{
           label: "Move to Ready",
           status: "ready",
           tone:
-            "border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 hover:border-zinc-500 hover:bg-zinc-900",
+            "border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 hover:border-stone-500 hover:bg-stone-900",
         },
         {
           label: "Resume",
           status: "running",
-          tone: "bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-white",
+          tone: "bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-950 hover:bg-white",
         },
         {
           label: "Stop",
           status: "stopped",
           tone:
-            "border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 hover:border-zinc-500 hover:bg-zinc-900",
+            "border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 hover:border-stone-500 hover:bg-stone-900",
         },
         {
           label: "Mark Failed",
@@ -329,12 +331,12 @@ function statusActions(status: PaperSessionStatus): Array<{
           label: "Reopen Ready",
           status: "ready",
           tone:
-            "border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 hover:border-zinc-500 hover:bg-zinc-900",
+            "border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 hover:border-stone-500 hover:bg-stone-900",
         },
         {
           label: "Resume",
           status: "running",
-          tone: "bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-white",
+          tone: "bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-950 hover:bg-white",
         },
       ];
     case "failed":
@@ -343,13 +345,13 @@ function statusActions(status: PaperSessionStatus): Array<{
           label: "Recover to Ready",
           status: "ready",
           tone:
-            "border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 hover:border-zinc-500 hover:bg-zinc-900",
+            "border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 hover:border-stone-500 hover:bg-stone-900",
         },
         {
           label: "Stop",
           status: "stopped",
           tone:
-            "border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 hover:border-zinc-500 hover:bg-zinc-900",
+            "border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 hover:border-stone-500 hover:bg-stone-900",
         },
       ];
     default:
@@ -582,7 +584,7 @@ export default function PaperSessionDetailPage() {
         <>
           <A
             href="/paper-sessions"
-            class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+            class="rounded-sm border border-stone-700 px-4 py-2 text-sm font-medium text-stone-200 transition-colors hover:border-stone-500 hover:bg-stone-900"
           >
             All Paper Sessions
           </A>
@@ -590,7 +592,7 @@ export default function PaperSessionDetailPage() {
             {(entry) => (
               <A
                 href={`/candidates/${entry().candidate_id}`}
-                class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+                class="rounded-sm border border-stone-700 px-4 py-2 text-sm font-medium text-stone-200 transition-colors hover:border-stone-500 hover:bg-stone-900"
               >
                 Open Candidate
               </A>
@@ -600,7 +602,7 @@ export default function PaperSessionDetailPage() {
             {(entry) => (
               <A
                 href={`/backtests/${entry()!.backtest_id}`}
-                class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+                class="rounded-sm border border-stone-700 px-4 py-2 text-sm font-medium text-stone-200 transition-colors hover:border-stone-500 hover:bg-stone-900"
               >
                 Source Backtest
               </A>
@@ -613,7 +615,7 @@ export default function PaperSessionDetailPage() {
         when={session()}
         fallback={
           <section class="app-panel app-panel-section flex min-h-60 items-center justify-center">
-            <p class="text-zinc-400">Loading paper session...</p>
+            <p class="text-stone-400">Loading paper session...</p>
           </section>
         }
       >
@@ -638,52 +640,52 @@ export default function PaperSessionDetailPage() {
                       {describeStatus(entry().status)}
                     </span>
                   </div>
-                  <p class="text-sm text-zinc-400">
+                  <p class="text-sm text-stone-400">
                     {entry().symbol} {entry().interval} · {entry().strategy_type.replace(/_/g, " ")}
                   </p>
-                  <p class="text-xs text-zinc-500">{formatParams(entry().strategy_params)}</p>
+                  <p class="text-xs text-stone-500">{formatParams(entry().strategy_params)}</p>
                 </div>
 
-                <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-4 text-sm text-zinc-300">
+                <div class="rounded-md border border-stone-800 bg-stone-950/60 px-4 py-4 text-sm text-stone-300">
                   <p>Created by {entry().created_by}</p>
-                  <p class="mt-1 text-zinc-500">{formatTimestamp(entry().created_at)}</p>
+                  <p class="mt-1 text-stone-500">{formatTimestamp(entry().created_at)}</p>
                   <p class="mt-3">Last event: {formatTimestamp(entry().last_event_at)}</p>
-                  <p class="mt-1 text-zinc-500">Last bar: {formatTimestamp(entry().last_bar_time)}</p>
+                  <p class="mt-1 text-stone-500">Last bar: {formatTimestamp(entry().last_bar_time)}</p>
                 </div>
               </div>
 
               <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                <div class="rounded-md border border-stone-800 bg-stone-950/60 px-4 py-3">
                   <p class="app-kicker">Marked Equity</p>
-                  <p class="mt-2 text-sm font-semibold text-zinc-100">
+                  <p class="mt-2 text-sm font-semibold text-stone-100">
                     {formatCurrency(numberFromUnknown(metricsSnapshot().marked_equity))}
                   </p>
                 </div>
-                <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                <div class="rounded-md border border-stone-800 bg-stone-950/60 px-4 py-3">
                   <p class="app-kicker">Total PnL</p>
-                  <p class="mt-2 text-sm font-semibold text-zinc-100">
+                  <p class="mt-2 text-sm font-semibold text-stone-100">
                     {formatCurrency(numberFromUnknown(metricsSnapshot().total_pnl), true)}
                   </p>
                 </div>
-                <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                <div class="rounded-md border border-stone-800 bg-stone-950/60 px-4 py-3">
                   <p class="app-kicker">Closed Trades</p>
-                  <p class="mt-2 text-sm font-semibold text-zinc-100">
+                  <p class="mt-2 text-sm font-semibold text-stone-100">
                     {tradeLog().length}
                   </p>
-                  <p class="mt-1 text-xs text-zinc-500">
+                  <p class="mt-1 text-xs text-stone-500">
                     Win rate {formatPercent(numberFromUnknown(metricsSnapshot().win_rate), 1)}
                   </p>
                 </div>
-                <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                <div class="rounded-md border border-stone-800 bg-stone-950/60 px-4 py-3">
                   <p class="app-kicker">Open Position</p>
-                  <p class="mt-2 text-sm font-semibold text-zinc-100">
+                  <p class="mt-2 text-sm font-semibold text-stone-100">
                     {positionLabel(
                       stringFromUnknown(currentPosition().side),
                       numberFromUnknown(currentPosition().quantity) ??
                         numberFromUnknown(currentPosition().contracts),
                     )}
                   </p>
-                  <p class="mt-1 text-xs text-zinc-500">
+                  <p class="mt-1 text-xs text-stone-500">
                     Unrealized {formatCurrency(numberFromUnknown(metricsSnapshot().unrealized_pnl), true)}
                   </p>
                 </div>
@@ -696,7 +698,7 @@ export default function PaperSessionDetailPage() {
                         type="button"
                         disabled={busyAction() === `status-${action.status}`}
                         onClick={() => handleStatusChange(action.status)}
-                        class={`rounded-sm transition-colors disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500 ${action.tone}`}
+                        class={`rounded-sm transition-colors disabled:cursor-not-allowed disabled:border-stone-800 disabled:bg-stone-900 disabled:text-stone-500 ${action.tone}`}
                       >
                         {busyAction() === `status-${action.status}` ? "Updating..." : action.label}
                     </button>
@@ -712,9 +714,9 @@ export default function PaperSessionDetailPage() {
                     <p class="app-kicker">Paper Execution</p>
                   </div>
 
-                  <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-4 space-y-4">
+                  <div class="rounded-md border border-stone-800 bg-stone-950/60 px-4 py-4 space-y-4">
                     <div class="flex flex-wrap items-center gap-2">
-                      <p class="text-sm font-medium text-zinc-100">Historical Runner (Phase 3A)</p>
+                      <p class="text-sm font-medium text-stone-100">Historical Runner (Phase 3A)</p>
                       <span
                         class={`rounded-sm border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.18em] ${runnerModeTone(
                           stringFromUnknown(runnerState().mode),
@@ -723,30 +725,30 @@ export default function PaperSessionDetailPage() {
                         {stringFromUnknown(runnerState().mode) ?? "idle"}
                       </span>
                     </div>
-                    <p class="text-xs text-zinc-500">Historical DB candles as fake-live feed.</p>
+                    <p class="text-xs text-stone-500">Historical DB candles as fake-live feed.</p>
 
                     <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                       <div class="app-subpanel px-4 py-3">
                         <p class="app-kicker">Bars Processed</p>
-                        <p class="mt-2 text-sm font-semibold text-zinc-100">
+                        <p class="mt-2 text-sm font-semibold text-stone-100">
                           {formatNumber(numberFromUnknown(runnerState().bars_processed), 0)}
                         </p>
                       </div>
                       <div class="app-subpanel px-4 py-3">
                         <p class="app-kicker">Last Candle</p>
-                        <p class="mt-2 text-sm font-semibold text-zinc-100">
+                        <p class="mt-2 text-sm font-semibold text-stone-100">
                           {formatTimestamp(stringFromUnknown(runnerState().last_candle_time))}
                         </p>
                       </div>
                       <div class="app-subpanel px-4 py-3">
                         <p class="app-kicker">Last Price</p>
-                        <p class="mt-2 text-sm font-semibold text-zinc-100">
+                        <p class="mt-2 text-sm font-semibold text-stone-100">
                           {formatNumber(numberFromUnknown(runnerState().last_price), 4)}
                         </p>
                       </div>
                       <div class="app-subpanel px-4 py-3">
                         <p class="app-kicker">Runner Error</p>
-                        <p class="mt-2 text-sm font-semibold text-zinc-100">
+                        <p class="mt-2 text-sm font-semibold text-stone-100">
                           {stringFromUnknown(runnerState().last_error) ?? "none"}
                         </p>
                       </div>
@@ -758,14 +760,14 @@ export default function PaperSessionDetailPage() {
                         value={runnerStartDate()}
                         onInput={(event) => setRunnerStartDate(event.currentTarget.value)}
                         placeholder="Runner window start"
-                        class="w-full rounded-sm border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                        class="w-full rounded-sm border border-stone-700 bg-stone-950 px-4 py-3 text-sm text-stone-100 outline-none transition-colors focus:border-stone-500"
                       />
                       <input
                         type="datetime-local"
                         value={runnerEndDate()}
                         onInput={(event) => setRunnerEndDate(event.currentTarget.value)}
                         placeholder="Runner window end"
-                        class="w-full rounded-sm border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                        class="w-full rounded-sm border border-stone-700 bg-stone-950 px-4 py-3 text-sm text-stone-100 outline-none transition-colors focus:border-stone-500"
                       />
                       <input
                         type="number"
@@ -774,16 +776,16 @@ export default function PaperSessionDetailPage() {
                         value={runnerPollInterval()}
                         onInput={(event) => setRunnerPollInterval(event.currentTarget.value)}
                         placeholder="Poll ms"
-                        class="w-full rounded-sm border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                        class="w-full rounded-sm border border-stone-700 bg-stone-950 px-4 py-3 text-sm text-stone-100 outline-none transition-colors focus:border-stone-500"
                       />
                     </div>
 
-                    <label class="inline-flex items-center gap-2 text-xs text-zinc-400">
+                    <label class="inline-flex items-center gap-2 text-xs text-stone-400">
                       <input
                         type="checkbox"
                         checked={runnerResetCursor()}
                         onChange={(event) => setRunnerResetCursor(event.currentTarget.checked)}
-                        class="rounded border-zinc-700 bg-zinc-950 text-zinc-100"
+                        class="rounded border-stone-700 bg-stone-950 text-stone-100"
                       />
                       Reset the bar cursor when starting.
                     </label>
@@ -793,7 +795,7 @@ export default function PaperSessionDetailPage() {
                         type="button"
                         disabled={busyAction() === "runner-start"}
                         onClick={handleRunnerStart}
-                        class="rounded-sm bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+                        class="rounded-sm bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-stone-800 disabled:text-stone-500"
                       >
                         {busyAction() === "runner-start" ? "Starting..." : "Start Runner"}
                       </button>
@@ -801,24 +803,24 @@ export default function PaperSessionDetailPage() {
                         type="button"
                         disabled={busyAction() === "runner-pause"}
                         onClick={handleRunnerPause}
-                        class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                        class="rounded-sm border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 transition-colors hover:border-stone-500 hover:bg-stone-900 disabled:cursor-not-allowed disabled:border-stone-800 disabled:bg-stone-900 disabled:text-stone-500"
                       >
                         {busyAction() === "runner-pause" ? "Pausing..." : "Pause Runner"}
                       </button>
-                      <div class="flex items-center gap-2 rounded-sm border border-zinc-700 px-2 py-1.5">
+                      <div class="flex items-center gap-2 rounded-sm border border-stone-700 px-2 py-1.5">
                         <input
                           type="number"
                           min="1"
                           max="500"
                           value={runnerStepCount()}
                           onInput={(event) => setRunnerStepCount(event.currentTarget.value)}
-                          class="w-20 bg-transparent px-2 py-1 text-sm text-zinc-100 outline-none"
+                          class="w-20 bg-transparent px-2 py-1 text-sm text-stone-100 outline-none"
                         />
                         <button
                           type="button"
                           disabled={busyAction() === "runner-step"}
                           onClick={handleRunnerStep}
-                          class="rounded-sm border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:text-zinc-500"
+                          class="rounded-sm border border-stone-700 px-3 py-1.5 text-xs font-medium text-stone-100 transition-colors hover:border-stone-500 hover:bg-stone-900 disabled:cursor-not-allowed disabled:border-stone-800 disabled:text-stone-500"
                         >
                           {busyAction() === "runner-step" ? "Stepping..." : "Step Bars"}
                         </button>
@@ -828,33 +830,38 @@ export default function PaperSessionDetailPage() {
 
                   <div class="grid gap-3 md:grid-cols-2">
                     <div class="app-subpanel px-4 py-4">
-                      <p class="text-sm font-medium text-zinc-100">Session setup</p>
-                      <p class="mt-3 text-sm text-zinc-300">
-                        Prop preset: {entry().prop_firm_rules.name}
-                      </p>
-                      <p class="mt-1 text-sm text-zinc-300">
+                      <p class="text-sm font-medium text-stone-100">Session setup</p>
+                      <div class="mt-3 flex items-center gap-2">
+                        <Show
+                          when={firmLogoSrc(entry().prop_firm_rules.name)}
+                          fallback={<p class="text-sm text-stone-300">Prop preset: {entry().prop_firm_rules.name}</p>}
+                        >
+                          <FirmLogo firmName={entry().prop_firm_rules.name} heightClass="h-5" />
+                        </Show>
+                      </div>
+                      <p class="mt-1 text-sm text-stone-300">
                         Commission: {formatCurrency(entry().commission)}
                       </p>
-                      <p class="mt-1 text-sm text-zinc-300">
+                      <p class="mt-1 text-sm text-stone-300">
                         Tick value: {formatCurrency(entry().tick_value)}
                       </p>
                     </div>
                     <div class="app-subpanel px-4 py-4">
-                      <p class="text-sm font-medium text-zinc-100">Current position</p>
-                      <p class="mt-3 text-sm text-zinc-300">
+                      <p class="text-sm font-medium text-stone-100">Current position</p>
+                      <p class="mt-3 text-sm text-stone-300">
                         {positionLabel(
                           stringFromUnknown(currentPosition().side),
                           numberFromUnknown(currentPosition().quantity) ??
                             numberFromUnknown(currentPosition().contracts),
                         )}
                       </p>
-                      <p class="mt-1 text-sm text-zinc-300">
+                      <p class="mt-1 text-sm text-stone-300">
                         Entry: {formatTimestamp(stringFromUnknown(currentPosition().entry_time))}
                       </p>
-                      <p class="mt-1 text-sm text-zinc-300">
+                      <p class="mt-1 text-sm text-stone-300">
                         Mark: {formatNumber(numberFromUnknown(currentPosition().mark_price), 4)}
                       </p>
-                      <p class="mt-1 text-sm text-zinc-300">
+                      <p class="mt-1 text-sm text-stone-300">
                         Unrealized: {formatCurrency(numberFromUnknown(currentPosition().unrealized_pnl), true)}
                       </p>
                     </div>
@@ -863,7 +870,7 @@ export default function PaperSessionDetailPage() {
                   <div class="grid gap-3 md:grid-cols-3">
                     <div class="app-subpanel px-4 py-4">
                       <p class="app-kicker">Synthetic Book</p>
-                      <p class="mt-2 text-sm font-semibold text-zinc-100">
+                      <p class="mt-2 text-sm font-semibold text-stone-100">
                         {quoteLabel(lastQuote())}
                       </p>
                     </div>
@@ -872,11 +879,11 @@ export default function PaperSessionDetailPage() {
                       <div class="mt-2 space-y-2">
                         <Show
                           when={activeOrders().length > 0}
-                          fallback={<p class="text-sm font-semibold text-zinc-100">No resting order.</p>}
+                          fallback={<p class="text-sm font-semibold text-stone-100">No resting order.</p>}
                         >
                           <For each={activeOrders()}>
                             {(order) => (
-                              <p class="rounded-sm border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-sm font-semibold text-zinc-100">
+                              <p class="rounded-sm border border-stone-800 bg-stone-950/70 px-3 py-2 text-sm font-semibold text-stone-100">
                                 {orderLabel(order)}
                               </p>
                             )}
@@ -886,7 +893,7 @@ export default function PaperSessionDetailPage() {
                     </div>
                     <div class="app-subpanel px-4 py-4">
                       <p class="app-kicker">Model</p>
-                      <p class="mt-2 text-sm font-semibold text-zinc-100">
+                      <p class="mt-2 text-sm font-semibold text-stone-100">
                         {formatNumber(numberFromUnknown(entry().tick_size), 4)} tick / {formatNumber(numberFromUnknown(entry().spread_ticks), 0)} base spread / {formatNumber(numberFromUnknown(lastQuote().spread_ticks) ?? numberFromUnknown(entry().spread_ticks), 0)} live / {formatRestingFillMode(stringFromUnknown(entry().resting_fill_mode))}
                       </p>
                     </div>
@@ -895,65 +902,65 @@ export default function PaperSessionDetailPage() {
                   <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     <div class="app-subpanel px-4 py-4">
                       <p class="app-kicker">Entry Mix</p>
-                      <p class="mt-2 text-sm font-semibold text-zinc-100">
+                      <p class="mt-2 text-sm font-semibold text-stone-100">
                         {executionAnalytics()
                           ? `${executionAnalytics()!.summary.makerEntries} maker / ${executionAnalytics()!.summary.takerEntries} taker`
                           : "0 / 0"}
                       </p>
-                      <p class="mt-1 text-xs text-zinc-500">How the session has been getting in.</p>
+                      <p class="mt-1 text-xs text-stone-500">How the session has been getting in.</p>
                     </div>
                     <div class="app-subpanel px-4 py-4">
                       <p class="app-kicker">Exit Mix</p>
-                      <p class="mt-2 text-sm font-semibold text-zinc-100">
+                      <p class="mt-2 text-sm font-semibold text-stone-100">
                         {executionAnalytics()
                           ? `${executionAnalytics()!.summary.makerExits} maker / ${executionAnalytics()!.summary.takerExits} taker`
                           : "0 / 0"}
                       </p>
-                      <p class="mt-1 text-xs text-zinc-500">Resting exits now count as maker closes too.</p>
+                      <p class="mt-1 text-xs text-stone-500">Resting exits now count as maker closes too.</p>
                     </div>
                     <div class="app-subpanel px-4 py-4">
                       <p class="app-kicker">Avg Entry Slip</p>
                       <p
                         class={`mt-2 text-sm font-semibold ${
                           (executionAnalytics()?.summary.avgEntrySlippageTicks ?? 0) < 0
-                            ? "text-emerald-300"
+                            ? "text-green-300"
                             : (executionAnalytics()?.summary.avgEntrySlippageTicks ?? 0) > 0
                               ? "text-red-300"
-                              : "text-zinc-100"
+                              : "text-stone-100"
                         }`}
                       >
                         {formatTicks(executionAnalytics()?.summary.avgEntrySlippageTicks)}
                       </p>
-                      <p class="mt-1 text-xs text-zinc-500">Versus the synthetic reference on that fill.</p>
+                      <p class="mt-1 text-xs text-stone-500">Versus the synthetic reference on that fill.</p>
                     </div>
                     <div class="app-subpanel px-4 py-4">
                       <p class="app-kicker">Avg Exit Slip</p>
                       <p
                         class={`mt-2 text-sm font-semibold ${
                           (executionAnalytics()?.summary.avgExitSlippageTicks ?? 0) < 0
-                            ? "text-emerald-300"
+                            ? "text-green-300"
                             : (executionAnalytics()?.summary.avgExitSlippageTicks ?? 0) > 0
                               ? "text-red-300"
-                              : "text-zinc-100"
+                              : "text-stone-100"
                         }`}
                       >
                         {formatTicks(executionAnalytics()?.summary.avgExitSlippageTicks)}
                       </p>
-                      <p class="mt-1 text-xs text-zinc-500">Reversal exits count now too, not just manual flatten.</p>
+                      <p class="mt-1 text-xs text-stone-500">Reversal exits count now too, not just manual flatten.</p>
                     </div>
                     <div class="app-subpanel px-4 py-4">
                       <p class="app-kicker">Closed Fills</p>
-                      <p class="mt-2 text-sm font-semibold text-zinc-100">
+                      <p class="mt-2 text-sm font-semibold text-stone-100">
                         {executionAnalytics()?.summary.totalExits ?? 0}
                       </p>
-                      <p class="mt-1 text-xs text-zinc-500">Matched against the session trade log.</p>
+                      <p class="mt-1 text-xs text-stone-500">Matched against the session trade log.</p>
                     </div>
                     <div class="app-subpanel px-4 py-4">
                       <p class="app-kicker">Tape Coverage</p>
-                      <p class="mt-2 text-sm font-semibold text-zinc-100">
+                      <p class="mt-2 text-sm font-semibold text-stone-100">
                         {executionAnalytics()?.summary.totalFills ?? 0} fills
                       </p>
-                      <p class="mt-1 text-xs text-zinc-500">Markouts stay n/a here until we persist bar-level fill history.</p>
+                      <p class="mt-1 text-xs text-stone-500">Markouts stay n/a here until we persist bar-level fill history.</p>
                     </div>
                   </div>
 
@@ -962,7 +969,7 @@ export default function PaperSessionDetailPage() {
                     onInput={(event) => setExecutionNote(event.currentTarget.value)}
                     rows={2}
                     placeholder="Optional execution note..."
-                    class="w-full rounded-sm border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                    class="w-full rounded-sm border border-stone-700 bg-stone-950 px-4 py-3 text-sm text-stone-100 outline-none transition-colors focus:border-stone-500"
                   />
 
                   <div class="grid gap-3 md:grid-cols-[180px_1fr]">
@@ -976,9 +983,9 @@ export default function PaperSessionDetailPage() {
                         setEntryQuantity(Number.isFinite(next) && next > 0 ? next : 1);
                       }}
                       placeholder="Contracts"
-                      class="w-full rounded-sm border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                      class="w-full rounded-sm border border-stone-700 bg-stone-950 px-4 py-3 text-sm text-stone-100 outline-none transition-colors focus:border-stone-500"
                     />
-                    <div class="rounded-sm border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-400">
+                    <div class="rounded-sm border border-stone-700 bg-stone-950 px-4 py-3 text-sm text-stone-400">
                       Use this size for lift, hit, and join orders.
                     </div>
                   </div>
@@ -990,7 +997,7 @@ export default function PaperSessionDetailPage() {
                       value={bracketStopPrice()}
                       onInput={(event) => setBracketStopPrice(event.currentTarget.value)}
                       placeholder="Bracket stop"
-                      class="w-full rounded-sm border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                      class="w-full rounded-sm border border-stone-700 bg-stone-950 px-4 py-3 text-sm text-stone-100 outline-none transition-colors focus:border-stone-500"
                     />
                     <input
                       type="number"
@@ -998,13 +1005,13 @@ export default function PaperSessionDetailPage() {
                       value={bracketTargetPrice()}
                       onInput={(event) => setBracketTargetPrice(event.currentTarget.value)}
                       placeholder="Bracket target"
-                      class="w-full rounded-sm border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                      class="w-full rounded-sm border border-stone-700 bg-stone-950 px-4 py-3 text-sm text-stone-100 outline-none transition-colors focus:border-stone-500"
                     />
                     <button
                       type="button"
                       disabled={busyAction() === "execute" || !hasOpenPosition() || hasActiveOrder()}
                       onClick={handleAttachBracket}
-                      class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                      class="rounded-sm border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 transition-colors hover:border-stone-500 hover:bg-stone-900 disabled:cursor-not-allowed disabled:border-stone-800 disabled:bg-stone-900 disabled:text-stone-500"
                     >
                       Attach Bracket
                     </button>
@@ -1015,23 +1022,23 @@ export default function PaperSessionDetailPage() {
                       type="button"
                       disabled={busyAction() === "execute"}
                       onClick={() => handleExecution("lift_ask")}
-                      class="rounded-sm bg-emerald-400 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-300 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+                      class="rounded-sm bg-green-400 px-4 py-2 text-sm font-semibold text-stone-950 transition-colors hover:bg-green-300 disabled:cursor-not-allowed disabled:bg-stone-800 disabled:text-stone-500"
                     >
-                      Lift Ask
+                      MKT BUY
                     </button>
                     <button
                       type="button"
                       disabled={busyAction() === "execute"}
                       onClick={() => handleExecution("hit_bid")}
-                      class="rounded-sm bg-rose-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-rose-400 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+                      class="rounded-sm bg-rose-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-rose-400 disabled:cursor-not-allowed disabled:bg-stone-800 disabled:text-stone-500"
                     >
-                      Hit Bid
+                      MKT SELL
                     </button>
                     <button
                       type="button"
                       disabled={busyAction() === "execute" || hasOpenPosition() || hasActiveOrder()}
                       onClick={() => handleExecution("join_bid")}
-                      class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                      class="rounded-sm border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 transition-colors hover:border-stone-500 hover:bg-stone-900 disabled:cursor-not-allowed disabled:border-stone-800 disabled:bg-stone-900 disabled:text-stone-500"
                     >
                       Join Bid
                     </button>
@@ -1039,7 +1046,7 @@ export default function PaperSessionDetailPage() {
                       type="button"
                       disabled={busyAction() === "execute" || hasOpenPosition() || hasActiveOrder()}
                       onClick={() => handleExecution("join_ask")}
-                      class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                      class="rounded-sm border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 transition-colors hover:border-stone-500 hover:bg-stone-900 disabled:cursor-not-allowed disabled:border-stone-800 disabled:bg-stone-900 disabled:text-stone-500"
                     >
                       Join Ask
                     </button>
@@ -1047,7 +1054,7 @@ export default function PaperSessionDetailPage() {
                       type="button"
                       disabled={busyAction() === "execute" || !hasOpenPosition() || hasActiveOrder()}
                       onClick={() => handleExecution("rest_exit")}
-                      class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                      class="rounded-sm border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 transition-colors hover:border-stone-500 hover:bg-stone-900 disabled:cursor-not-allowed disabled:border-stone-800 disabled:bg-stone-900 disabled:text-stone-500"
                     >
                       Rest Exit
                     </button>
@@ -1055,7 +1062,7 @@ export default function PaperSessionDetailPage() {
                       type="button"
                       disabled={busyAction() === "execute" || !hasSingleActiveOrder()}
                       onClick={() => handleExecution("replace")}
-                      class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                      class="rounded-sm border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 transition-colors hover:border-stone-500 hover:bg-stone-900 disabled:cursor-not-allowed disabled:border-stone-800 disabled:bg-stone-900 disabled:text-stone-500"
                     >
                       Replace
                     </button>
@@ -1063,7 +1070,7 @@ export default function PaperSessionDetailPage() {
                       type="button"
                       disabled={busyAction() === "execute" || !hasActiveOrder()}
                       onClick={() => handleExecution("cancel")}
-                      class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                      class="rounded-sm border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 transition-colors hover:border-stone-500 hover:bg-stone-900 disabled:cursor-not-allowed disabled:border-stone-800 disabled:bg-stone-900 disabled:text-stone-500"
                     >
                       Cancel
                     </button>
@@ -1071,12 +1078,12 @@ export default function PaperSessionDetailPage() {
                       type="button"
                       disabled={busyAction() === "execute" || (!hasOpenPosition() && !hasActiveOrder())}
                       onClick={() => handleExecution("flatten")}
-                      class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                      class="rounded-sm border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 transition-colors hover:border-stone-500 hover:bg-stone-900 disabled:cursor-not-allowed disabled:border-stone-800 disabled:bg-stone-900 disabled:text-stone-500"
                     >
                       Flatten
                     </button>
                     <Show when={hasOpenPosition()}>
-                    <span class="rounded-sm border border-zinc-700 px-3 py-2 text-xs text-zinc-400">
+                    <span class="rounded-sm border border-stone-700 px-3 py-2 text-xs text-stone-400">
                       Position is open, so `flatten` uses the synthetic opposite side.
                     </span>
                     </Show>
@@ -1093,14 +1100,14 @@ export default function PaperSessionDetailPage() {
                       value={eventType()}
                       onInput={(event) => setEventType(event.currentTarget.value)}
                       placeholder="operator_note"
-                      class="w-full rounded-sm border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                      class="w-full rounded-sm border border-stone-700 bg-stone-950 px-4 py-3 text-sm text-stone-100 outline-none transition-colors focus:border-stone-500"
                     />
                     <textarea
                       value={eventSummary()}
                       onInput={(event) => setEventSummary(event.currentTarget.value)}
                       rows={3}
                       placeholder="Add a real session note..."
-                      class="w-full rounded-sm border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-500"
+                      class="w-full rounded-sm border border-stone-700 bg-stone-950 px-4 py-3 text-sm text-stone-100 outline-none transition-colors focus:border-stone-500"
                     />
                   </div>
 
@@ -1108,20 +1115,20 @@ export default function PaperSessionDetailPage() {
                     type="button"
                     disabled={busyAction() === "event-save"}
                     onClick={handleEventSave}
-                    class="rounded-sm border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-500 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+                    class="rounded-sm border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 transition-colors hover:border-stone-500 hover:bg-stone-900 disabled:cursor-not-allowed disabled:border-stone-800 disabled:bg-stone-900 disabled:text-stone-500"
                   >
                     {busyAction() === "event-save" ? "Saving event..." : "Save Event"}
                   </button>
 
-                  <div class="rounded-md border border-zinc-800 bg-zinc-950/60">
-                    <div class="border-b border-zinc-800 px-4 py-4">
+                  <div class="rounded-md border border-stone-800 bg-stone-950/60">
+                    <div class="border-b border-stone-800 px-4 py-4">
                       <p class="app-kicker">Execution Tape</p>
-                      <p class="mt-1 text-sm text-zinc-400">
+                      <p class="mt-1 text-sm text-stone-400">
                         Recent fills and order lifecycle pulled out of the paper event trail.
                       </p>
                     </div>
                     <table class="w-full text-sm">
-                      <thead class="text-xs text-zinc-400">
+                      <thead class="text-xs text-stone-400">
                         <tr>
                           <th class="p-3 text-left">Time</th>
                           <th class="p-3 text-left">Action</th>
@@ -1135,8 +1142,8 @@ export default function PaperSessionDetailPage() {
                         <Show
                           when={(executionAnalytics()?.tape.length ?? 0) > 0}
                           fallback={
-                            <tr class="border-t border-zinc-800">
-                              <td class="p-4 text-zinc-500" colSpan={6}>
+                            <tr class="border-t border-stone-800">
+                              <td class="p-4 text-stone-500" colSpan={6}>
                                 No paper execution events yet.
                               </td>
                             </tr>
@@ -1144,36 +1151,36 @@ export default function PaperSessionDetailPage() {
                         >
                           <For each={[...(executionAnalytics()?.tape ?? [])].reverse().slice(0, 12)}>
                             {(row) => (
-                              <tr class="border-t border-zinc-800 transition-colors hover:bg-zinc-900/70">
-                                <td class="p-3 font-mono text-xs text-zinc-400">{formatTimestamp(row.time)}</td>
-                                <td class="p-3 text-zinc-200">
+                              <tr class="border-t border-stone-800 transition-colors hover:bg-stone-900/70">
+                                <td class="p-3 font-mono text-xs text-stone-400">{formatTimestamp(row.time)}</td>
+                                <td class="p-3 text-stone-200">
                                   {row.action}
                                   <Show when={row.side}>
-                                    <span class="ml-2 text-xs uppercase tracking-[0.18em] text-zinc-500">
+                                    <span class="ml-2 text-xs uppercase tracking-[0.18em] text-stone-500">
                                       {row.side}
                                     </span>
                                   </Show>
                                 </td>
-                                <td class="p-3 text-zinc-400">
+                                <td class="p-3 text-stone-400">
                                   {row.role === "n/a" ? row.category : `${row.role} ${row.liquidity}`}
                                 </td>
-                                <td class="p-3 text-right font-mono text-zinc-200">
+                                <td class="p-3 text-right font-mono text-stone-200">
                                   {row.price === null ? "n/a" : row.price.toFixed(2)}
                                 </td>
                                 <td
                                   class={`p-3 text-right font-mono ${
                                     row.slippageTicks === null
-                                      ? "text-zinc-500"
+                                      ? "text-stone-500"
                                       : row.slippageTicks < 0
-                                        ? "text-emerald-300"
+                                        ? "text-green-300"
                                         : row.slippageTicks > 0
                                           ? "text-red-300"
-                                          : "text-zinc-200"
+                                          : "text-stone-200"
                                   }`}
                                 >
                                   {formatTicks(row.slippageTicks)}
                                 </td>
-                                <td class="p-3 text-zinc-400">{row.note ?? " "}</td>
+                                <td class="p-3 text-stone-400">{row.note ?? " "}</td>
                               </tr>
                             )}
                           </For>
@@ -1186,27 +1193,27 @@ export default function PaperSessionDetailPage() {
                     <Show
                       when={(events() ?? []).length > 0}
                       fallback={
-                        <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-6 text-sm text-zinc-500">
+                        <div class="rounded-md border border-stone-800 bg-stone-950/60 px-4 py-6 text-sm text-stone-500">
                           No events yet.
                         </div>
                       }
                     >
                       <For each={[...(events() ?? [])].reverse()}>
                         {(event) => (
-                          <article class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-4">
+                          <article class="rounded-md border border-stone-800 bg-stone-950/60 px-4 py-4">
                             <div class="flex flex-wrap items-center gap-2">
-                              <span class="rounded-sm border border-zinc-700 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-300">
+                              <span class="rounded-sm border border-stone-700 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-stone-300">
                                 {event.event_type.replace(/_/g, " ")}
                               </span>
-                              <span class="text-xs text-zinc-500">{event.actor}</span>
+                              <span class="text-xs text-stone-500">{event.actor}</span>
                             </div>
-                            <p class="mt-3 text-sm text-zinc-200">{event.summary}</p>
+                            <p class="mt-3 text-sm text-stone-200">{event.summary}</p>
                             <Show when={Object.keys(event.payload ?? {}).length > 0}>
-                              <pre class="mt-3 overflow-x-auto rounded-md border border-zinc-800 bg-zinc-950 px-4 py-3 text-xs text-zinc-400">
+                              <pre class="mt-3 overflow-x-auto rounded-md border border-stone-800 bg-stone-950 px-4 py-3 text-xs text-stone-400">
                                 {formatJson(event.payload)}
                               </pre>
                             </Show>
-                            <p class="mt-3 text-xs text-zinc-500">{formatTimestamp(event.created_at)}</p>
+                            <p class="mt-3 text-xs text-stone-500">{formatTimestamp(event.created_at)}</p>
                           </article>
                         )}
                       </For>
@@ -1223,32 +1230,32 @@ export default function PaperSessionDetailPage() {
                   <div class="space-y-4">
                     <div class="grid gap-3 md:grid-cols-2">
                       <div class="app-subpanel px-4 py-4">
-                        <p class="text-sm font-medium text-zinc-100">Prop state</p>
-                        <p class="mt-3 text-sm text-zinc-300">
+                        <p class="text-sm font-medium text-stone-100">Prop state</p>
+                        <p class="mt-3 text-sm text-stone-300">
                           Passed: {String(Boolean(guardrailState().passed))}
                         </p>
-                        <p class="mt-1 text-sm text-zinc-300">
+                        <p class="mt-1 text-sm text-stone-300">
                           Drawdown breached: {String(Boolean(guardrailState().drawdown_breached))}
                         </p>
-                        <p class="mt-1 text-sm text-zinc-300">
+                        <p class="mt-1 text-sm text-stone-300">
                           Daily loss breached: {String(Boolean(guardrailState().daily_loss_breached))}
                         </p>
-                        <p class="mt-1 text-sm text-zinc-300">
+                        <p class="mt-1 text-sm text-stone-300">
                           Profit target hit: {String(Boolean(guardrailState().profit_target_hit))}
                         </p>
                       </div>
                       <div class="app-subpanel px-4 py-4">
-                        <p class="text-sm font-medium text-zinc-100">Performance</p>
-                        <p class="mt-3 text-sm text-zinc-300">
+                        <p class="text-sm font-medium text-stone-100">Performance</p>
+                        <p class="mt-3 text-sm text-stone-300">
                           Profit factor: {formatNumber(numberFromUnknown(metricsSnapshot().profit_factor))}
                         </p>
-                        <p class="mt-1 text-sm text-zinc-300">
+                        <p class="mt-1 text-sm text-stone-300">
                           Max drawdown: {formatPercent(numberFromUnknown(metricsSnapshot().max_drawdown), 2)}
                         </p>
-                        <p class="mt-1 text-sm text-zinc-300">
+                        <p class="mt-1 text-sm text-stone-300">
                           Best trade: {formatCurrency(numberFromUnknown(metricsSnapshot().best_trade), true)}
                         </p>
-                        <p class="mt-1 text-sm text-zinc-300">
+                        <p class="mt-1 text-sm text-stone-300">
                           Worst trade: {formatCurrency(numberFromUnknown(metricsSnapshot().worst_trade), true)}
                         </p>
                       </div>
@@ -1256,35 +1263,35 @@ export default function PaperSessionDetailPage() {
 
                     <div class="app-subpanel px-4 py-4">
                       <div class="flex items-center justify-between gap-3">
-                        <p class="text-sm font-medium text-zinc-100">Closed trades</p>
-                        <span class="text-xs text-zinc-500">{tradeLog().length} total</span>
+                        <p class="text-sm font-medium text-stone-100">Closed trades</p>
+                        <span class="text-xs text-stone-500">{tradeLog().length} total</span>
                       </div>
                       <Show
                         when={tradeLog().length > 0}
-                        fallback={<p class="mt-3 text-sm text-zinc-500">No closed paper trades yet.</p>}
+                        fallback={<p class="mt-3 text-sm text-stone-500">No closed paper trades yet.</p>}
                       >
                         <div class="mt-3 space-y-3">
                           <For each={[...tradeLog()].reverse().slice(0, 6)}>
                             {(trade: Trade) => (
-                              <article class="rounded-md border border-zinc-800 bg-zinc-950 px-4 py-3">
+                              <article class="rounded-md border border-stone-800 bg-stone-950 px-4 py-3">
                                 <div class="flex flex-wrap items-center justify-between gap-2">
-                                  <span class="text-sm font-medium text-zinc-100">
+                                  <span class="text-sm font-medium text-stone-100">
                                     {formatTradeLabel(trade.side, trade.quantity)}
                                   </span>
                                   <span
                                     class={`text-sm font-semibold ${
-                                      trade.pnl >= 0 ? "text-emerald-300" : "text-red-300"
+                                      trade.pnl >= 0 ? "text-green-300" : "text-red-300"
                                     }`}
                                   >
                                     {formatCurrency(trade.pnl, true)}
                                   </span>
                                 </div>
-                                <p class="mt-2 text-xs text-zinc-500">
+                                <p class="mt-2 text-xs text-stone-500">
                                   {formatTimestamp(trade.entry_time)}
                                   {" -> "}
                                   {formatTimestamp(trade.exit_time)}
                                 </p>
-                                <p class="mt-1 text-xs text-zinc-500">
+                                <p class="mt-1 text-xs text-stone-500">
                                   {formatNumber(trade.entry_price, 4)}
                                   {" -> "}
                                   {formatNumber(trade.exit_price, 4)}
@@ -1297,38 +1304,38 @@ export default function PaperSessionDetailPage() {
                     </div>
 
                     <div class="app-subpanel px-4 py-4">
-                      <p class="text-sm font-medium text-zinc-100">Current position</p>
-                      <pre class="mt-3 overflow-x-auto text-xs text-zinc-400">
+                      <p class="text-sm font-medium text-stone-100">Current position</p>
+                      <pre class="mt-3 overflow-x-auto text-xs text-stone-400">
                         {formatJson(entry().current_position)}
                       </pre>
                     </div>
                     <div class="app-subpanel px-4 py-4">
-                      <p class="text-sm font-medium text-zinc-100">Trade log</p>
-                      <pre class="mt-3 overflow-x-auto text-xs text-zinc-400">
+                      <p class="text-sm font-medium text-stone-100">Trade log</p>
+                      <pre class="mt-3 overflow-x-auto text-xs text-stone-400">
                         {JSON.stringify(entry().trade_log, null, 2)}
                       </pre>
                     </div>
                     <div class="app-subpanel px-4 py-4">
-                      <p class="text-sm font-medium text-zinc-100">Equity curve</p>
-                      <pre class="mt-3 overflow-x-auto text-xs text-zinc-400">
+                      <p class="text-sm font-medium text-stone-100">Equity curve</p>
+                      <pre class="mt-3 overflow-x-auto text-xs text-stone-400">
                         {JSON.stringify(entry().equity_curve, null, 2)}
                       </pre>
                     </div>
                     <div class="app-subpanel px-4 py-4">
-                      <p class="text-sm font-medium text-zinc-100">Metrics snapshot</p>
-                      <pre class="mt-3 overflow-x-auto text-xs text-zinc-400">
+                      <p class="text-sm font-medium text-stone-100">Metrics snapshot</p>
+                      <pre class="mt-3 overflow-x-auto text-xs text-stone-400">
                         {formatJson(entry().metrics_snapshot)}
                       </pre>
                     </div>
                     <div class="app-subpanel px-4 py-4">
-                      <p class="text-sm font-medium text-zinc-100">Guardrail state</p>
-                      <pre class="mt-3 overflow-x-auto text-xs text-zinc-400">
+                      <p class="text-sm font-medium text-stone-100">Guardrail state</p>
+                      <pre class="mt-3 overflow-x-auto text-xs text-stone-400">
                         {formatJson(entry().guardrail_state)}
                       </pre>
                     </div>
                     <div class="app-subpanel px-4 py-4">
-                      <p class="text-sm font-medium text-zinc-100">Guardrails snapshot</p>
-                      <pre class="mt-3 overflow-x-auto text-xs text-zinc-400">
+                      <p class="text-sm font-medium text-stone-100">Guardrails snapshot</p>
+                      <pre class="mt-3 overflow-x-auto text-xs text-stone-400">
                         {formatJson(entry().guardrails)}
                       </pre>
                     </div>

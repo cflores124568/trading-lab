@@ -22,7 +22,7 @@ function formatPercent(value: number | undefined): string {
 }
 
 function winnerTone(isWinner: boolean): string {
-  return isWinner ? "app-panel-selected border-sky-400/85" : "border-zinc-700/80 bg-zinc-950/70";
+  return isWinner ? "app-panel-selected border-stone-200/85" : "border-stone-700/80 bg-stone-950/70";
 }
 
 function formatExecutionMode(value: "bar" | "synthetic_quotes" | undefined): string {
@@ -105,7 +105,7 @@ export default function BacktestComparePage() {
           <Show
             when={comparison()}
             fallback={
-              <div class="app-panel app-panel-section text-sm text-zinc-400">
+              <div class="app-panel app-panel-section text-sm text-stone-400">
                 Missing compare params (a and b). Go back and select two backtests.
               </div>
             }
@@ -192,17 +192,17 @@ export default function BacktestComparePage() {
 
                   <section class="app-panel overflow-x-auto">
                     <div class="min-w-[720px]">
-                      <div class="grid grid-cols-[minmax(0,1fr)_180px_180px_120px] border-b border-zinc-700/80 bg-zinc-950/80">
-                      <div class="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
+                      <div class="grid grid-cols-[minmax(0,1fr)_180px_180px_120px] border-b border-stone-700/80 bg-stone-950/80">
+                      <div class="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-500">
                         Execution Assumption
                       </div>
-                      <div class="app-data border-l border-zinc-700/80 px-3 py-2.5 text-sm font-semibold text-zinc-200">
+                      <div class="app-data border-l border-stone-700/80 px-3 py-2.5 text-sm font-semibold text-stone-200">
                         {a.backtest_id}
                       </div>
-                      <div class="app-data border-l border-zinc-700/80 px-3 py-2.5 text-sm font-semibold text-zinc-200">
+                      <div class="app-data border-l border-stone-700/80 px-3 py-2.5 text-sm font-semibold text-stone-200">
                         {b.backtest_id}
                       </div>
-                      <div class="border-l border-zinc-700/80 px-3 py-2.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
+                      <div class="border-l border-stone-700/80 px-3 py-2.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-500">
                         Diff
                       </div>
                       </div>
@@ -211,19 +211,19 @@ export default function BacktestComparePage() {
                         {(row) => {
                           const isSame = row.valueA === row.valueB;
                           return (
-                            <div class="grid grid-cols-[minmax(0,1fr)_180px_180px_120px] border-b border-zinc-800/90 last:border-b-0 hover:bg-zinc-900/70">
-                              <div class="px-3 py-2.5 text-sm text-zinc-400">{row.label}</div>
-                              <div class="app-data border-l border-zinc-700/80 px-3 py-2.5 text-sm text-zinc-200">
+                            <div class="grid grid-cols-[minmax(0,1fr)_180px_180px_120px] border-b border-stone-800/90 last:border-b-0 hover:bg-stone-900/70">
+                              <div class="px-3 py-2.5 text-sm text-stone-400">{row.label}</div>
+                              <div class="app-data border-l border-stone-700/80 px-3 py-2.5 text-sm text-stone-200">
                                 {row.valueA}
                               </div>
-                              <div class="app-data border-l border-zinc-700/80 px-3 py-2.5 text-sm text-zinc-200">
+                              <div class="app-data border-l border-stone-700/80 px-3 py-2.5 text-sm text-stone-200">
                                 {row.valueB}
                               </div>
-                              <div class="border-l border-zinc-700/80 px-3 py-2.5">
+                              <div class="border-l border-stone-700/80 px-3 py-2.5">
                                 <span
                                   class={`rounded-full px-2 py-1 text-[11px] font-semibold uppercase tracking-wide ${
                                     isSame
-                                      ? "border border-emerald-900/80 bg-emerald-950/40 text-emerald-300"
+                                      ? "border border-green-900/80 bg-green-950/40 text-green-300"
                                       : "border border-amber-900/80 bg-amber-950/40 text-amber-300"
                                   }`}
                                 >
@@ -239,8 +239,8 @@ export default function BacktestComparePage() {
 
                   <section class="grid gap-4 lg:grid-cols-2">
                     {[
-                      { title: "Run A", backtest: a, accent: "text-sky-300", key: "a" },
-                      { title: "Run B", backtest: b, accent: "text-zinc-300", key: "b" },
+                      { title: "Run A", backtest: a, accent: "text-stone-200", key: "a" },
+                      { title: "Run B", backtest: b, accent: "text-stone-400", key: "b" },
                     ].map(({ title, backtest, accent, key }) => {
                       const workspaceIntent =
                         backtest.symbol && backtest.replay_context?.interval
@@ -260,10 +260,10 @@ export default function BacktestComparePage() {
                           <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                             <div class="space-y-2">
                               <p class={`text-xs uppercase tracking-[0.18em] ${accent}`}>{title}</p>
-                              <h2 class="text-xl font-semibold text-zinc-100">
+                              <h2 class="text-xl font-semibold text-stone-100">
                                 {backtest.symbol} • {backtest.strategy.type.replace(/_/g, " ")}
                               </h2>
-                              <p class="app-data text-xs text-zinc-500">{backtest.backtest_id}</p>
+                              <p class="app-data text-xs text-stone-500">{backtest.backtest_id}</p>
                             </div>
 
                             <Show when={workspaceIntent}>
@@ -286,19 +286,19 @@ export default function BacktestComparePage() {
                             </div>
                             <div class={`rounded-md border px-4 py-3 ${winnerTone(winRateWinner === key)}`}>
                               <p class="app-metric-label">Win Rate</p>
-                              <p class="app-data mt-2 text-2xl font-semibold text-zinc-100">
+                              <p class="app-data mt-2 text-2xl font-semibold text-stone-100">
                                 {formatPercent(backtest.metrics.win_rate)}
                               </p>
                             </div>
                             <div class={`rounded-md border px-4 py-3 ${winnerTone(drawdownWinner === key)}`}>
                               <p class="app-metric-label">Max Drawdown</p>
-                              <p class="app-data mt-2 text-xl font-semibold text-zinc-100">
+                              <p class="app-data mt-2 text-xl font-semibold text-stone-100">
                                 {formatPercent(backtest.metrics.max_drawdown)}
                               </p>
                             </div>
-                            <div class="rounded-md border border-zinc-700/80 bg-zinc-950/60 px-4 py-3">
+                            <div class="rounded-md border border-stone-700/80 bg-stone-950/60 px-4 py-3">
                               <p class="app-metric-label">Created</p>
-                              <p class="mt-2 text-sm font-medium text-zinc-200">
+                              <p class="mt-2 text-sm font-medium text-stone-200">
                                 {backtest.created_at.slice(0, 10)}
                               </p>
                             </div>
@@ -309,26 +309,26 @@ export default function BacktestComparePage() {
                   </section>
 
                   <div class="app-panel overflow-hidden">
-                    <div class="grid grid-cols-3 border-b border-zinc-700/80 bg-zinc-950/80">
-                      <div class="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
+                    <div class="grid grid-cols-3 border-b border-stone-700/80 bg-stone-950/80">
+                      <div class="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-500">
                         Metric
                       </div>
-                      <div class="app-data border-l border-zinc-700/80 px-3 py-2.5 text-sm font-semibold text-zinc-200">
+                      <div class="app-data border-l border-stone-700/80 px-3 py-2.5 text-sm font-semibold text-stone-200">
                         {a.backtest_id}
                       </div>
-                      <div class="app-data border-l border-zinc-700/80 px-3 py-2.5 text-sm font-semibold text-zinc-200">
+                      <div class="app-data border-l border-stone-700/80 px-3 py-2.5 text-sm font-semibold text-stone-200">
                         {b.backtest_id}
                       </div>
                     </div>
 
                     <For each={metricRows}>
                       {(row) => (
-                        <div class="grid grid-cols-3 border-b border-zinc-800/90 last:border-b-0 hover:bg-zinc-900/70">
-                          <div class="px-3 py-2.5 text-sm text-zinc-400">{row.label}</div>
-                          <div class="app-data border-l border-zinc-700/80 px-3 py-2.5 text-sm text-zinc-200">
+                        <div class="grid grid-cols-3 border-b border-stone-800/90 last:border-b-0 hover:bg-stone-900/70">
+                          <div class="px-3 py-2.5 text-sm text-stone-400">{row.label}</div>
+                          <div class="app-data border-l border-stone-700/80 px-3 py-2.5 text-sm text-stone-200">
                             {row.getValue(a)}
                           </div>
-                          <div class="app-data border-l border-zinc-700/80 px-3 py-2.5 text-sm text-zinc-200">
+                          <div class="app-data border-l border-stone-700/80 px-3 py-2.5 text-sm text-stone-200">
                             {row.getValue(b)}
                           </div>
                         </div>

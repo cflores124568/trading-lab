@@ -58,6 +58,8 @@ import { formatTradeLabel } from "../../services/tradeFormatting";
 import { CircleCheck, CircleX, TriangleAlert } from "lucide-solid";
 import AppShell from "../../components/AppShell";
 import WorkspaceLaunchControl from "../../components/workspace/WorkspaceLaunchControl";
+import FirmLogo from "../../components/FirmLogo";
+import { firmLogoSrc } from "../../utils/firmLogo";
 
 type DetailTab = "overview" | "stats" | "prop-eval" | "trades" | "robustness";
 
@@ -302,15 +304,15 @@ function formatMinutesDuration(minutes: number): string {
 
 function calendarTone(pnl: number | null): string {
   if (pnl === null) {
-    return "border-zinc-900 bg-zinc-950/40";
+    return "border-stone-900 bg-stone-950/40";
   }
   if (pnl > 0) {
-    return "border-emerald-900/80 bg-emerald-950/40";
+    return "border-green-900/80 bg-green-950/40";
   }
   if (pnl < 0) {
     return "border-red-900/80 bg-red-950/40";
   }
-  return "border-zinc-800 bg-zinc-900/70";
+  return "border-stone-800 bg-stone-900/70";
 }
 
 function parseUtcDate(value: string): Date {
@@ -379,8 +381,8 @@ function TabButton(props: {
       onClick={props.onClick}
       class={`rounded-sm px-4 py-2 text-sm font-medium transition-colors ${
         props.active
-          ? "bg-sky-400 text-zinc-950"
-          : "border border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-zinc-500 hover:bg-zinc-900"
+          ? "bg-green-400 text-stone-950"
+          : "border border-stone-700 bg-stone-950 text-stone-300 hover:border-stone-500 hover:bg-stone-900"
       }`}
     >
       {props.label}
@@ -396,20 +398,20 @@ function MetricCard(props: {
 }) {
   return (
     <div class="app-panel p-4">
-      <p class="mb-1 text-xs text-zinc-400">{props.label}</p>
+      <p class="mb-1 text-xs text-stone-400">{props.label}</p>
       <p
         class={`font-mono text-xl font-semibold ${
           props.tone === "good"
-            ? "text-emerald-300"
+            ? "text-green-300"
             : props.tone === "bad"
               ? "text-red-300"
-              : "text-zinc-100"
+              : "text-stone-100"
         }`}
       >
         {props.value}
       </p>
       <Show when={props.hint}>
-        <p class="mt-2 text-xs text-zinc-500">{props.hint}</p>
+        <p class="mt-2 text-xs text-stone-500">{props.hint}</p>
       </Show>
     </div>
   );
@@ -422,21 +424,21 @@ function HeroMetricCard(props: {
   tone?: "default" | "good" | "bad";
 }) {
   return (
-    <div class="rounded-md border border-zinc-800 bg-zinc-950/70 px-4 py-4">
-      <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">{props.label}</p>
+    <div class="rounded-md border border-stone-800 bg-stone-950/70 px-4 py-4">
+      <p class="text-xs uppercase tracking-[0.18em] text-stone-500">{props.label}</p>
       <p
         class={`mt-2 font-mono text-2xl font-semibold ${
           props.tone === "good"
-            ? "text-emerald-300"
+            ? "text-green-300"
             : props.tone === "bad"
               ? "text-red-300"
-              : "text-zinc-100"
+              : "text-stone-100"
         }`}
       >
         {props.value}
       </p>
       <Show when={props.hint}>
-        <p class="mt-2 text-xs text-zinc-500">{props.hint}</p>
+        <p class="mt-2 text-xs text-stone-500">{props.hint}</p>
       </Show>
     </div>
   );
@@ -486,19 +488,19 @@ function PropEvalPanel(props: {
             ) : (
               <CircleX size={18} class="text-red-400" />
             )}
-            <p class="font-semibold text-zinc-100">
+            <p class="font-semibold text-stone-100">
               {props.title}: {props.evaluation.passed ? "Passed" : "Failed"}
             </p>
           </div>
-          <p class="text-sm text-zinc-300">{props.rules.name}</p>
+          <p class="text-sm text-stone-300">{props.rules.name}</p>
           <Show when={props.note}>
-            <p class="max-w-2xl text-xs text-zinc-500">{props.note}</p>
+            <p class="max-w-2xl text-xs text-stone-500">{props.note}</p>
           </Show>
         </div>
 
-        <div class="rounded-sm border border-zinc-800 bg-zinc-950/70 px-4 py-3 text-right">
-          <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">{equityLabel()}</p>
-          <p class="mt-2 font-mono text-xl font-semibold text-zinc-100">
+        <div class="rounded-sm border border-stone-800 bg-stone-950/70 px-4 py-3 text-right">
+          <p class="text-xs uppercase tracking-[0.18em] text-stone-500">{equityLabel()}</p>
+          <p class="mt-2 font-mono text-xl font-semibold text-stone-100">
             {formatCurrency(props.summary.current_balance)}
           </p>
         </div>
@@ -578,7 +580,7 @@ function PropEvalPanel(props: {
 
       <Show when={props.payoutEstimate}>
         {(estimate) => (
-          <div class="mt-5 rounded-md border border-zinc-800 bg-zinc-950/70 p-4">
+          <div class="mt-5 rounded-md border border-stone-800 bg-stone-950/70 p-4">
             {(() => {
               const winningDaysRequired = estimate().winning_days_required;
               const winningDayProfit = estimate().winning_day_profit;
@@ -597,14 +599,14 @@ function PropEvalPanel(props: {
                 <>
             <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div class="space-y-1">
-                <p class="text-sm font-semibold text-zinc-100">Estimated Payout</p>
-                <p class="text-xs text-zinc-500">{estimate().policy_label}</p>
+                <p class="text-sm font-semibold text-stone-100">Estimated Payout</p>
+                <p class="text-xs text-stone-500">{estimate().policy_label}</p>
               </div>
-              <div class="rounded-sm border border-zinc-800 bg-zinc-950 px-4 py-3 text-right">
-                <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Payout Status</p>
+              <div class="rounded-sm border border-stone-800 bg-stone-950 px-4 py-3 text-right">
+                <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Payout Status</p>
                 <p
                   class={`mt-2 font-mono text-lg font-semibold ${
-                    estimate().eligible ? "text-emerald-300" : "text-yellow-300"
+                    estimate().eligible ? "text-green-300" : "text-yellow-300"
                   }`}
                 >
                   {estimate().supported
@@ -666,12 +668,12 @@ function PropEvalPanel(props: {
 
             <div class="mt-4 grid gap-4 lg:grid-cols-2">
               <div>
-                <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Blocked By</p>
+                <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Blocked By</p>
                 <Show
                   when={estimate().blocked_by.length > 0}
-                  fallback={<p class="mt-2 text-sm text-emerald-300">Nothing obvious is blocking a first payout request.</p>}
+                  fallback={<p class="mt-2 text-sm text-green-300">Nothing obvious is blocking a first payout request.</p>}
                 >
-                  <ul class="mt-2 space-y-2 text-sm text-zinc-300">
+                  <ul class="mt-2 space-y-2 text-sm text-stone-300">
                     <For each={estimate().blocked_by}>
                       {(item) => (
                         <li class="flex items-start gap-2">
@@ -685,8 +687,8 @@ function PropEvalPanel(props: {
               </div>
 
               <div>
-                <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Assumptions</p>
-                <ul class="mt-2 space-y-2 text-sm text-zinc-400">
+                <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Assumptions</p>
+                <ul class="mt-2 space-y-2 text-sm text-stone-400">
                   <For each={estimate().assumptions}>
                     {(item) => <li>{item}</li>}
                   </For>
@@ -750,7 +752,7 @@ function DailyPnlCalendar(props: { entries: DailyPnlEntry[] }) {
       <Show
         when={months().length > 0}
         fallback={
-          <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-5 py-10 text-center text-sm text-zinc-500">
+          <div class="rounded-md border border-stone-800 bg-stone-950/60 px-5 py-10 text-center text-sm text-stone-500">
             No closed trades yet, so there isn't a daily PnL calendar to show.
           </div>
         }
@@ -759,14 +761,14 @@ function DailyPnlCalendar(props: { entries: DailyPnlEntry[] }) {
           {(month) => (
             <section class="space-y-3">
               <div class="flex items-center justify-between">
-                <h3 class="text-sm font-semibold text-zinc-100">{month.label}</h3>
-                <p class="text-xs text-zinc-500">Exit-day PnL by session</p>
+                <h3 class="text-sm font-semibold text-stone-100">{month.label}</h3>
+                <p class="text-xs text-stone-500">Exit-day PnL by session</p>
               </div>
 
               <div class="grid grid-cols-7 gap-2">
                 <For each={weekdayLabels}>
                   {(label) => (
-                    <p class="px-1 text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                    <p class="px-1 text-[11px] uppercase tracking-[0.18em] text-stone-500">
                       {label}
                     </p>
                   )}
@@ -779,21 +781,21 @@ function DailyPnlCalendar(props: { entries: DailyPnlEntry[] }) {
                     >
                       <Show
                         when={!cell.isPadding}
-                        fallback={<div class="h-full rounded-lg border border-dashed border-zinc-900" />}
+                        fallback={<div class="h-full rounded-lg border border-dashed border-stone-900" />}
                       >
                         <div class="flex h-full flex-col justify-between">
-                          <p class="text-xs font-medium text-zinc-400">{cell.dayLabel}</p>
+                          <p class="text-xs font-medium text-stone-400">{cell.dayLabel}</p>
                           <Show when={cell.entry}>
                             {(entry) => (
                               <div>
                                 <p
                                   class={`font-mono text-sm font-semibold ${
-                                    entry().pnl >= 0 ? "text-emerald-300" : "text-red-300"
+                                    entry().pnl >= 0 ? "text-green-300" : "text-red-300"
                                   }`}
                                 >
                                   {formatCurrency(entry().pnl, { signed: true })}
                                 </p>
-                                <p class="mt-1 text-[11px] text-zinc-500">
+                                <p class="mt-1 text-[11px] text-stone-500">
                                   {entry().trade_count} trade{entry().trade_count === 1 ? "" : "s"}
                                 </p>
                               </div>
@@ -820,11 +822,11 @@ function TradesTable(props: {
 }) {
   return (
     <div class="app-panel overflow-hidden">
-      <p class="border-b border-zinc-800 p-4 text-sm text-zinc-400">
+      <p class="border-b border-stone-800 p-4 text-sm text-stone-400">
         {props.title} ({props.trades.length})
       </p>
       <table class="w-full text-sm">
-        <thead class="text-xs text-zinc-400">
+        <thead class="text-xs text-stone-400">
           <tr>
             <th class="p-3 text-left">#</th>
             <th class="p-3 text-left">Side</th>
@@ -840,8 +842,8 @@ function TradesTable(props: {
           <Show
             when={props.trades.length > 0}
             fallback={
-              <tr class="border-t border-zinc-800">
-                <td class="p-4 text-zinc-500" colSpan={8}>
+              <tr class="border-t border-stone-800">
+                <td class="p-4 text-stone-500" colSpan={8}>
                   {props.emptyMessage ?? "No trades yet."}
                 </td>
               </tr>
@@ -849,8 +851,8 @@ function TradesTable(props: {
           >
             <For each={props.trades}>
               {(trade) => (
-                <tr class="border-t border-zinc-800 transition-colors hover:bg-zinc-800">
-                  <td class="p-3 text-zinc-400">{trade.trade_id}</td>
+                <tr class="border-t border-stone-800 transition-colors hover:bg-stone-800">
+                  <td class="p-3 text-stone-400">{trade.trade_id}</td>
                   <td
                     class={`p-3 font-medium ${
                       trade.side === "buy" ? "text-green-400" : "text-red-400"
@@ -858,9 +860,9 @@ function TradesTable(props: {
                   >
                     {formatTradeLabel(trade.side, trade.quantity)}
                   </td>
-                  <td class="p-3 font-mono text-xs text-zinc-400">{trade.entry_time}</td>
-                  <td class="p-3 font-mono text-xs text-zinc-400">{trade.exit_time}</td>
-                  <td class="p-3 text-zinc-400">{formatDuration(trade.entry_time, trade.exit_time)}</td>
+                  <td class="p-3 font-mono text-xs text-stone-400">{trade.entry_time}</td>
+                  <td class="p-3 font-mono text-xs text-stone-400">{trade.exit_time}</td>
+                  <td class="p-3 text-stone-400">{formatDuration(trade.entry_time, trade.exit_time)}</td>
                   <td class="p-3 text-right font-mono">{trade.entry_price.toFixed(2)}</td>
                   <td class="p-3 text-right font-mono">{(trade.exit_price ?? 0).toFixed(2)}</td>
                   <td
@@ -1476,7 +1478,7 @@ export default function BacktestDetail() {
         when={result()}
         fallback={
           <section class="app-panel app-panel-section flex min-h-60 items-center justify-center">
-            <p class="text-zinc-400">Loading backtest…</p>
+            <p class="text-stone-400">Loading backtest…</p>
           </section>
         }
       >
@@ -1486,7 +1488,7 @@ export default function BacktestDetail() {
               <div class="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
                 <div class="space-y-2">
                   <p class="app-kicker">Saved Run</p>
-                  <h2 class="text-2xl font-semibold text-zinc-100">
+                  <h2 class="text-2xl font-semibold text-stone-100">
                     {bt().symbol} {bt().strategy.type.replace(/_/g, " ")}
                   </h2>
                 </div>
@@ -1525,14 +1527,21 @@ export default function BacktestDetail() {
                   />
                 </div>
 
-                <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-4">
-                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Run Context</p>
+                <div class="rounded-md border border-stone-800 bg-stone-950/60 px-4 py-4">
+                  <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Run Context</p>
                   <div class="mt-4 grid gap-3 sm:grid-cols-2">
                     <For each={strategySummary()}>
                       {([label, value]) => (
-                        <div class="rounded-sm border border-zinc-800 bg-zinc-900/60 px-3 py-3">
-                          <p class="text-xs text-zinc-500">{label}</p>
-                          <p class="mt-1 text-sm font-medium text-zinc-100">{value}</p>
+                        <div class="rounded-sm border border-stone-800 bg-stone-900/60 px-3 py-3">
+                          <p class="text-xs text-stone-500">{label}</p>
+                          <Show
+                            when={label === "Saved Preset" && firmLogoSrc(value)}
+                            fallback={<p class="mt-1 text-sm font-medium text-stone-100">{value}</p>}
+                          >
+                            <div class="mt-2">
+                              <FirmLogo firmName={value} heightClass="h-5" />
+                            </div>
+                          </Show>
                         </div>
                       )}
                     </For>
@@ -1594,7 +1603,7 @@ export default function BacktestDetail() {
                       </div>
                     </div>
                     <Show when={!workspaceIntent() && result()?.symbol}>
-                      <p class="text-xs text-zinc-500">
+                      <p class="text-xs text-stone-500">
                         `Open in Workspace` needs durable replay context, so older saved backtests
                         still fall back to the replay section below.
                       </p>
@@ -1604,18 +1613,18 @@ export default function BacktestDetail() {
                   <section id="replay" class="app-panel app-panel-section space-y-6 scroll-mt-24">
                     <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
                       <div class="space-y-2">
-                        <p class="text-xs uppercase tracking-[0.18em] text-sky-300">Interactive Replay Simulator</p>
+                        <p class="text-xs uppercase tracking-[0.18em] text-green-300">Interactive Replay Simulator</p>
                       </div>
                       <div class="grid gap-3 sm:grid-cols-2">
-                        <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                          <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Commission</p>
-                          <p class="mt-2 font-mono text-lg font-semibold text-zinc-100">
+                        <div class="rounded-md border border-stone-800 bg-stone-950/60 px-4 py-3">
+                          <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Commission</p>
+                          <p class="mt-2 font-mono text-lg font-semibold text-stone-100">
                             ${commission().toFixed(2)}
                           </p>
                         </div>
-                        <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                          <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Tick Value</p>
-                          <p class="mt-2 font-mono text-lg font-semibold text-zinc-100">
+                        <div class="rounded-md border border-stone-800 bg-stone-950/60 px-4 py-3">
+                          <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Tick Value</p>
+                          <p class="mt-2 font-mono text-lg font-semibold text-stone-100">
                             ${tickValue().toFixed(2)}
                           </p>
                         </div>
@@ -1629,15 +1638,15 @@ export default function BacktestDetail() {
                           onToggle={toggleIndicator}
                         />
 
-                        <div class="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+                        <div class="overflow-hidden rounded-lg border border-stone-800 bg-stone-950/70 p-3">
                           <Show
                             when={candles.error}
                             fallback={
                               <Show
                                 when={!candles.loading && candles() && candles()!.length > 0}
                                 fallback={
-                                  <div class="flex h-[520px] items-center justify-center rounded-md bg-zinc-800/70">
-                                    <p class="text-sm text-zinc-500">
+                                  <div class="flex h-[520px] items-center justify-center rounded-md bg-stone-800/70">
+                                    <p class="text-sm text-stone-500">
                                       {candles.loading
                                         ? "Loading chart data…"
                                         : "No candles available for this backtest."}
@@ -1658,7 +1667,7 @@ export default function BacktestDetail() {
                             }
                           >
                             {(error) => (
-                              <div class="flex h-[520px] items-center justify-center rounded-md border border-zinc-800 bg-zinc-950 px-6 text-center">
+                              <div class="flex h-[520px] items-center justify-center rounded-md border border-stone-800 bg-stone-950 px-6 text-center">
                                 <p class="text-sm text-red-400">
                                   Replay data failed to load: {error().message}
                                 </p>
@@ -1738,8 +1747,8 @@ export default function BacktestDetail() {
                       </div>
 
                       <div class="space-y-4">
-                        <div class="rounded-lg border border-zinc-800 bg-zinc-950/60 p-5">
-                          <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Replay Pulse</p>
+                        <div class="rounded-lg border border-stone-800 bg-stone-950/60 p-5">
+                          <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Replay Pulse</p>
                           <div class="mt-4 grid gap-3">
                             <HeroMetricCard
                               label="Current Price"
@@ -1760,9 +1769,9 @@ export default function BacktestDetail() {
                           </div>
                         </div>
 
-                        <div class="rounded-lg border border-zinc-800 bg-zinc-950/60 p-5">
-                          <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Compare Lens</p>
-                          <p class="mt-2 text-sm text-zinc-400">
+                        <div class="rounded-lg border border-stone-800 bg-stone-950/60 p-5">
+                          <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Compare Lens</p>
+                          <p class="mt-2 text-sm text-stone-400">
                             Blue and amber markers are the saved system trades. Green and rose markers
                             are your manual replay decisions layered on top.
                           </p>
@@ -1783,7 +1792,7 @@ export default function BacktestDetail() {
                         </div>
 
                         <div class="app-panel app-panel-section">
-                          <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Replay Equity Curve</p>
+                          <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Replay Equity Curve</p>
                           <div class="mt-4">
                             <EquityCurve data={session().equityCurve} />
                           </div>
@@ -1839,7 +1848,7 @@ export default function BacktestDetail() {
                   <div class="app-panel p-4">
                     <div class="mb-4 flex items-center justify-between">
                       <div>
-                        <p class="text-sm text-zinc-400">Strategy Equity Curve</p>
+                        <p class="text-sm text-stone-400">Strategy Equity Curve</p>
                       </div>
                     </div>
                     <EquityCurve data={bt().equity_curve} />
@@ -1884,15 +1893,15 @@ export default function BacktestDetail() {
                     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                       <div class="space-y-2">
                         <p class="app-kicker">Rule Set Selector</p>
-                        <p class="max-w-3xl text-sm text-zinc-300">
+                        <p class="max-w-3xl text-sm text-stone-300">
                           Fixed trades, rescored against the selected preset.
                         </p>
                       </div>
 
                       <div class="w-full max-w-md">
-                        <label class="mb-1 block text-xs text-zinc-400">Firm / Account</label>
+                        <label class="mb-1 block text-xs text-stone-400">Firm / Account</label>
                         <select
-                          class="w-full rounded-sm border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                          class="w-full rounded-sm border border-stone-700 bg-stone-950 px-3 py-2 text-sm text-stone-100"
                           value={selectedPresetKey() ?? ""}
                           onChange={(event) => setSelectedPresetKey(event.currentTarget.value)}
                         >
@@ -1952,7 +1961,7 @@ export default function BacktestDetail() {
                         when={!robustness.loading && robustness()}
                         fallback={
                           <section class="app-panel app-panel-section flex min-h-52 items-center justify-center">
-                            <p class="text-zinc-400">
+                            <p class="text-stone-400">
                               {robustness.loading
                                 ? "Running robustness checks…"
                                 : "Open this tab to run Monte Carlo, parameter sweep, and walk-forward checks."}
@@ -1992,17 +2001,17 @@ export default function BacktestDetail() {
                                   <p class="app-kicker">Saved Baseline</p>
                                 </div>
 
-                                <div class="flex flex-wrap gap-2 text-xs text-zinc-400">
-                                  <span class="rounded-sm border border-zinc-800 bg-zinc-950/60 px-3 py-1">
+                                <div class="flex flex-wrap gap-2 text-xs text-stone-400">
+                                  <span class="rounded-sm border border-stone-800 bg-stone-950/60 px-3 py-1">
                                     {(analysis().symbol ?? bt().symbol).toUpperCase()}
                                   </span>
-                                  <span class="rounded-sm border border-zinc-800 bg-zinc-950/60 px-3 py-1">
+                                  <span class="rounded-sm border border-stone-800 bg-stone-950/60 px-3 py-1">
                                     {analysis().strategy_type}
                                   </span>
                                 </div>
                               </div>
 
-                              <p class="text-sm text-zinc-500">
+                              <p class="text-sm text-stone-500">
                                 {formatRunConfigSummary(analysis().run_config)}
                               </p>
 
@@ -2048,7 +2057,7 @@ export default function BacktestDetail() {
                             <section class="app-panel app-panel-section space-y-5">
                               <div class="space-y-2">
                                 <p class="app-kicker">Monte Carlo</p>
-                                <p class="max-w-3xl text-sm text-zinc-300">
+                                <p class="max-w-3xl text-sm text-stone-300">
                                   Stress tests from the saved trade list.
                                 </p>
                               </div>
@@ -2056,13 +2065,13 @@ export default function BacktestDetail() {
                               <div class="grid gap-4 xl:grid-cols-2">
                                 <For each={analysis().monte_carlo}>
                                   {(scenario) => (
-                                    <div class="rounded-lg border border-zinc-800 bg-zinc-950/60 p-5">
+                                    <div class="rounded-lg border border-stone-800 bg-stone-950/60 p-5">
                                       <div class="flex items-start justify-between gap-4">
                                         <div>
-                                          <p class="text-sm font-semibold text-zinc-100">{scenario.label}</p>
-                                          <p class="mt-1 text-xs text-zinc-500">{scenario.simulations} simulations</p>
+                                          <p class="text-sm font-semibold text-stone-100">{scenario.label}</p>
+                                          <p class="mt-1 text-xs text-stone-500">{scenario.simulations} simulations</p>
                                         </div>
-                                        <p class="rounded-sm border border-zinc-800 px-3 py-1 text-xs text-zinc-300">
+                                        <p class="rounded-sm border border-stone-800 px-3 py-1 text-xs text-stone-300">
                                           Worse DD vs base: {formatPercent(scenario.worse_than_base_drawdown_rate)}
                                         </p>
                                       </div>
@@ -2093,7 +2102,7 @@ export default function BacktestDetail() {
                                         />
                                       </div>
 
-                                      <p class="mt-4 text-sm text-zinc-400">{scenario.note}</p>
+                                      <p class="mt-4 text-sm text-stone-400">{scenario.note}</p>
                                     </div>
                                   )}
                                 </For>
@@ -2127,11 +2136,11 @@ export default function BacktestDetail() {
                                 </div>
                               </div>
 
-                              <p class="text-sm text-zinc-400">{analysis().parameter_sweep.note}</p>
+                              <p class="text-sm text-stone-400">{analysis().parameter_sweep.note}</p>
 
-                              <div class="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950/60">
+                              <div class="overflow-x-auto rounded-lg border border-stone-800 bg-stone-950/60">
                                 <table class="min-w-full text-sm">
-                                  <thead class="border-b border-zinc-800 text-left text-xs uppercase tracking-[0.18em] text-zinc-500">
+                                  <thead class="border-b border-stone-800 text-left text-xs uppercase tracking-[0.18em] text-stone-500">
                                     <tr>
                                       <th class="px-3 py-3">Rank</th>
                                       <th class="px-3 py-3">Params</th>
@@ -2145,17 +2154,17 @@ export default function BacktestDetail() {
                                   <tbody>
                                     <For each={analysis().parameter_sweep.top_runs}>
                                       {(run) => (
-                                        <tr class="border-t border-zinc-800">
-                                          <td class="px-3 py-3 text-zinc-400">#{run.rank}</td>
-                                          <td class="px-3 py-3 text-zinc-100">{formatParamSummary(run.params)}</td>
-                                          <td class="px-3 py-3 font-mono text-zinc-200">{run.score.toFixed(2)}</td>
-                                          <td class={`px-3 py-3 font-mono ${run.total_pnl >= 0 ? "text-emerald-300" : "text-red-300"}`}>
+                                        <tr class="border-t border-stone-800">
+                                          <td class="px-3 py-3 text-stone-400">#{run.rank}</td>
+                                          <td class="px-3 py-3 text-stone-100">{formatParamSummary(run.params)}</td>
+                                          <td class="px-3 py-3 font-mono text-stone-200">{run.score.toFixed(2)}</td>
+                                          <td class={`px-3 py-3 font-mono ${run.total_pnl >= 0 ? "text-green-300" : "text-red-300"}`}>
                                             {formatCurrency(run.total_pnl, { signed: true })}
                                           </td>
-                                          <td class="px-3 py-3 font-mono text-zinc-300">{formatPercent(run.max_drawdown, 2)}</td>
-                                          <td class="px-3 py-3 font-mono text-zinc-300">{formatRatio(run.profit_factor)}</td>
+                                          <td class="px-3 py-3 font-mono text-stone-300">{formatPercent(run.max_drawdown, 2)}</td>
+                                          <td class="px-3 py-3 font-mono text-stone-300">{formatRatio(run.profit_factor)}</td>
                                           <td class="px-3 py-3">
-                                            <span class={`rounded-sm border px-2 py-1 text-xs ${run.passed ? "border-emerald-800 text-emerald-300" : "border-red-800 text-red-300"}`}>
+                                            <span class={`rounded-sm border px-2 py-1 text-xs ${run.passed ? "border-green-800 text-green-300" : "border-red-800 text-red-300"}`}>
                                               {run.passed ? "Pass" : "Fail"}
                                             </span>
                                           </td>
@@ -2168,19 +2177,19 @@ export default function BacktestDetail() {
 
                               <Show when={analysis().parameter_sweep.bottom_run}>
                                 {(run) => (
-                                  <div class="rounded-md border border-zinc-800 bg-zinc-950/40 px-4 py-4">
-                                    <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                                  <div class="rounded-md border border-stone-800 bg-stone-950/40 px-4 py-4">
+                                    <p class="text-xs uppercase tracking-[0.18em] text-stone-500">
                                       Soft Spot
                                     </p>
-                                    <p class="mt-2 text-sm text-zinc-300">
+                                    <p class="mt-2 text-sm text-stone-300">
                                       Weakest nearby run {formatRank(run().rank)} scored{" "}
-                                      <span class="font-mono text-zinc-100">
+                                      <span class="font-mono text-stone-100">
                                         {run().score.toFixed(2)}
                                       </span>{" "}
                                       with {formatCurrency(run().total_pnl, { signed: true })} and{" "}
                                       {formatPercent(run().max_drawdown, 2)} drawdown.
                                     </p>
-                                    <p class="mt-2 text-sm text-zinc-500">
+                                    <p class="mt-2 text-sm text-stone-500">
                                       {formatParamSummary(run().params)}
                                     </p>
                                   </div>
@@ -2192,7 +2201,7 @@ export default function BacktestDetail() {
                               <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                                 <div>
                                   <p class="app-kicker">Walk-Forward</p>
-                                  <p class="max-w-3xl text-sm text-zinc-300">
+                                  <p class="max-w-3xl text-sm text-stone-300">
                                     Train chunk selects params; next chunk scores them out of sample.
                                   </p>
                                 </div>
@@ -2215,21 +2224,21 @@ export default function BacktestDetail() {
                                 </div>
                               </div>
 
-                              <p class="text-sm text-zinc-400">{analysis().walk_forward.note}</p>
+                              <p class="text-sm text-stone-400">{analysis().walk_forward.note}</p>
 
                               <Show
                                 when={analysis().walk_forward.folds.length > 0}
                                 fallback={
-                                  <div class="rounded-md border border-zinc-800 bg-zinc-950/40 px-4 py-5">
-                                    <p class="text-sm text-zinc-400">
+                                  <div class="rounded-md border border-stone-800 bg-stone-950/40 px-4 py-5">
+                                    <p class="text-sm text-stone-400">
                                       This saved run doesn't have enough bars for a useful walk-forward split yet.
                                     </p>
                                   </div>
                                 }
                               >
-                                <div class="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950/60">
+                                <div class="overflow-x-auto rounded-lg border border-stone-800 bg-stone-950/60">
                                   <table class="min-w-full text-sm">
-                                    <thead class="border-b border-zinc-800 text-left text-xs uppercase tracking-[0.18em] text-zinc-500">
+                                    <thead class="border-b border-stone-800 text-left text-xs uppercase tracking-[0.18em] text-stone-500">
                                       <tr>
                                         <th class="px-3 py-3">Fold</th>
                                         <th class="px-3 py-3">Train</th>
@@ -2246,24 +2255,24 @@ export default function BacktestDetail() {
                                     <tbody>
                                       <For each={analysis().walk_forward.folds}>
                                         {(fold) => (
-                                          <tr class="border-t border-zinc-800">
-                                            <td class="px-3 py-3 text-zinc-400">#{fold.fold_index}</td>
-                                            <td class="px-3 py-3 text-zinc-300">
+                                          <tr class="border-t border-stone-800">
+                                            <td class="px-3 py-3 text-stone-400">#{fold.fold_index}</td>
+                                            <td class="px-3 py-3 text-stone-300">
                                               {new Date(fold.train_start).toLocaleDateString()} → {new Date(fold.train_end).toLocaleDateString()}
                                             </td>
-                                            <td class="px-3 py-3 text-zinc-300">
+                                            <td class="px-3 py-3 text-stone-300">
                                               {new Date(fold.test_start).toLocaleDateString()} → {new Date(fold.test_end).toLocaleDateString()}
                                             </td>
-                                            <td class="px-3 py-3 text-zinc-100">{formatParamSummary(fold.selected_params)}</td>
-                                            <td class="px-3 py-3 font-mono text-zinc-300">{fold.train_score.toFixed(2)}</td>
-                                            <td class="px-3 py-3 font-mono text-zinc-300">{fold.test_score.toFixed(2)}</td>
-                                            <td class={`px-3 py-3 font-mono ${fold.test_total_pnl >= 0 ? "text-emerald-300" : "text-red-300"}`}>
+                                            <td class="px-3 py-3 text-stone-100">{formatParamSummary(fold.selected_params)}</td>
+                                            <td class="px-3 py-3 font-mono text-stone-300">{fold.train_score.toFixed(2)}</td>
+                                            <td class="px-3 py-3 font-mono text-stone-300">{fold.test_score.toFixed(2)}</td>
+                                            <td class={`px-3 py-3 font-mono ${fold.test_total_pnl >= 0 ? "text-green-300" : "text-red-300"}`}>
                                               {formatCurrency(fold.test_total_pnl, { signed: true })}
                                             </td>
-                                            <td class="px-3 py-3 font-mono text-zinc-300">{formatPercent(fold.test_max_drawdown, 2)}</td>
-                                            <td class="px-3 py-3 font-mono text-zinc-300">{formatCount(fold.test_trades)}</td>
+                                            <td class="px-3 py-3 font-mono text-stone-300">{formatPercent(fold.test_max_drawdown, 2)}</td>
+                                            <td class="px-3 py-3 font-mono text-stone-300">{formatCount(fold.test_trades)}</td>
                                             <td class="px-3 py-3">
-                                              <span class={`rounded-sm border px-2 py-1 text-xs ${fold.test_passed ? "border-emerald-800 text-emerald-300" : "border-red-800 text-red-300"}`}>
+                                              <span class={`rounded-sm border px-2 py-1 text-xs ${fold.test_passed ? "border-green-800 text-green-300" : "border-red-800 text-red-300"}`}>
                                                 {fold.test_passed ? "Pass" : "Fail"}
                                               </span>
                                             </td>

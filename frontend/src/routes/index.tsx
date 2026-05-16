@@ -355,72 +355,72 @@ export default function Dashboard() {
         <>
           <A
             href="/replay"
-            class="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-white"
+            class="rounded-xl bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-950 transition-colors hover:bg-white"
           >
             Open Replay Lab
           </A>
           <A
             href="/replay-sessions"
-            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+            class="rounded-xl border border-stone-700 px-4 py-2 text-sm font-medium text-stone-200 transition-colors hover:border-stone-500 hover:bg-stone-900"
           >
             Saved Replay Sessions
           </A>
           <A
             href="/backtests/new"
-            class="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+            class="rounded-xl border border-stone-700 px-4 py-2 text-sm font-medium text-stone-200 transition-colors hover:border-stone-500 hover:bg-stone-900"
           >
             New Backtest
           </A>
         </>
       }
     >
-      <div class="rounded-[1.5rem] border border-zinc-800/80 bg-[radial-gradient(circle_at_top_left,rgba(183,235,229,0.08),transparent_36%),linear-gradient(180deg,rgba(9,9,11,0.98),rgba(9,9,11,0.9))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.28)] lg:p-6">
+      <div class="rounded-[1.5rem] border border-stone-800/80 bg-[radial-gradient(circle_at_top_left,rgba(231,229,228,0.06),transparent_36%),linear-gradient(180deg,rgba(12,10,9,0.98),rgba(12,10,9,0.9))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.28)] lg:p-6">
         <div class="flex flex-col gap-4">
           <div class="max-w-3xl space-y-2">
-            <p class="app-kicker text-[#b7ebe5]">Workspace snapshot</p>
-            <p class="max-w-2xl text-sm leading-6 text-zinc-400">
+            <p class="app-kicker text-stone-200">Workspace snapshot</p>
+            <p class="max-w-2xl text-sm leading-6 text-stone-400">
               Setup lives in the toolbar. This keeps the active mix visible without
               piling on another wall of cards.
             </p>
           </div>
 
           <div class="grid gap-3 sm:grid-cols-3">
-            <div class="rounded-2xl bg-zinc-950/55 px-4 py-3">
+            <div class="rounded-2xl bg-stone-950/55 px-4 py-3">
               <p class="app-metric-label">Panel Count</p>
-              <p class="app-data mt-2 text-2xl font-semibold leading-none text-zinc-100">
+              <p class="app-data mt-2 text-2xl font-semibold leading-none text-stone-100">
                 {activePanels().length}
               </p>
             </div>
-            <div class="rounded-2xl bg-zinc-950/55 px-4 py-3">
+            <div class="rounded-2xl bg-stone-950/55 px-4 py-3">
               <p class="app-metric-label">Primary Mix</p>
-              <p class="app-data mt-2 text-base font-semibold text-zinc-100">
-                {primarySymbol()} <span class="text-zinc-500">/</span> {primaryInterval()}
+              <p class="app-data mt-2 text-base font-semibold text-stone-100">
+                {primarySymbol()} <span class="text-stone-500">/</span> {primaryInterval()}
               </p>
             </div>
-            <div class="rounded-2xl bg-zinc-950/55 px-4 py-3">
+            <div class="rounded-2xl bg-stone-950/55 px-4 py-3">
               <p class="app-metric-label">Workspace Mode</p>
-              <p class="mt-2 text-base font-semibold capitalize text-sky-200">{workspaceMode()}</p>
+              <p class="mt-2 text-base font-semibold capitalize text-stone-100">{workspaceMode()}</p>
             </div>
           </div>
 
-          <div class="rounded-2xl border border-zinc-800/80 bg-zinc-950/70 px-4 py-3">
+          <div class="rounded-2xl border border-stone-800/80 bg-stone-950/70 px-4 py-3">
             <div class="flex items-center justify-between gap-3">
-              <div class="flex items-center gap-2 text-zinc-100">
-                <SquareChartGantt size={16} class="text-[#b7ebe5]" />
+              <div class="flex items-center gap-2 text-stone-100">
+                <SquareChartGantt size={16} class="text-stone-200" />
                 <p class="text-sm font-semibold">Panel stack</p>
               </div>
-              <p class="text-xs text-zinc-500">
+              <p class="text-xs text-stone-500">
                 {activePanels().length} panels · {activeWorkspace().selectedPreset}
               </p>
             </div>
             <div class="mt-3 flex flex-wrap gap-2">
               {activePanels().map((panel, index) => (
-                <div class="rounded-full border border-zinc-800 bg-zinc-900/70 px-3 py-2 text-xs text-zinc-300">
-                  <span class="font-semibold text-zinc-100">Panel {index + 1}</span>
-                  <span class="mx-2 text-zinc-600">·</span>
+                <div class="rounded-full border border-stone-800 bg-stone-900/70 px-3 py-2 text-xs text-stone-300">
+                  <span class="font-semibold text-stone-100">Panel {index + 1}</span>
+                  <span class="mx-2 text-stone-600">·</span>
                   <span>{panel.title}</span>
-                  <span class="mx-2 text-zinc-600">·</span>
-                  <span class="uppercase tracking-[0.16em] text-zinc-500">
+                  <span class="mx-2 text-stone-600">·</span>
+                  <span class="uppercase tracking-[0.16em] text-stone-500">
                     {panel.query.symbol} {panel.query.interval}
                   </span>
                 </div>
@@ -428,12 +428,12 @@ export default function Dashboard() {
             </div>
             <div class="mt-4 flex flex-wrap gap-2">
               {symbolMix().map(([symbol, count]) => (
-                <span class="rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-zinc-200">
+                <span class="rounded-full border border-stone-700 bg-stone-900 px-2.5 py-1.5 text-xs font-medium text-stone-200">
                   {symbol} x{count}
                 </span>
               ))}
               {intervalMix().map(([interval, count]) => (
-                <span class="rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-zinc-200">
+                <span class="rounded-full border border-stone-700 bg-stone-900 px-2.5 py-1.5 text-xs font-medium text-stone-200">
                   {interval} x{count}
                 </span>
               ))}
@@ -443,13 +443,13 @@ export default function Dashboard() {
       </div>
 
       {launchNotice() ? (
-        <div class="rounded-2xl border border-emerald-700/70 bg-emerald-950/70 px-4 py-3 text-sm text-emerald-200 shadow-[0_12px_30px_rgba(0,0,0,0.2)]">
+        <div class="rounded-2xl border border-green-700/70 bg-green-950/70 px-4 py-3 text-sm text-green-200 shadow-[0_12px_30px_rgba(0,0,0,0.2)]">
           {launchNotice()}
         </div>
       ) : null}
 
       <div class="flex min-h-0 flex-1 flex-col gap-6">
-        <section class="flex min-h-0 w-full flex-col overflow-hidden border-y border-zinc-800/80 bg-zinc-950/60 shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
+        <section class="flex min-h-0 w-full flex-col overflow-hidden border-y border-stone-800/80 bg-stone-950/60 shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
             <WorkspaceToolbar
               workspaceId={activeWorkspace().id}
               defaultWorkspaceId={workspace.defaultWorkspaceId}

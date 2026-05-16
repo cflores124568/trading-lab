@@ -128,7 +128,7 @@ function buildPanelTemplates(): Record<WorkspacePreset, Omit<ChartPanelConfig, "
   return {
     focus: [
       {
-        title: "Primary View",
+        title: "NQ 15m",
         query: {
           mode: "live",
           symbol: "NQ",
@@ -137,7 +137,7 @@ function buildPanelTemplates(): Record<WorkspacePreset, Omit<ChartPanelConfig, "
         },
       },
       {
-        title: "Secondary Context",
+        title: "ES 1h",
         query: {
           mode: "historical",
           symbol: "ES",
@@ -147,7 +147,7 @@ function buildPanelTemplates(): Record<WorkspacePreset, Omit<ChartPanelConfig, "
         },
       },
       {
-        title: "Fast Tape",
+        title: "ES 5m",
         query: {
           mode: "live",
           symbol: "ES",
@@ -158,7 +158,7 @@ function buildPanelTemplates(): Record<WorkspacePreset, Omit<ChartPanelConfig, "
     ],
     split: [
       {
-        title: "Live Momentum",
+        title: "NQ 5m",
         query: {
           mode: "live",
           symbol: "NQ",
@@ -167,7 +167,7 @@ function buildPanelTemplates(): Record<WorkspacePreset, Omit<ChartPanelConfig, "
         },
       },
       {
-        title: "Historical Context",
+        title: "ES 1h",
         query: {
           mode: "historical",
           symbol: "ES",
@@ -177,7 +177,7 @@ function buildPanelTemplates(): Record<WorkspacePreset, Omit<ChartPanelConfig, "
         },
       },
       {
-        title: "Higher Timeframe",
+        title: "NQ 4h",
         query: {
           mode: "historical",
           symbol: "NQ",
@@ -187,7 +187,7 @@ function buildPanelTemplates(): Record<WorkspacePreset, Omit<ChartPanelConfig, "
         },
       },
       {
-        title: "Quick Crosscheck",
+        title: "ES 15m",
         query: {
           mode: "live",
           symbol: "ES",
@@ -198,7 +198,7 @@ function buildPanelTemplates(): Record<WorkspacePreset, Omit<ChartPanelConfig, "
     ],
     grid: [
       {
-        title: "NQ Flow",
+        title: "NQ 5m",
         query: {
           mode: "live",
           symbol: "NQ",
@@ -207,7 +207,7 @@ function buildPanelTemplates(): Record<WorkspacePreset, Omit<ChartPanelConfig, "
         },
       },
       {
-        title: "ES Trend",
+        title: "ES 15m",
         query: {
           mode: "live",
           symbol: "ES",
@@ -216,7 +216,7 @@ function buildPanelTemplates(): Record<WorkspacePreset, Omit<ChartPanelConfig, "
         },
       },
       {
-        title: "NQ Warehouse",
+        title: "NQ 1h",
         query: {
           mode: "historical",
           symbol: "NQ",
@@ -226,7 +226,7 @@ function buildPanelTemplates(): Record<WorkspacePreset, Omit<ChartPanelConfig, "
         },
       },
       {
-        title: "ES Higher Timeframe",
+        title: "ES 4h",
         query: {
           mode: "historical",
           symbol: "ES",
@@ -236,7 +236,7 @@ function buildPanelTemplates(): Record<WorkspacePreset, Omit<ChartPanelConfig, "
         },
       },
       {
-        title: "Short-Term Pulse",
+        title: "NQ 1m",
         query: {
           mode: "live",
           symbol: "NQ",
@@ -245,7 +245,7 @@ function buildPanelTemplates(): Record<WorkspacePreset, Omit<ChartPanelConfig, "
         },
       },
       {
-        title: "Weekly Context",
+        title: "ES 1d",
         query: {
           mode: "historical",
           symbol: "ES",
@@ -608,6 +608,23 @@ function normalizeQuery(query: unknown, fallback: ChartPanelQuery): ChartPanelQu
   return fallback;
 }
 
+// Titles from earlier builds that we no longer want resurfacing on load.
+const LEGACY_PANEL_TITLES = new Set([
+  "Primary View",
+  "Secondary Context",
+  "Fast Tape",
+  "Live Momentum",
+  "Historical Context",
+  "Higher Timeframe",
+  "Quick Crosscheck",
+  "NQ Flow",
+  "ES Trend",
+  "NQ Warehouse",
+  "ES Higher Timeframe",
+  "Short-Term Pulse",
+  "Weekly Context",
+]);
+
 function normalizePanels(value: unknown, preset: WorkspacePreset): ChartPanelConfig[] {
   const templates = buildWorkspacePanels(preset);
 
@@ -625,9 +642,14 @@ function normalizePanels(value: unknown, preset: WorkspacePreset): ChartPanelCon
       return template;
     }
 
+    const rawTitle = typeof record.title === "string" ? record.title.trim() : "";
+    const title = LEGACY_PANEL_TITLES.has(rawTitle)
+      ? template.title
+      : normalizePanelTitle(record.title, template.title);
+
     return {
       id: typeof record.id === "string" && record.id.trim() ? record.id : template.id,
-      title: normalizePanelTitle(record.title, template.title),
+      title,
       query: normalizeQuery(record.query, template.query),
     };
   });

@@ -71,7 +71,7 @@ function ResizeHandle(props: ResizeHandleProps) {
     <button
       type="button"
       aria-label={isVertical ? "Resize chart columns" : "Resize chart rows"}
-      class={`absolute z-20 hidden items-center justify-center bg-transparent transition-colors hover:bg-zinc-800/20 xl:flex ${
+      class={`absolute z-20 hidden items-center justify-center bg-transparent transition-colors hover:bg-stone-800/20 xl:flex ${
         isVertical
           ? "top-0 bottom-0 w-5 -translate-x-1/2 cursor-col-resize"
           : "left-0 right-0 h-5 -translate-y-1/2 cursor-row-resize"
@@ -80,7 +80,7 @@ function ResizeHandle(props: ResizeHandleProps) {
       onPointerDown={props.onPointerDown}
     >
       <span
-        class={`pointer-events-none rounded-full bg-zinc-500/80 shadow-[0_0_0_1px_rgba(24,24,27,0.65)] ${
+        class={`pointer-events-none rounded-full bg-stone-500/80 shadow-[0_0_0_1px_rgba(24,24,27,0.65)] ${
           isVertical ? "h-16 w-[2px]" : "h-[2px] w-16"
         }`}
       />
@@ -198,7 +198,7 @@ function PanelSlot(props: {
     <div
       class={`h-full min-h-0 min-w-0 transition ${
         props.dropTargetPanelId === panel.id && props.draggingPanelId !== panel.id
-          ? "ring-2 ring-sky-400/70 ring-offset-2 ring-offset-zinc-950"
+          ? "ring-2 ring-stone-200/70 ring-offset-2 ring-offset-stone-950"
           : ""
       } ${props.draggingPanelId === panel.id ? "opacity-45" : ""}`}
       style={{ "border-radius": "0" }}
@@ -615,7 +615,7 @@ export default function WorkspaceGrid(props: Props) {
   return (
     <>
       {expandedPanel() ? (
-        <div class="mb-4 rounded-2xl border border-zinc-700/80 bg-zinc-950/55 p-2">
+        <div class="mb-4 rounded-2xl border border-stone-700/80 bg-stone-950/55 p-2">
           <PanelSlot
             panel={expandedPanel()!}
             canRemove={props.panels.length > 1}

@@ -10,6 +10,7 @@ import {
   Show,
 } from "solid-js";
 import AppShell from "../../components/AppShell";
+import PropPresetSelect from "../../components/PropPresetSelect";
 import {
   BACKTEST_INTERVALS,
   STRATEGIES,
@@ -29,11 +30,10 @@ import {
   type ExperimentResult,
   type ExperimentScoringRule,
   type ExperimentStatus,
-  type PropFirmPreset,
 } from "../../services/api";
 
 const field = "app-input-quiet w-full text-sm";
-const label = "mb-1.5 block text-[11px] uppercase tracking-[0.18em] text-zinc-500";
+const label = "mb-1.5 block text-[11px] uppercase tracking-[0.18em] text-stone-500";
 const section = "app-panel app-panel-elevated app-panel-section space-y-5";
 
 const intervalMinutesMap: Record<string, number> = {
@@ -130,18 +130,6 @@ const compactFormatter = new Intl.NumberFormat(undefined, {
 type SortKey = "updated" | "name" | "runs" | "status";
 type SortDirection = "asc" | "desc";
 type PreflightTone = "pass" | "warn";
-
-function groupPresets(presets: PropFirmPreset[]): Record<string, PropFirmPreset[]> {
-  return presets.reduce<Record<string, PropFirmPreset[]>>((acc, preset) => {
-    let firm = preset.name.split(/\s+\d/)[0].trim();
-    firm = firm
-      .replace(/^My Funded Futures (Rapid|Flex)?/i, "My Funded Futures")
-      .replace(/^Lucid Trading /i, "Lucid Trading")
-      .trim();
-    (acc[firm] ??= []).push(preset);
-    return acc;
-  }, {});
-}
 
 function defaultParamInputs(strategy: StrategyValue): Record<string, string> {
   return Object.fromEntries(
@@ -255,13 +243,13 @@ function describeStatus(status: ExperimentStatus): string {
 function statusTone(status: ExperimentStatus): string {
   switch (status) {
     case "completed":
-      return "border-emerald-800/80 bg-emerald-950/50 text-emerald-200";
+      return "border-green-800/80 bg-green-950/50 text-green-200";
     case "running":
-      return "border-sky-800/80 bg-sky-950/45 text-sky-200";
+      return "border-green-800/80 bg-green-950/45 text-green-200";
     case "failed":
       return "border-red-800/80 bg-red-950/45 text-red-200";
     default:
-      return "border-zinc-700 bg-zinc-900 text-zinc-200";
+      return "border-stone-700 bg-stone-900 text-stone-200";
   }
 }
 
@@ -365,13 +353,13 @@ function describeComplexity(runCount: number): {
   if (runCount >= 30) {
     return {
       label: "Medium",
-      tone: "border-sky-800/80 bg-sky-950/45 text-sky-200",
+      tone: "border-green-800/80 bg-green-950/45 text-green-200",
       note: "Good middle ground for directional exploration.",
     };
   }
   return {
     label: "Low",
-    tone: "border-emerald-800/80 bg-emerald-950/45 text-emerald-200",
+    tone: "border-green-800/80 bg-green-950/45 text-green-200",
     note: "Cheap enough to validate ideas fast without much drama.",
   };
 }
@@ -407,26 +395,6 @@ function buildParameterPreview(
   return rows;
 }
 
-function buildExperimentTags(experiment: ExperimentResult): string[] {
-  const tags = [strategyProfiles[experiment.strategy_type].family];
-
-  if (experiment.symbols.length > 1) {
-    tags.push("cross-market");
-  } else {
-    tags.push("single-asset");
-  }
-
-  if (experiment.scoring_rule === "sharpe_ratio" || experiment.scoring_rule === "profit_factor") {
-    tags.push("risk-aware");
-  } else if (experiment.scoring_rule === "total_pnl") {
-    tags.push("raw-pnl");
-  } else {
-    tags.push("prop-eval");
-  }
-
-  return tags;
-}
-
 function encodeTemplatePayload(payload: ExperimentCreateRequest): string {
   return window.btoa(JSON.stringify(payload));
 }
@@ -448,7 +416,7 @@ function availabilityBadge(interval: string, rows: number): {
 
   if (minutes <= 60) {
     if (rows >= 60_000) {
-      return { label: "Full", tone: "bg-emerald-400" };
+      return { label: "Full", tone: "bg-green-400" };
     }
     if (rows >= 20_000) {
       return { label: "Partial", tone: "bg-amber-400" };
@@ -458,7 +426,7 @@ function availabilityBadge(interval: string, rows: number): {
 
   if (minutes <= 1440) {
     if (rows >= 15_000) {
-      return { label: "Full", tone: "bg-emerald-400" };
+      return { label: "Full", tone: "bg-green-400" };
     }
     if (rows >= 4_000) {
       return { label: "Partial", tone: "bg-amber-400" };
@@ -768,7 +736,7 @@ export default function ExperimentsIndexPage() {
     if (estimatedRunCount() >= 90) {
       return "#facc15";
     }
-    return "#38bdf8";
+    return "#a1a1aa";
   });
   const runningCapacityDegrees = createMemo(() => launchGaugeRatio() * 180);
   const recentWinner = createMemo(
@@ -798,7 +766,7 @@ export default function ExperimentsIndexPage() {
   });
   const validationError = createMemo(() => {
     if (!name().trim()) {
-      return "Give the batch a name so it isn't just mystery meat later.";
+      return "Experiment name is required.";
     }
     if (selectedSymbols().length === 0) {
       return "Pick at least one symbol.";
@@ -1069,7 +1037,7 @@ export default function ExperimentsIndexPage() {
 
     const decoded = decodeTemplatePayload(template);
     if (!decoded) {
-      setError("That template link is busted.");
+      setError("Invalid template link.");
       setAppliedTemplate(template);
       return;
     }
@@ -1142,7 +1110,6 @@ export default function ExperimentsIndexPage() {
   return (
     <AppShell
       title="Experiments"
-      subtitle="Sweep parameters like you mean it, then launch with eyes open."
       actions={
         <>
           <A href="/backtests" class="app-button-secondary">
@@ -1168,10 +1135,10 @@ export default function ExperimentsIndexPage() {
                 <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div class="space-y-2">
                     <p class="app-kicker">Seeded From Backtest</p>
-                    <p class="text-sm font-semibold text-zinc-100">
+                    <p class="text-sm font-semibold text-stone-100">
                       Starting from `{seed().backtest_id.slice(0, 8)}`
                     </p>
-                    <p class="text-sm text-zinc-400">
+                    <p class="text-sm text-stone-400">
                       Symbol, interval, params, dates, and prop rules are already loaded.
                     </p>
                   </div>
@@ -1187,10 +1154,7 @@ export default function ExperimentsIndexPage() {
             <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div class="space-y-2">
                 <p class="app-kicker">Batch Builder</p>
-                <h2 class="text-xl font-semibold text-zinc-100">Build the next sweep</h2>
-                <p class="max-w-3xl text-sm text-zinc-400">
-                  This should feel like setting up an experiment, not filling out a form.
-                </p>
+                <h2 class="text-xl font-semibold text-stone-100">Build the next sweep</h2>
               </div>
               <div class="flex flex-wrap gap-2">
                 <Show when={recentWinner()}>
@@ -1218,14 +1182,14 @@ export default function ExperimentsIndexPage() {
 
             <div class="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(260px,0.9fr)]">
               <div
-                class={`rounded-[26px] border px-5 py-5 ${
+                class={`rounded-lg border px-5 py-5 ${
                   estimatedRunCount() >= 180
-                    ? "app-shake-soft border-amber-700/70 bg-gradient-to-br from-amber-500/16 via-zinc-950 to-zinc-950"
-                    : "border-sky-900/70 bg-gradient-to-br from-sky-400/14 via-zinc-950 to-zinc-950"
+                    ? "app-shake-soft border-amber-700/60 bg-amber-950/15"
+                    : "border-stone-700/60 bg-stone-900/40"
                 }`}
               >
                 <div class="flex items-center justify-between gap-3">
-                  <p class="text-xs uppercase tracking-[0.22em] text-zinc-500">Live Scope Preview</p>
+                  <p class="text-xs uppercase tracking-[0.22em] text-stone-500">Live Scope Preview</p>
                   <span
                     class={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold ${complexity().tone}`}
                   >
@@ -1233,58 +1197,50 @@ export default function ExperimentsIndexPage() {
                   </span>
                 </div>
                 <div class="mt-3 flex items-baseline gap-3">
-                  <span class="app-data animate-pulse text-4xl font-semibold text-white">
+                  <span class="app-data text-4xl font-semibold text-white">
                     {formatCount(estimatedRunCount())}
                   </span>
-                  <span class="text-sm text-zinc-400">total backtests</span>
+                  <span class="text-sm text-stone-400">total backtests</span>
                 </div>
-                <p class="app-data mt-2 text-xs text-zinc-400">
-                  <span class="text-zinc-100">{selectedSymbols().length}</span> sym
-                  <span class="text-zinc-600"> · </span>
-                  <span class="text-zinc-100">{selectedIntervals().length}</span> int
-                  <span class="text-zinc-600"> · </span>
-                  <span class="text-zinc-100">1</span> strat
-                  <span class="text-zinc-600"> · </span>
-                  <span class="text-zinc-100">{parameterComboCount()}</span> params
+                <p class="app-data mt-2 text-xs text-stone-400">
+                  <span class="text-stone-100">{selectedSymbols().length}</span> sym
+                  <span class="text-stone-600"> · </span>
+                  <span class="text-stone-100">{selectedIntervals().length}</span> int
+                  <span class="text-stone-600"> · </span>
+                  <span class="text-stone-100">1</span> strat
+                  <span class="text-stone-600"> · </span>
+                  <span class="text-stone-100">{parameterComboCount()}</span> params
                 </p>
-                <p class="mt-3 max-w-2xl text-sm text-zinc-400">{complexity().note}</p>
                 <div class="mt-4 flex flex-wrap gap-2">
-                  <span class="rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-1 text-xs text-zinc-300">
+                  <span class="rounded-full border border-stone-800 bg-stone-950/70 px-3 py-1 text-xs text-stone-300">
                     {selectedStrategyProfile().glyph} {selectedStrategyProfile().description}
                   </span>
-                  <span class="rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-1 text-xs text-zinc-300">
+                  <span class="rounded-full border border-stone-800 bg-stone-950/70 px-3 py-1 text-xs text-stone-300">
                     {scoringOptions.find((option) => option.value === scoringRule())?.label}
                   </span>
-                  <span class="rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-1 text-xs text-zinc-300">
+                  <span class="rounded-full border border-stone-800 bg-stone-950/70 px-3 py-1 text-xs text-stone-300">
                     {formatDuration(runtimeEstimateMinutes())} est. runtime
                   </span>
                 </div>
               </div>
 
               <div class="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-                <div class="rounded-md border border-zinc-800 bg-zinc-950/80 px-4 py-4">
-                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Runtime</p>
-                  <p class="app-data mt-2 text-2xl font-semibold text-zinc-100">
+                <div class="rounded-md border border-stone-800 bg-stone-950/80 px-4 py-4">
+                  <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Runtime</p>
+                  <p class="app-data mt-2 text-2xl font-semibold text-stone-100">
                     {formatDuration(runtimeEstimateMinutes())}
                   </p>
-                  <p class="mt-1 text-xs text-zinc-500">Includes date span and strategy width heuristics.</p>
                 </div>
-                <div class="rounded-md border border-zinc-800 bg-zinc-950/80 px-4 py-4">
-                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Memory Footprint</p>
-                  <p class="app-data mt-2 text-2xl font-semibold text-zinc-100">
+                <div class="rounded-md border border-stone-800 bg-stone-950/80 px-4 py-4">
+                  <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Memory Footprint</p>
+                  <p class="app-data mt-2 text-2xl font-semibold text-stone-100">
                     {formatMemory(memoryEstimateMb())}
                   </p>
-                  <p class="mt-1 text-xs text-zinc-500">A rough peak working-set estimate for the batch.</p>
                 </div>
-                <div class="rounded-md border border-zinc-800 bg-zinc-950/80 px-4 py-4">
-                  <p class="text-xs uppercase tracking-[0.18em] text-zinc-500">Coverage Overlap</p>
-                  <p class="app-data mt-2 text-2xl font-semibold text-zinc-100">
+                <div class="rounded-md border border-stone-800 bg-stone-950/80 px-4 py-4">
+                  <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Coverage Overlap</p>
+                  <p class="app-data mt-2 text-2xl font-semibold text-stone-100">
                     {coverageStats().hasCoverage ? `${coverageStats().overlapDays}d` : "0d"}
-                  </p>
-                  <p class="mt-1 text-xs text-zinc-500">
-                    {coverageStats().hasCoverage
-                      ? `${formatCompactCount(coverageStats().minRows)} shared bars at minimum.`
-                      : "Pick symbols with overlapping history."}
                   </p>
                 </div>
               </div>
@@ -1314,9 +1270,6 @@ export default function ExperimentsIndexPage() {
                     {(option) => <option value={option.value}>{option.label}</option>}
                   </For>
                 </select>
-                <p class="mt-2 text-xs text-zinc-500">
-                  {scoringOptions.find((option) => option.value === scoringRule())?.blurb}
-                </p>
               </div>
             </div>
 
@@ -1344,11 +1297,8 @@ export default function ExperimentsIndexPage() {
 
           <section class={section}>
             <div class="space-y-2">
-              <p class="text-sm font-semibold text-zinc-100">1. Coverage</p>
+              <p class="text-sm font-semibold text-stone-100">1. Coverage</p>
               <div class="app-hairline" />
-              <p class="text-sm text-zinc-400">
-                Pick the symbol universe, then drag across the interval timeline to define the cadence band.
-              </p>
             </div>
 
             <div>
@@ -1366,15 +1316,15 @@ export default function ExperimentsIndexPage() {
                         class={`rounded-md border px-4 py-3 text-left transition-all ${
                           checked()
                             ? "app-card-glow"
-                            : "border-zinc-800 bg-zinc-950/70 text-zinc-300 hover:border-zinc-600"
+                            : "border-stone-800 bg-stone-950/70 text-stone-300 hover:border-stone-600"
                         }`}
                       >
                         <div class="flex items-start justify-between gap-3">
                           <div>
                             <p class="text-sm font-semibold">{symbol.symbol}</p>
-                            <p class="mt-1 text-xs text-zinc-400">{symbol.full_name}</p>
+                            <p class="mt-1 text-xs text-stone-400">{symbol.full_name}</p>
                           </div>
-                          <span class="app-data text-xs text-zinc-500">{formatCompactCount(symbol.rows)}</span>
+                          <span class="app-data text-xs text-stone-500">{formatCompactCount(symbol.rows)}</span>
                         </div>
                       </button>
                     );
@@ -1383,13 +1333,10 @@ export default function ExperimentsIndexPage() {
               </div>
             </div>
 
-            <div class="rounded-md border border-zinc-800 bg-zinc-950/75 p-4">
+            <div class="rounded-md border border-stone-800 bg-stone-950/75 p-4">
               <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <label class={label}>Intervals</label>
-                  <p class="text-sm text-zinc-400">
-                    Drag across adjacent steps for a continuous sweep. Availability dots show how healthy the coverage looks.
-                  </p>
                 </div>
                 <button
                   type="button"
@@ -1397,7 +1344,7 @@ export default function ExperimentsIndexPage() {
                   class={`rounded-full border px-3 py-2 text-xs font-medium transition-colors ${
                     autoOptimizeIntervals()
                       ? "app-card-glow"
-                      : "border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-zinc-500"
+                      : "border-stone-700 bg-stone-950 text-stone-300 hover:border-stone-500"
                   }`}
                 >
                   {autoOptimizeIntervals() ? "Auto-optimize on" : "Auto-optimize intervals"}
@@ -1405,7 +1352,7 @@ export default function ExperimentsIndexPage() {
               </div>
 
               <div class="relative mt-5">
-                <div class="absolute left-5 right-5 top-6 h-px bg-gradient-to-r from-zinc-800 via-zinc-700 to-zinc-800" />
+                <div class="absolute left-5 right-5 top-6 h-px bg-gradient-to-r from-stone-800 via-stone-700 to-stone-800" />
                 <div class="relative grid gap-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9">
                   <For each={BACKTEST_INTERVALS}>
                     {(interval, index) => {
@@ -1438,15 +1385,15 @@ export default function ExperimentsIndexPage() {
                           class={`rounded-md border px-3 py-3 text-center transition-all ${
                             checked()
                               ? "app-card-glow"
-                              : "border-zinc-800 bg-zinc-950/75 text-zinc-300 hover:border-zinc-600"
+                              : "border-stone-800 bg-stone-950/75 text-stone-300 hover:border-stone-600"
                           }`}
                         >
                           <div class="mx-auto flex w-full max-w-[88px] items-center justify-center gap-2">
                             <span class={`h-2.5 w-2.5 rounded-full ${availability().tone}`} />
-                            <span class="text-xs text-zinc-500">{availability().label}</span>
+                            <span class="text-xs text-stone-500">{availability().label}</span>
                           </div>
                           <p class="mt-3 text-sm font-semibold">{interval.label}</p>
-                          <p class="mt-1 app-data text-[11px] text-zinc-500">
+                          <p class="mt-1 app-data text-[11px] text-stone-500">
                             {intervalMinutes(backendValue)}m
                           </p>
                         </button>
@@ -1459,7 +1406,7 @@ export default function ExperimentsIndexPage() {
               <div class="mt-4 flex flex-wrap gap-2">
                 <For each={selectedIntervals()}>
                   {(interval) => (
-                    <span class="rounded-full border border-sky-800/70 bg-sky-950/40 px-3 py-1 text-xs text-sky-100">
+                    <span class="rounded-full border border-green-800/70 bg-green-950/40 px-3 py-1 text-xs text-green-100">
                       {BACKTEST_INTERVALS.find((candidate) => getBackendInterval(candidate) === interval)
                         ?.label ?? interval}
                     </span>
@@ -1471,21 +1418,18 @@ export default function ExperimentsIndexPage() {
 
           <section class={section}>
             <div class="space-y-2">
-              <p class="text-sm font-semibold text-zinc-100">2. Strategy Grid</p>
+              <p class="text-sm font-semibold text-stone-100">2. Strategy Grid</p>
               <div class="app-hairline" />
-              <p class="text-sm text-zinc-400">
-                Give each strategy enough visual weight that you can tell what you're actually sweeping.
-              </p>
             </div>
 
             <div class="flex flex-wrap gap-2">
-              <span class="rounded-full border border-sky-800/70 bg-sky-950/40 px-3 py-1 text-xs text-sky-100">
+              <span class="rounded-full border border-green-800/70 bg-green-950/40 px-3 py-1 text-xs text-green-100">
                 Active strategy: {STRATEGIES.find((item) => item.value === strategy())?.label}
               </span>
-              <span class="rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-1 text-xs text-zinc-300">
+              <span class="rounded-full border border-stone-800 bg-stone-950/70 px-3 py-1 text-xs text-stone-300">
                 {STRATEGY_PARAMS[strategy()].length} params
               </span>
-              <span class="rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-1 text-xs text-zinc-300">
+              <span class="rounded-full border border-stone-800 bg-stone-950/70 px-3 py-1 text-xs text-stone-300">
                 Formula: {selectedStrategyProfile().formula}
               </span>
             </div>
@@ -1510,23 +1454,22 @@ export default function ExperimentsIndexPage() {
                       class={`rounded-[24px] border p-4 text-left transition-all ${
                         checked()
                           ? "app-card-glow"
-                          : "border-zinc-800 bg-zinc-950/75 text-zinc-300 hover:border-zinc-600"
+                          : "border-stone-800 bg-stone-950/75 text-stone-300 hover:border-stone-600"
                       }`}
                     >
                       <div class="flex items-start justify-between gap-4">
                         <div>
                           <div class="flex items-center gap-3">
-                            <span class="rounded-sm border border-zinc-700 bg-zinc-950/70 px-2.5 py-1.5 app-data text-xs text-zinc-200">
+                            <span class="rounded-sm border border-stone-700 bg-stone-950/70 px-2.5 py-1.5 app-data text-xs text-stone-200">
                               {profile.glyph}
                             </span>
                             <div>
-                              <p class="text-sm font-semibold text-zinc-100">{item.label}</p>
-                              <p class="mt-1 text-xs text-zinc-400">{profile.description}</p>
+                              <p class="text-sm font-semibold text-stone-100">{item.label}</p>
+                              <p class="mt-1 text-xs text-stone-400">{profile.description}</p>
                             </div>
                           </div>
-                          <p class="mt-3 text-sm text-zinc-400">{profile.note}</p>
                         </div>
-                        <span class="rounded-full border border-zinc-800 bg-zinc-950/80 px-2.5 py-1 text-xs text-zinc-300">
+                        <span class="rounded-full border border-stone-800 bg-stone-950/80 px-2.5 py-1 text-xs text-stone-300">
                           {STRATEGY_PARAMS[item.value].length} params
                         </span>
                       </div>
@@ -1536,7 +1479,7 @@ export default function ExperimentsIndexPage() {
                           {(value) => (
                             <span
                               class={`w-5 rounded-sm ${
-                                checked() ? "bg-sky-300/80" : "bg-zinc-700/90"
+                                checked() ? "bg-green-300/80" : "bg-stone-700/90"
                               }`}
                               style={{ height: `${12 + value * 3}px` }}
                             />
@@ -1544,7 +1487,7 @@ export default function ExperimentsIndexPage() {
                         </For>
                       </div>
 
-                      <p class="mt-3 app-data text-[11px] text-zinc-500">{profile.formula}</p>
+                      <p class="mt-3 app-data text-[11px] text-stone-500">{profile.formula}</p>
                     </button>
                   );
                 }}
@@ -1567,48 +1510,36 @@ export default function ExperimentsIndexPage() {
                       }
                       placeholder={String(param.default)}
                     />
-                    <p class="mt-2 text-xs text-zinc-500">
-                      Comma-separated grid values. Wider sweeps blow up faster than you think.
-                    </p>
                   </div>
                 )}
               </For>
             </div>
 
-            <Show when={validationError() || nyquistWarning()}>
-              <div class="rounded-md border border-amber-800/70 bg-amber-950/25 px-4 py-3 text-sm text-amber-100">
-                {validationError() ?? nyquistWarning()}
+            <Show when={validationError()}>
+              <div class="w-fit rounded-md border border-red-700/70 bg-red-950/30 px-4 py-3 text-sm text-red-200">
+                {validationError()}
+              </div>
+            </Show>
+            <Show when={!validationError() && nyquistWarning()}>
+              <div class="w-fit rounded-md border border-amber-800/70 bg-amber-950/25 px-4 py-3 text-sm text-amber-100">
+                {nyquistWarning()}
               </div>
             </Show>
           </section>
 
           <section class={section}>
             <div class="space-y-2">
-              <p class="text-sm font-semibold text-zinc-100">3. Guardrails + Sizing</p>
+              <p class="text-sm font-semibold text-stone-100">3. Guardrails + Sizing</p>
               <div class="app-hairline" />
-              <p class="text-sm text-zinc-400">
-                Prop rules, account assumptions, and position sizing all sit here so the launch math stays honest.
-              </p>
             </div>
 
             <div>
               <label class={label}>Prop preset</label>
-              <select
-                class={field}
+              <PropPresetSelect
+                presets={presets() ?? []}
                 value={selectedPresetName()}
-                onChange={(event) => setSelectedPresetName(event.currentTarget.value)}
-              >
-                <option value="">Select a preset...</option>
-                <For each={Object.entries(groupPresets(presets() ?? []))}>
-                  {([firm, options]) => (
-                    <optgroup label={firm}>
-                      <For each={options}>
-                        {(preset) => <option value={preset.name}>{preset.name}</option>}
-                      </For>
-                    </optgroup>
-                  )}
-                </For>
-              </select>
+                onChange={setSelectedPresetName}
+              />
             </div>
 
             <div class="grid gap-3 md:grid-cols-3">
@@ -1719,77 +1650,67 @@ export default function ExperimentsIndexPage() {
 
         <div class="space-y-6">
           <section class={section}>
-            <div class="space-y-2">
-              <p class="app-kicker">Launch Control</p>
-              <h3 class="text-lg font-semibold text-zinc-100">Validate, then commit the compute</h3>
-            </div>
+            <p class="app-kicker">Launch Control</p>
 
-            <div class="rounded-[28px] border border-zinc-800 bg-zinc-950/80 p-4 lg:p-5">
-              <div class="relative mx-auto h-32 w-full max-w-[260px] overflow-hidden">
-                <div
-                  class="absolute inset-x-0 bottom-0 h-[260px] rounded-full border border-zinc-800/80"
-                  style={{
-                    background: `conic-gradient(from 180deg at 50% 100%, ${launchGaugeColor()} 0deg ${runningCapacityDegrees()}deg, rgba(39,39,42,0.96) ${runningCapacityDegrees()}deg 180deg, rgba(9,9,11,0) 180deg 360deg)`,
-                  }}
-                />
-                <div class="absolute inset-x-8 bottom-0 h-[175px] rounded-full border border-zinc-900 bg-zinc-950" />
-                <div class="absolute inset-x-0 bottom-4 text-center">
-                  <p class="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Capacity</p>
-                  <p class="app-data mt-1.5 text-3xl font-semibold text-zinc-100">
+            <div class="rounded-lg border border-stone-800 bg-stone-950/80 p-4 lg:p-5">
+              <div class="mb-1">
+                <div class="flex items-baseline justify-between">
+                  <p class="text-[11px] uppercase tracking-[0.18em] text-stone-500">Capacity</p>
+                  <p class="app-data text-sm text-stone-300">
                     {formatCount(estimatedRunCount())}
-                    <span class="text-lg text-zinc-500"> / 250</span>
+                    <span class="text-stone-500"> / 250</span>
                   </p>
-                  <p class="mt-1 text-[11px] text-zinc-500">Queue slot {queueDepth() + 1} if launched now</p>
                 </div>
-                <div class="absolute bottom-1 left-3 text-[11px] text-zinc-600">0</div>
-                <div class="absolute bottom-1 left-1/2 -translate-x-1/2 text-[11px] text-zinc-600">
-                  125
+                <div class="mt-2 h-1 w-full rounded-full bg-stone-800">
+                  <div
+                    class="h-1 rounded-full transition-all"
+                    style={{
+                      width: `${launchGaugeRatio() * 100}%`,
+                      "background-color": launchGaugeColor(),
+                    }}
+                  />
                 </div>
-                <div class="absolute bottom-1 right-3 text-[11px] text-zinc-600">250</div>
+                <p class="mt-2 text-[11px] text-stone-600">Queue slot {queueDepth() + 1} if launched now</p>
               </div>
 
               <div class="mt-4 space-y-2">
-                <div class="flex items-center justify-between gap-4 rounded-md border border-zinc-800 bg-zinc-950/75 px-4 py-3">
+                <div class="flex items-center justify-between gap-4 rounded-md border border-stone-800 bg-stone-950/75 px-4 py-3">
                   <div class="min-w-0">
-                    <p class="text-[11px] uppercase tracking-[0.18em] text-zinc-500">ETA</p>
-                    <p class="mt-0.5 text-xs text-zinc-500">Includes the current run queue.</p>
+                    <p class="text-[11px] uppercase tracking-[0.18em] text-stone-500">ETA</p>
                   </div>
-                  <p class="app-data shrink-0 text-xl font-semibold text-zinc-100">
+                  <p class="app-data shrink-0 text-xl font-semibold text-stone-100">
                     {formatDuration(runtimeEstimateMinutes() + queueDepth() * 4)}
                   </p>
                 </div>
-                <div class="flex items-center justify-between gap-4 rounded-md border border-zinc-800 bg-zinc-950/75 px-4 py-3">
+                <div class="flex items-center justify-between gap-4 rounded-md border border-stone-800 bg-stone-950/75 px-4 py-3">
                   <div class="min-w-0">
-                    <p class="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Scoring Bias</p>
-                    <p class="mt-0.5 text-xs text-zinc-500">Set in the scoring rule above.</p>
+                    <p class="text-[11px] uppercase tracking-[0.18em] text-stone-500">Scoring Bias</p>
                   </div>
-                  <p class="shrink-0 truncate text-sm font-semibold text-zinc-100">
+                  <p class="shrink-0 truncate text-sm font-semibold text-stone-100">
                     {scoringOptions.find((option) => option.value === scoringRule())?.label}
                   </p>
                 </div>
-                <div class="flex items-center justify-between gap-4 rounded-md border border-zinc-800 bg-zinc-950/75 px-4 py-3">
+                <div class="flex items-center justify-between gap-4 rounded-md border border-stone-800 bg-stone-950/75 px-4 py-3">
                   <div class="min-w-0">
-                    <p class="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Confidence Band</p>
-                    <p class="mt-0.5 text-xs text-zinc-500">A rough stability hint, not gospel.</p>
+                    <p class="text-[11px] uppercase tracking-[0.18em] text-stone-500">Confidence Band</p>
                   </div>
-                  <p class="app-data shrink-0 text-xl font-semibold text-zinc-100">
+                  <p class="app-data shrink-0 text-xl font-semibold text-stone-100">
                     +/-{sharpeVarianceBand().toFixed(2)}
                   </p>
                 </div>
               </div>
             </div>
 
-            <div class="rounded-md border border-zinc-800 bg-zinc-950/80 p-4">
+            <div class="rounded-md border border-stone-800 bg-stone-950/80 p-4">
               <div class="flex items-center justify-between gap-3">
                 <div class="min-w-0">
-                  <p class="text-sm font-semibold text-zinc-100">Pre-flight validator</p>
-                  <p class="mt-1 text-xs text-zinc-500">This updates live so weird setups get called out early.</p>
+                  <p class="text-sm font-semibold text-stone-100">Sweep diagnostics</p>
                 </div>
                 <span
                   class={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold ${
                     isValidated()
-                      ? "border-emerald-800/80 bg-emerald-950/45 text-emerald-200"
-                      : "border-zinc-700 bg-zinc-900 text-zinc-300"
+                      ? "border-green-800/80 bg-green-950/45 text-green-200"
+                      : "border-stone-700 bg-stone-900 text-stone-300"
                   }`}
                 >
                   {isValidated() ? "Validated" : "Needs validation"}
@@ -1799,20 +1720,22 @@ export default function ExperimentsIndexPage() {
               <div class="mt-4 space-y-3">
                 <For each={preflightChecks()}>
                   {(check) => (
-                    <div class="rounded-md border border-zinc-800 bg-zinc-950/70 px-4 py-3">
+                    <div class="rounded-md border border-stone-800 bg-stone-950/70 px-4 py-3">
                       <div class="flex items-start gap-3">
-                        <span
-                          class={`mt-0.5 flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${
-                            check.tone === "pass"
-                              ? "bg-emerald-500/15 text-emerald-300"
-                              : "bg-amber-500/15 text-amber-300"
-                          }`}
-                        >
-                          {check.tone === "pass" ? "OK" : "!"}
+                        <span class="mt-0.5 shrink-0">
+                          {check.tone === "pass" ? (
+                            <svg class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                              <path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd" />
+                            </svg>
+                          ) : (
+                            <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                              <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+                            </svg>
+                          )}
                         </span>
                         <div>
-                          <p class="text-sm font-medium text-zinc-100">{check.label}</p>
-                          <p class="mt-1 text-sm text-zinc-400">{check.detail}</p>
+                          <p class="text-sm font-medium text-stone-100">{check.label}</p>
+                          <p class="mt-1 text-sm text-stone-400">{check.detail}</p>
                         </div>
                       </div>
                     </div>
@@ -1839,8 +1762,8 @@ export default function ExperimentsIndexPage() {
                 onClick={() => handleCreate(true)}
                 class={`rounded-sm px-4 py-3 text-sm font-semibold transition-colors ${
                   !isValidated() || busyAction()
-                    ? "cursor-not-allowed bg-zinc-800 text-zinc-500"
-                    : "bg-zinc-100 text-zinc-950 hover:bg-white"
+                    ? "cursor-not-allowed bg-stone-800 text-stone-500"
+                    : "bg-stone-100 text-stone-950 hover:bg-white"
                 }`}
               >
                 {busyAction() === "launch" ? "Launching batch..." : "Launch Batch"}
@@ -1871,20 +1794,19 @@ export default function ExperimentsIndexPage() {
             </div>
 
             <Show when={isValidated()}>
-              <div class="rounded-md border border-zinc-800 bg-zinc-950/80 p-4">
+              <div class="rounded-md border border-stone-800 bg-stone-950/80 p-4">
                 <div class="flex items-center justify-between gap-3">
                   <div>
-                    <p class="text-sm font-semibold text-zinc-100">First 10 runs</p>
-                    <p class="mt-1 text-xs text-zinc-500">A quick sanity check before you spend anything.</p>
-                  </div>
-                  <span class="rounded-full border border-sky-800/70 bg-sky-950/40 px-3 py-1 text-xs text-sky-100">
+                    <p class="text-sm font-semibold text-stone-100">First 10 runs</p>
+                    </div>
+                  <span class="rounded-full border border-green-800/70 bg-green-950/40 px-3 py-1 text-xs text-green-100">
                     Preview
                   </span>
                 </div>
 
                 <div class="mt-4 overflow-x-auto">
                   <table class="min-w-full text-left text-sm">
-                    <thead class="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                    <thead class="text-xs uppercase tracking-[0.18em] text-stone-500">
                       <tr>
                         <th class="pb-2 pr-4">Symbol</th>
                         <th class="pb-2 pr-4">Interval</th>
@@ -1896,12 +1818,12 @@ export default function ExperimentsIndexPage() {
                     <tbody>
                       <For each={previewRuns()}>
                         {(row) => (
-                          <tr class="border-t border-zinc-800/80">
-                            <td class="py-3 pr-4 font-medium text-zinc-100">{row.symbol}</td>
-                            <td class="py-3 pr-4 text-zinc-300">{row.interval}</td>
+                          <tr class="border-t border-stone-800/80">
+                            <td class="py-3 pr-4 font-medium text-stone-100">{row.symbol}</td>
+                            <td class="py-3 pr-4 text-stone-300">{row.interval}</td>
                             <For each={STRATEGY_PARAMS[strategy()]}>
                               {(param) => (
-                                <td class="py-3 pr-4 app-data text-zinc-300">{row.params[param.key]}</td>
+                                <td class="py-3 pr-4 app-data text-stone-300">{row.params[param.key]}</td>
                               )}
                             </For>
                           </tr>
@@ -1913,27 +1835,8 @@ export default function ExperimentsIndexPage() {
               </div>
             </Show>
 
-            <div class="rounded-md border border-zinc-800 bg-zinc-950/80 p-4">
-              <div class="flex items-center justify-between gap-3">
-                <div>
-                  <p class="text-sm font-semibold text-zinc-100">Preview results view</p>
-                  <p class="mt-1 text-xs text-zinc-500">A little teaser for where the batch lands after launch.</p>
-                </div>
-                <div class="flex flex-wrap gap-2">
-                  <span class="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-300">
-                    Equity Curve
-                  </span>
-                  <span class="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-300">
-                    Drawdown
-                  </span>
-                  <span class="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-300">
-                    Param Surface
-                  </span>
-                  <span class="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-300">
-                    Trade Dist.
-                  </span>
-                </div>
-              </div>
+            <div class="rounded-md border border-stone-800 bg-stone-950/80 p-4">
+              <p class="text-sm font-semibold text-stone-100">Preview results view</p>
 
               <div class="mt-4 grid gap-3">
                 <div class="app-skeleton h-28" />
@@ -1950,9 +1853,6 @@ export default function ExperimentsIndexPage() {
             <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <p class="app-kicker">Saved Batches</p>
-                <p class="mt-2 text-sm text-zinc-400">
-                  Sortable history, quick clone flow, and enough metadata to spot what deserves another run.
-                </p>
               </div>
               <div class="flex flex-wrap gap-2">
                 <button
@@ -1961,7 +1861,7 @@ export default function ExperimentsIndexPage() {
                   class={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
                     sortKey() === "updated"
                       ? "app-card-glow"
-                      : "border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-zinc-500"
+                      : "border-stone-700 bg-stone-950 text-stone-300 hover:border-stone-500"
                   }`}
                 >
                   Last activity
@@ -1972,7 +1872,7 @@ export default function ExperimentsIndexPage() {
                   class={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
                     sortKey() === "runs"
                       ? "app-card-glow"
-                      : "border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-zinc-500"
+                      : "border-stone-700 bg-stone-950 text-stone-300 hover:border-stone-500"
                   }`}
                 >
                   Runs
@@ -1983,7 +1883,7 @@ export default function ExperimentsIndexPage() {
                   class={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
                     sortKey() === "status"
                       ? "app-card-glow"
-                      : "border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-zinc-500"
+                      : "border-stone-700 bg-stone-950 text-stone-300 hover:border-stone-500"
                   }`}
                 >
                   Status
@@ -1995,21 +1895,18 @@ export default function ExperimentsIndexPage() {
               <Show
                 when={sortedExperiments().length > 0}
                 fallback={
-                  <div class="rounded-md border border-zinc-800 bg-zinc-950/60 px-4 py-10 text-center text-sm text-zinc-500">
+                  <div class="rounded-md border border-stone-800 bg-stone-950/60 px-4 py-10 text-center text-sm text-stone-500">
                     No experiments yet. Build one on the left.
                   </div>
                 }
               >
-                <div class="overflow-x-auto rounded-md border border-zinc-800 bg-zinc-950/70">
+                <div class="overflow-x-auto rounded-md border border-stone-800 bg-stone-950/70">
                   <table class="min-w-full text-left text-sm">
-                    <thead class="bg-zinc-950/95 text-xs uppercase tracking-[0.18em] text-zinc-500">
+                    <thead class="bg-stone-950/95 text-xs uppercase tracking-[0.18em] text-stone-500">
                       <tr>
                         <th class="px-4 py-3">Name</th>
-                        <th class="px-4 py-3">Runs</th>
                         <th class="px-4 py-3">Status</th>
-                        <th class="px-4 py-3">Coverage</th>
-                        <th class="px-4 py-3">Run Mix</th>
-                        <th class="px-4 py-3">Last Activity</th>
+                        <th class="px-4 py-3">Mix</th>
                         <th class="px-4 py-3">Actions</th>
                       </tr>
                     </thead>
@@ -2025,55 +1922,45 @@ export default function ExperimentsIndexPage() {
                           const pendingRatio = Math.max(0, 1 - completedRatio - failedRatio);
 
                           return (
-                            <tr class="border-t border-zinc-800/80 align-top">
-                              <td class="px-4 py-4">
-                                <div class="space-y-2">
+                            <tr class="border-t border-stone-800/80 align-top">
+                              <td class="px-4 py-2.5">
+                                <div class="space-y-0.5">
                                   <A
                                     href={`/experiments/${experiment.experiment_id}`}
-                                    class="text-sm font-semibold text-zinc-100 hover:text-white"
+                                    class="text-sm font-semibold text-stone-100 hover:text-white"
                                   >
                                     {experiment.name}
                                   </A>
-                                  <p class="text-xs text-zinc-500">
-                                    {experiment.symbols.join(", ")} | {experiment.intervals.join(", ")} |{" "}
+                                  <p class="text-xs text-stone-500">
+                                    {experiment.symbols.join(", ")} · {experiment.intervals.join(", ")} ·{" "}
                                     {formatStrategyLabel(experiment.strategy_type)}
                                   </p>
-                                  <div class="flex flex-wrap gap-2">
-                                    <For each={buildExperimentTags(experiment)}>
-                                      {(tag) => (
-                                        <span class="rounded-full border border-zinc-800 bg-zinc-950 px-2.5 py-1 text-[11px] text-zinc-300">
-                                          {tag}
-                                        </span>
-                                      )}
-                                    </For>
-                                  </div>
+                                  <p class="text-[10px] uppercase tracking-[0.2em] text-stone-600">
+                                    {formatDate(experiment.last_run_at ?? experiment.updated_at)}
+                                  </p>
                                 </div>
                               </td>
-                              <td class="px-4 py-4 app-data text-zinc-200">
-                                {experiment.total_runs > 0
-                                  ? `${experiment.completed_runs}/${experiment.total_runs}`
-                                  : "draft"}
-                              </td>
-                              <td class="px-4 py-4">
-                                <span
-                                  class={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${statusTone(
-                                    experiment.status,
-                                  )}`}
-                                >
-                                  {describeStatus(experiment.status)}
-                                </span>
-                              </td>
-                              <td class="px-4 py-4 text-zinc-300">
+                              <td class="px-4 py-2.5">
                                 <div class="space-y-1">
-                                  <p>{experiment.symbols.length} symbols</p>
-                                  <p>{experiment.intervals.length} intervals</p>
+                                  <span
+                                    class={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${statusTone(
+                                      experiment.status,
+                                    )}`}
+                                  >
+                                    {describeStatus(experiment.status)}
+                                  </span>
+                                  <Show when={experiment.total_runs > 0}>
+                                    <p class="app-data text-xs text-stone-500">
+                                      {experiment.completed_runs}/{experiment.total_runs} runs
+                                    </p>
+                                  </Show>
                                 </div>
                               </td>
-                              <td class="px-4 py-4">
-                                <div class="w-28">
-                                  <div class="flex h-2 overflow-hidden rounded-full bg-zinc-900">
+                              <td class="px-4 py-2.5">
+                                <div class="w-20">
+                                  <div class="flex h-2 overflow-hidden rounded-full bg-stone-900">
                                     <div
-                                      class="bg-emerald-400"
+                                      class="bg-green-400"
                                       style={{ width: `${completedRatio * 100}%` }}
                                     />
                                     <div
@@ -2081,19 +1968,16 @@ export default function ExperimentsIndexPage() {
                                       style={{ width: `${failedRatio * 100}%` }}
                                     />
                                     <div
-                                      class="bg-zinc-700"
+                                      class="bg-stone-700"
                                       style={{ width: `${pendingRatio * 100}%` }}
                                     />
                                   </div>
-                                  <p class="mt-2 text-xs text-zinc-500">
+                                  <p class="mt-1 text-xs text-stone-500">
                                     {experiment.failed_runs} failed
                                   </p>
                                 </div>
                               </td>
-                              <td class="px-4 py-4 text-zinc-300">
-                                {formatDate(experiment.last_run_at ?? experiment.updated_at)}
-                              </td>
-                              <td class="px-4 py-4">
+                              <td class="px-4 py-2.5">
                                 <div class="flex flex-wrap gap-2">
                                   <button
                                     type="button"
@@ -2135,15 +2019,12 @@ export default function ExperimentsIndexPage() {
       </div>
 
       <Show when={showShortcuts()}>
-        <div class="fixed inset-0 z-40 flex items-center justify-center bg-zinc-950/80 px-4 backdrop-blur-sm">
-          <div class="w-full max-w-md rounded-[28px] border border-zinc-800 bg-zinc-950 p-6 shadow-2xl">
+        <div class="fixed inset-0 z-40 flex items-center justify-center bg-stone-950/80 px-4 backdrop-blur-sm">
+          <div class="w-full max-w-md rounded-[28px] border border-stone-800 bg-stone-950 p-6 shadow-2xl">
             <div class="flex items-start justify-between gap-4">
               <div>
                 <p class="app-kicker">Power User</p>
-                <h3 class="mt-2 text-lg font-semibold text-zinc-100">Keyboard shortcuts</h3>
-                <p class="mt-2 text-sm text-zinc-400">
-                  A small nod to the quant crowd. I kept it simple for now.
-                </p>
+                <h3 class="mt-2 text-lg font-semibold text-stone-100">Keyboard shortcuts</h3>
               </div>
               <button type="button" onClick={() => setShowShortcuts(false)} class="app-button-secondary">
                 Close
@@ -2151,16 +2032,13 @@ export default function ExperimentsIndexPage() {
             </div>
 
             <div class="mt-5 space-y-3">
-              <div class="flex items-center justify-between rounded-md border border-zinc-800 bg-zinc-950/80 px-4 py-3">
-                <span class="text-sm text-zinc-300">Open or close this overlay</span>
+              <div class="flex items-center justify-between rounded-md border border-stone-800 bg-stone-950/80 px-4 py-3">
+                <span class="text-sm text-stone-300">Open or close this overlay</span>
                 <span class="app-kbd">?</span>
               </div>
-              <div class="flex items-center justify-between rounded-md border border-zinc-800 bg-zinc-950/80 px-4 py-3">
-                <span class="text-sm text-zinc-300">Dismiss modal overlays</span>
+              <div class="flex items-center justify-between rounded-md border border-stone-800 bg-stone-950/80 px-4 py-3">
+                <span class="text-sm text-stone-300">Dismiss modal overlays</span>
                 <span class="app-kbd">Esc</span>
-              </div>
-              <div class="rounded-md border border-zinc-800 bg-zinc-950/80 px-4 py-3 text-sm text-zinc-400">
-                Validation and launch are still button-first on purpose. I didn't want to sneak destructive shortcuts in yet.
               </div>
             </div>
           </div>
