@@ -1,5 +1,6 @@
 import { Show, For, createSignal, onCleanup, onMount } from "solid-js";
 import FirmLogo from "./FirmLogo";
+import { firmLogoSrc, firmOf, stripFirmPrefix } from "../utils/firmLogo";
 
 interface PresetLike {
   name: string;
@@ -16,30 +17,10 @@ interface Props {
 
 function groupPresets(presets: PresetLike[]): Record<string, PresetLike[]> {
   return presets.reduce<Record<string, PresetLike[]>>((acc, preset) => {
-    let firm = preset.name.split(/\s+\d/)[0].trim();
-    firm = firm
-      .replace(/^My Funded Futures (Rapid|Flex)?/i, "My Funded Futures")
-      .replace(/^Lucid Trading /i, "Lucid Trading")
-      .trim();
+    const firm = firmOf(preset.name);
     (acc[firm] ??= []).push(preset);
     return acc;
   }, {});
-}
-
-function firmOf(name: string): string {
-  let firm = name.split(/\s+\d/)[0].trim();
-  firm = firm
-    .replace(/^My Funded Futures (Rapid|Flex)?/i, "My Funded Futures")
-    .replace(/^Lucid Trading /i, "Lucid Trading")
-    .trim();
-  return firm;
-}
-
-function stripFirmPrefix(name: string, firm: string): string {
-  if (name.toLowerCase().startsWith(firm.toLowerCase())) {
-    return name.slice(firm.length).trim() || name;
-  }
-  return name;
 }
 
 export default function PropPresetSelect(props: Props) {
@@ -87,12 +68,18 @@ export default function PropPresetSelect(props: Props) {
             when={selectedPreset()}
             fallback={<span class="text-stone-500">{props.placeholder ?? "Select a preset..."}</span>}
           >
-            {(preset) => (
-              <>
-                <FirmLogo firmName={firmOf(preset().name)} heightClass="h-6" class="shrink-0" />
-                <span class="truncate text-stone-100">{preset().name}</span>
-              </>
-            )}
+            {(preset) => {
+              const firm = () => firmOf(preset().name);
+              const hasLogo = () => !!firmLogoSrc(firm());
+              return (
+                <>
+                  <FirmLogo firmName={firm()} heightClass="h-6" class="shrink-0" />
+                  <span class="truncate text-stone-100">
+                    {hasLogo() ? stripFirmPrefix(preset().name, firm()) : preset().name}
+                  </span>
+                </>
+              );
+            }}
           </Show>
         </span>
         <svg
