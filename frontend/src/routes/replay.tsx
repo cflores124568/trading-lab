@@ -161,8 +161,22 @@ function createReplayAction(
   };
 }
 
-function propEvalTone(breached: boolean): string {
-  return breached ? "border-red-700 bg-red-950" : "border-green-700/60 bg-green-950/50";
+type PropEvalAccountState = "breached" | "passed" | "needs_more_days" | "in_progress";
+
+function propEvalTone(state: PropEvalAccountState): string {
+  if (state === "breached") {
+    return "border-red-700 bg-red-950";
+  }
+
+  if (state === "passed") {
+    return "border-green-600 bg-green-950/60";
+  }
+
+  if (state === "needs_more_days") {
+    return "border-amber-600/70 bg-amber-950/40";
+  }
+
+  return "border-green-700/60 bg-green-950/50";
 }
 
 function formatUsd(value: number): string {
@@ -172,6 +186,14 @@ function formatUsd(value: number): string {
 
 function formatPct(value: number, digits = 2): string {
   return `${(value * 100).toFixed(digits)}%`;
+}
+
+function formatProgressPct(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "0.0%";
+  }
+
+  return `${(Math.min(Math.max(value, 0), 1) * 100).toFixed(1)}%`;
 }
 
 type ReplayBreachInfo = {
@@ -216,16 +238,46 @@ function getReplayBreachInfo(evaluation: PropFirmEvaluation | null | undefined):
   return null;
 }
 
-function groupPresets(presets: PropFirmRules[]): Record<string, PropFirmRules[]> {
-  return presets.reduce<Record<string, PropFirmRules[]>>((acc, preset) => {
-    let firm = preset.name.split(/\s+\d/)[0].trim();
-    firm = firm
-      .replace(/^My Funded Futures (Rapid|Flex)?/i, "My Funded Futures")
-      .replace(/^Lucid Trading /i, "Lucid Trading")
-      .trim();
-    (acc[firm] ??= []).push(preset);
-    return acc;
-  }, {});
+function clampProgress(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.min(Math.max(value, 0), 1);
+}
+
+function PropEvalProgressRow(props: {
+  label: string;
+  value: string;
+  detail: string;
+  progress: number;
+  tone?: "good" | "warn" | "bad" | "default";
+}) {
+  const tone = () => props.tone ?? "default";
+  const fillClass = () => {
+    if (tone() === "good") return "bg-green-400";
+    if (tone() === "warn") return "bg-amber-300";
+    if (tone() === "bad") return "bg-red-400";
+    return "bg-stone-300";
+  };
+
+  return (
+    <li class="space-y-1.5">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <span class="block text-stone-400">{props.label}</span>
+          <span class="block text-xs text-stone-500">{props.detail}</span>
+        </div>
+        <span class="app-data text-right text-stone-200">{props.value}</span>
+      </div>
+      <div class="h-1.5 overflow-hidden rounded-full bg-stone-900">
+        <div
+          class={`h-full rounded-full ${fillClass()}`}
+          style={{ width: `${clampProgress(props.progress) * 100}%` }}
+        />
+      </div>
+    </li>
+  );
 }
 
 function findPresetByPropFirm(presets: PropFirmRules[], propFirm: string): PropFirmRules | null {
@@ -306,6 +358,7 @@ function PropEvalPanel(props: {
 }) {
   const breached = () =>
     props.evaluation.daily_loss_breached || props.evaluation.drawdown_breached;
+  const minTradingDaysPassed = () => props.evaluation.min_trading_days_passed ?? true;
 
   const details = () => props.evaluation.details as Record<string, unknown>;
   const profitPct = () => Number(details().actual_profit_pct ?? 0);
@@ -315,49 +368,166 @@ function PropEvalPanel(props: {
   const accountSize = () => Number(details().account_size ?? 0);
   const profitUsd = () => accountSize() * profitPct();
   const profitTargetUsd = () => accountSize() * profitTargetPct();
+  const profitProgress = () =>
+    profitTargetPct() > 0 ? profitPct() / profitTargetPct() : props.evaluation.profit_target_hit ? 1 : 0;
+  const bestDayPct = () => Number(details().best_day_profit_pct ?? 0);
+  const consistencyThreshold = () => {
+    const value = details().consistency_threshold;
+    return typeof value === "number" ? value : null;
+  };
+  const dailyPnls = () => details().daily_pnls as Record<string, number> | undefined;
+  const bestDayUsd = () => {
+    const values = Object.values(dailyPnls() ?? {}).filter((value) => Number.isFinite(value));
+    return values.length > 0 ? Math.max(...values) : 0;
+  };
+  const consistencyTargetProfitUsd = () => {
+    const threshold = consistencyThreshold();
+    if (!threshold || bestDayUsd() <= 0) {
+      return 0;
+    }
+
+    return bestDayUsd() / threshold;
+  };
+  const consistencyProgress = () => {
+    if (!consistencyThreshold()) {
+      return props.evaluation.consistency_passed ? 1 : 0;
+    }
+    if (props.evaluation.consistency_passed) {
+      return 1;
+    }
+    const targetProfit = consistencyTargetProfitUsd();
+    return targetProfit > 0 ? profitUsd() / targetProfit : 0;
+  };
+  const consistencyDetail = () => {
+    const threshold = consistencyThreshold();
+    if (!threshold) {
+      return "Consistency rule is missing a threshold.";
+    }
+
+    if (props.evaluation.consistency_passed) {
+      return `Best day is inside the ${formatPct(threshold, 0)} cap.`;
+    }
+
+    const targetProfit = consistencyTargetProfitUsd();
+    const needed = Math.max(0, targetProfit - profitUsd());
+    return targetProfit > 0
+      ? `Need about ${formatUsd(needed)} more outside the best day.`
+      : `Best day needs to stay under ${formatPct(threshold, 0)} of total profit.`;
+  };
+  const tradingDaysCompleted = () => Number(details().trading_days_completed ?? 0);
+  const tradingDaysRequired = () => {
+    const value = details().min_trading_days_required;
+    return typeof value === "number" ? value : null;
+  };
+  const tradingDaysProgress = () => {
+    const required = tradingDaysRequired();
+    return required ? tradingDaysCompleted() / required : 1;
+  };
+  const accountState = (): PropEvalAccountState => {
+    if (breached()) {
+      return "breached";
+    }
+    if (props.evaluation.passed) {
+      return "passed";
+    }
+    if (props.evaluation.profit_target_hit && (!props.evaluation.consistency_passed || !minTradingDaysPassed())) {
+      return "needs_more_days";
+    }
+    return "in_progress";
+  };
+  const stateLabel = () => {
+    if (accountState() === "breached") return "Breached";
+    if (accountState() === "passed") return "Passed";
+    if (accountState() === "needs_more_days") return "Needs More Days";
+    return "Account Alive";
+  };
+  const stateDetail = () => {
+    if (accountState() === "breached") {
+      return "A hard risk rule tripped, so this account should stop here.";
+    }
+    if (accountState() === "passed") {
+      return "Profit target, consistency, min days, and risk rules are all clean.";
+    }
+    if (accountState() === "needs_more_days") {
+      return "The account is still valid. Save it and keep trading until consistency and min days line up.";
+    }
+    return "No hard breach yet. Keep building this same account toward the full eval.";
+  };
 
   return (
-    <div class={`rounded-lg border p-4 ${propEvalTone(breached())}`}>
+    <div class={`rounded-lg border p-4 ${propEvalTone(accountState())}`}>
       <div class="mb-2 flex items-center gap-2">
-        {breached() ? (
+        {accountState() === "breached" ? (
           <CircleX size={18} class="text-red-400" />
+        ) : accountState() === "needs_more_days" ? (
+          <TriangleAlert size={18} class="text-amber-300" />
         ) : (
-          <CircleCheck class="text-green-400" />
+          <CircleCheck size={18} class="text-green-400" />
         )}
-        <p class="font-semibold">
-          {props.title}: {breached() ? "Breached" : "No Breach"}
-        </p>
+        <div>
+          <p class="font-semibold">
+            {props.title}: {stateLabel()}
+          </p>
+          <p class="text-xs text-stone-400">{stateDetail()}</p>
+        </div>
       </div>
 
-      <Show
-        when={breached()}
-        fallback={
-          <ul class="mt-2 space-y-1 text-sm text-stone-300">
-            <li class="flex items-center justify-between gap-3">
-              <span class="text-stone-400">Session P&amp;L</span>
-              <span class={profitUsd() >= 0 ? "text-green-300" : "text-red-300"}>
-                {formatUsd(profitUsd())} ({formatPct(profitPct())})
-              </span>
-            </li>
-            <li class="flex items-center justify-between gap-3">
-              <span class="text-stone-400">Profit target</span>
-              <span class="text-stone-300">
-                {formatUsd(profitTargetUsd())} ({formatPct(profitTargetPct(), 0)})
-              </span>
-            </li>
-            <li class="flex items-center justify-between gap-3">
-              <span class="text-stone-400">Drawdown used</span>
-              <span class="text-stone-300">
-                {formatPct(drawdownPct())} / {formatPct(drawdownLimitPct(), 0)}
-              </span>
-            </li>
-            <li class="mt-1 text-xs text-stone-500">
-              Single-session view. Profit target, consistency, and minimum trading
-              days resolve across the full eval, not one replay.
-            </li>
-          </ul>
-        }
-      >
+      <ul class="mt-3 space-y-3 text-sm text-stone-300">
+        <PropEvalProgressRow
+          label="Profit target"
+          value={`${formatUsd(profitUsd())} / ${formatUsd(profitTargetUsd())}`}
+          detail={`${formatProgressPct(profitProgress())} reached`}
+          progress={profitProgress()}
+          tone={props.evaluation.profit_target_hit ? "good" : "default"}
+        />
+        <PropEvalProgressRow
+          label="Consistency"
+          value={
+            consistencyThreshold()
+              ? `${formatPct(bestDayPct())} / ${formatPct(consistencyThreshold()!, 0)}`
+              : "Off"
+          }
+          detail={consistencyDetail()}
+          progress={consistencyProgress()}
+          tone={
+            consistencyThreshold() === null || props.evaluation.consistency_passed
+              ? "good"
+              : accountState() === "needs_more_days"
+                ? "warn"
+                : "default"
+          }
+        />
+        <PropEvalProgressRow
+          label="Trading days"
+          value={
+            tradingDaysRequired()
+              ? `${tradingDaysCompleted()} / ${tradingDaysRequired()}`
+              : `${tradingDaysCompleted()} day${tradingDaysCompleted() === 1 ? "" : "s"}`
+          }
+          detail={
+            tradingDaysRequired()
+              ? minTradingDaysPassed()
+                ? "Minimum trading-day rule is satisfied."
+                : "Keep the same saved account going on another trading day."
+              : "No minimum trading-day rule on this account."
+          }
+          progress={tradingDaysProgress()}
+          tone={minTradingDaysPassed() ? "good" : "warn"}
+        />
+        <PropEvalProgressRow
+          label="Drawdown used"
+          value={`${formatPct(drawdownPct())} / ${formatPct(drawdownLimitPct(), 0)}`}
+          detail={
+            props.evaluation.drawdown_breached
+              ? "Max drawdown breached."
+              : `${formatProgressPct(drawdownLimitPct() > 0 ? drawdownPct() / drawdownLimitPct() : 0)} of drawdown limit used.`
+          }
+          progress={drawdownLimitPct() > 0 ? drawdownPct() / drawdownLimitPct() : 0}
+          tone={props.evaluation.drawdown_breached ? "bad" : "good"}
+        />
+      </ul>
+
+      <Show when={breached()}>
         <ul class="mt-2 space-y-1 text-sm text-red-300">
           <Show when={props.evaluation.daily_loss_breached}>
             <li class="flex items-center gap-1.5">

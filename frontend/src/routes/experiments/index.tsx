@@ -738,7 +738,6 @@ export default function ExperimentsIndexPage() {
     }
     return "#a1a1aa";
   });
-  const runningCapacityDegrees = createMemo(() => launchGaugeRatio() * 180);
   const recentWinner = createMemo(
     () => (experiments() ?? []).find((experiment) => experiment.status === "completed") ?? null,
   );
