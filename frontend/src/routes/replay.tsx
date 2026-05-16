@@ -32,9 +32,13 @@ import {
 import AppShell from "../components/AppShell";
 import ChartIndicatorToggleBar from "../components/ChartIndicatorToggleBar";
 import FirmLogo from "../components/FirmLogo";
-import { firmLogoSrc } from "../utils/firmLogo";
+import { firmLogoSrc, firmOf, stripFirmPrefix } from "../utils/firmLogo";
 import EquityCurve from "../components/EquityCurve";
-import PriceChart, { type PriceChartMarker } from "../components/PriceChart";
+import PriceChart, {
+  type PriceChartBracket,
+  type PriceChartMarker,
+  type PriceChartRestingOrder,
+} from "../components/PriceChart";
 import {
   ReplayChartStrip,
   ReplayExecutionActions,
@@ -1295,6 +1299,60 @@ export default function ReplayLabPage() {
     return markers;
   });
 
+  const chartRestingOrders = createMemo<PriceChartRestingOrder[]>(() => {
+    const orders = replaySession()?.activeOrders ?? [];
+    return orders
+      .filter((order) => order.bracket_role !== "stop" && order.bracket_role !== "target")
+      .filter((order) => Number.isFinite(order.price))
+      .map((order) => {
+        const labelPrefix =
+          order.intent === "exit" ? "EXIT" : order.side === "buy" ? "BUY" : "SELL";
+        return {
+          id: order.id,
+          side: order.side,
+          price: order.price,
+          label: `${labelPrefix} ${order.price.toFixed(2)}`,
+        };
+      });
+  });
+
+  const chartBracket = createMemo<PriceChartBracket | null>(() => {
+    const session = replaySession();
+    const position = session?.position;
+    if (!position) {
+      return null;
+    }
+
+    const config = launchConfig();
+    const tickSize = config?.tickSize ?? 0.25;
+    const tickValue = config?.tickValue ?? 1;
+
+    const orders = session?.activeOrders ?? [];
+    const stopOrder = orders.find((order) => order.bracket_role === "stop");
+    const targetOrder = orders.find((order) => order.bracket_role === "target");
+
+    return {
+      entryPrice: position.entry_price,
+      side: position.side,
+      quantity: position.quantity,
+      tickSize,
+      tickValue,
+      stopPrice: stopOrder?.price ?? null,
+      targetPrice: targetOrder?.price ?? null,
+      onCommit: ({ stopPrice, targetPrice }) => {
+        setBannerError(null);
+        recordReplayAction("attach_bracket", {
+          stopPrice: Number(stopPrice.toFixed(4)),
+          targetPrice: Number(targetPrice.toFixed(4)),
+        });
+      },
+      onCancel: () => {
+        setBannerError(null);
+        recordReplayAction("cancel");
+      },
+    };
+  });
+
   const canLaunch = createMemo(
     () =>
       !!symbol() &&
@@ -1597,7 +1655,7 @@ export default function ReplayLabPage() {
       subtitle={
         sourceBacktestId()
           ? "Launch the exact market window from a saved backtest, trade it forward-only, then review how your manual calls stacked up."
-          : "Trade old Databento windows like they're live, keep future candles hidden during the run, and save progress when you need a break."
+          : undefined
       }
       actions={
         <>
@@ -1854,11 +1912,20 @@ export default function ReplayLabPage() {
                 <>
                   <Show
                     when={firmLogoSrc(preset()!.name)}
-                    fallback={<ShieldCheck size={12} class="shrink-0 text-green-300" />}
+                    fallback={
+                      <>
+                        <ShieldCheck size={12} class="shrink-0 text-green-300" />
+                        <span class="truncate">{preset()!.name}</span>
+                      </>
+                    }
                   >
                     <FirmLogo firmName={preset()!.name} heightClass="h-4" class="shrink-0" />
+                    <Show when={stripFirmPrefix(preset()!.name, firmOf(preset()!.name)) !== preset()!.name}>
+                      <span class="truncate">
+                        {stripFirmPrefix(preset()!.name, firmOf(preset()!.name))}
+                      </span>
+                    </Show>
                   </Show>
-                  <span class="truncate">{preset()!.name}</span>
                 </>
               ) : (
                 "Rules"
@@ -1888,12 +1955,7 @@ export default function ReplayLabPage() {
               <Show when={preset()}>
                 {(selectedPreset) => (
                   <div class="space-y-3">
-                    <div class="flex items-center gap-3 rounded-2xl border border-stone-800 bg-stone-950/60 px-3 py-3">
-                      <FirmLogo
-                        firmName={selectedPreset().name}
-                        heightClass="h-6"
-                        class="shrink-0"
-                      />
+                    <div class="flex items-center justify-between rounded-2xl border border-stone-800 bg-stone-950/60 px-3 py-3">
                       <p class="app-data text-base font-semibold text-stone-100">
                         ${selectedPreset().account_size.toLocaleString()}
                       </p>
@@ -2145,6 +2207,8 @@ export default function ReplayLabPage() {
                                   height={520}
                                   indicators={indicatorSettings()}
                                   indicatorLegend="full"
+                                  bracket={chartBracket()}
+                                  restingOrders={chartRestingOrders()}
                                   class="rounded-2xl"
                                 />
                               </Show>

@@ -5,7 +5,9 @@ import {
   createSeriesMarkers,
   HistogramSeries,
   LineSeries,
+  LineStyle,
   type IChartApi,
+  type IPriceLine,
   type ISeriesApi,
   type ISeriesMarkersPluginApi,
   type MouseEventParams,
@@ -28,6 +30,25 @@ export interface PriceChartMarker {
   text: string;
 }
 
+export interface PriceChartBracket {
+  entryPrice: number;
+  side: "buy" | "sell";
+  quantity: number;
+  tickSize: number;
+  tickValue: number;
+  stopPrice?: number | null;
+  targetPrice?: number | null;
+  onCommit?: (next: { stopPrice: number; targetPrice: number }) => void;
+  onCancel?: () => void;
+}
+
+export interface PriceChartRestingOrder {
+  id: string;
+  side: "buy" | "sell";
+  price: number;
+  label: string;
+}
+
 interface Props {
   candles: Candle[];
   markers?: PriceChartMarker[];
@@ -36,6 +57,8 @@ interface Props {
   class?: string;
   indicators?: Partial<PriceChartIndicatorSettings>;
   indicatorLegend?: "hidden" | "compact" | "full";
+  bracket?: PriceChartBracket | null;
+  restingOrders?: PriceChartRestingOrder[];
 }
 
 interface IndicatorLegendRow {
@@ -287,6 +310,40 @@ export default function PriceChart(props: Props) {
     return rows;
   });
 
+  let stopPriceLine: IPriceLine | undefined;
+  let targetPriceLine: IPriceLine | undefined;
+  let entryPriceLine: IPriceLine | undefined;
+  let restingOrderLines: IPriceLine[] = [];
+  let overlayContainer: HTMLDivElement | undefined;
+
+  type BracketDragKind = "stop" | "target";
+  interface BracketDragState {
+    kind: BracketDragKind;
+    pointerId: number;
+    livePrice: number;
+    committed: boolean;
+  }
+  const [bracketDrag, setBracketDrag] = createSignal<BracketDragState | null>(null);
+  const [bracketCoords, setBracketCoords] = createSignal<{
+    stopY: number | null;
+    targetY: number | null;
+    entryY: number | null;
+  }>({ stopY: null, targetY: null, entryY: null });
+
+  interface BracketPending {
+    kind: BracketDragKind;
+    price: number;
+  }
+  const [bracketPending, setBracketPending] = createSignal<BracketPending | null>(null);
+
+  interface BracketMenuState {
+    x: number;
+    y: number;
+    price: number;
+  }
+  const [bracketMenu, setBracketMenu] = createSignal<BracketMenuState | null>(null);
+  let pendingPriceLine: IPriceLine | undefined;
+
   let ema9Series: ISeriesApi<"Line"> | undefined;
   let ema20Series: ISeriesApi<"Line"> | undefined;
   let ema50Series: ISeriesApi<"Line"> | undefined;
@@ -449,6 +506,420 @@ export default function PriceChart(props: Props) {
     }
   };
 
+  const formatBracketDollars = (value: number): string => {
+    const sign = value >= 0 ? "+" : "-";
+    return `${sign}$${Math.abs(value).toLocaleString(undefined, {
+      maximumFractionDigits: 0,
+    })}`;
+  };
+
+  const effectiveBracketPrices = (
+    bracket: PriceChartBracket,
+  ): { stopPrice: number | null; targetPrice: number | null } => {
+    const drag = bracketDrag();
+    const propStop =
+      bracket.stopPrice !== null &&
+      bracket.stopPrice !== undefined &&
+      Number.isFinite(bracket.stopPrice)
+        ? bracket.stopPrice
+        : null;
+    const propTarget =
+      bracket.targetPrice !== null &&
+      bracket.targetPrice !== undefined &&
+      Number.isFinite(bracket.targetPrice)
+        ? bracket.targetPrice
+        : null;
+
+    return {
+      stopPrice: drag?.kind === "stop" ? drag.livePrice : propStop,
+      targetPrice: drag?.kind === "target" ? drag.livePrice : propTarget,
+    };
+  };
+
+  const renderBracketLines = () => {
+    if (!candleSeries) {
+      return;
+    }
+
+    const bracket = props.bracket;
+
+    if (stopPriceLine) {
+      candleSeries.removePriceLine(stopPriceLine);
+      stopPriceLine = undefined;
+    }
+    if (targetPriceLine) {
+      candleSeries.removePriceLine(targetPriceLine);
+      targetPriceLine = undefined;
+    }
+    if (entryPriceLine) {
+      candleSeries.removePriceLine(entryPriceLine);
+      entryPriceLine = undefined;
+    }
+    if (pendingPriceLine) {
+      candleSeries.removePriceLine(pendingPriceLine);
+      pendingPriceLine = undefined;
+    }
+
+    if (!bracket) {
+      return;
+    }
+
+    const dollarPerPoint =
+      bracket.tickSize > 0 ? bracket.tickValue / bracket.tickSize : 0;
+    const qty = bracket.quantity > 0 ? bracket.quantity : 1;
+    const sideSign = bracket.side === "buy" ? 1 : -1;
+    const { stopPrice, targetPrice } = effectiveBracketPrices(bracket);
+
+    entryPriceLine = candleSeries.createPriceLine({
+      price: bracket.entryPrice,
+      color: "#a1a1aa",
+      lineWidth: 1,
+      lineStyle: LineStyle.Dotted,
+      axisLabelVisible: true,
+      title: `ENTRY ${bracket.entryPrice.toFixed(2)}`,
+    });
+
+    if (targetPrice !== null) {
+      const pnl =
+        (targetPrice - bracket.entryPrice) * sideSign * dollarPerPoint * qty;
+      targetPriceLine = candleSeries.createPriceLine({
+        price: targetPrice,
+        color: "#22c55e",
+        lineWidth: 2,
+        lineStyle: LineStyle.Solid,
+        axisLabelVisible: true,
+        title: `TP ${formatBracketDollars(pnl)}`,
+      });
+    }
+
+    if (stopPrice !== null) {
+      const pnl =
+        (stopPrice - bracket.entryPrice) * sideSign * dollarPerPoint * qty;
+      stopPriceLine = candleSeries.createPriceLine({
+        price: stopPrice,
+        color: "#f43f5e",
+        lineWidth: 2,
+        lineStyle: LineStyle.Solid,
+        axisLabelVisible: true,
+        title: `SL ${formatBracketDollars(pnl)}`,
+      });
+    }
+
+    const pending = bracketPending();
+    if (pending) {
+      const hasCommitted =
+        pending.kind === "stop" ? stopPrice !== null : targetPrice !== null;
+      if (!hasCommitted) {
+        const pnl =
+          (pending.price - bracket.entryPrice) * sideSign * dollarPerPoint * qty;
+        const label = pending.kind === "stop" ? "SL?" : "TP?";
+        pendingPriceLine = candleSeries.createPriceLine({
+          price: pending.price,
+          color: pending.kind === "stop" ? "#f43f5e" : "#22c55e",
+          lineWidth: 1,
+          lineStyle: LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: `${label} ${formatBracketDollars(pnl)}`,
+        });
+      }
+    }
+  };
+
+  const renderRestingOrders = () => {
+    if (!candleSeries) {
+      return;
+    }
+    for (const line of restingOrderLines) {
+      candleSeries.removePriceLine(line);
+    }
+    restingOrderLines = [];
+
+    const orders = props.restingOrders ?? [];
+    for (const order of orders) {
+      if (!Number.isFinite(order.price)) {
+        continue;
+      }
+      const line = candleSeries.createPriceLine({
+        price: order.price,
+        color: order.side === "buy" ? "#22c55e" : "#f43f5e",
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: order.label,
+      });
+      restingOrderLines.push(line);
+    }
+  };
+
+  const recomputeBracketCoords = () => {
+    if (!candleSeries) {
+      return;
+    }
+    const bracket = props.bracket;
+    if (!bracket) {
+      setBracketCoords({ stopY: null, targetY: null, entryY: null });
+      return;
+    }
+
+    const { stopPrice, targetPrice } = effectiveBracketPrices(bracket);
+    setBracketCoords({
+      stopY: stopPrice !== null ? candleSeries.priceToCoordinate(stopPrice) : null,
+      targetY:
+        targetPrice !== null ? candleSeries.priceToCoordinate(targetPrice) : null,
+      entryY: candleSeries.priceToCoordinate(bracket.entryPrice),
+    });
+  };
+
+  const snapToTick = (price: number, tickSize: number): number => {
+    if (!Number.isFinite(price)) {
+      return price;
+    }
+    const tick = tickSize > 0 ? tickSize : 0.25;
+    return Math.round(price / tick) * tick;
+  };
+
+  const clampBracketPrice = (
+    rawPrice: number,
+    kind: BracketDragKind,
+    bracket: PriceChartBracket,
+  ): number => {
+    const snap = snapToTick(rawPrice, bracket.tickSize);
+    const step = bracket.tickSize > 0 ? bracket.tickSize : 0.25;
+    const isLong = bracket.side === "buy";
+    if (kind === "stop") {
+      return isLong
+        ? Math.min(snap, bracket.entryPrice - step)
+        : Math.max(snap, bracket.entryPrice + step);
+    }
+    return isLong
+      ? Math.max(snap, bracket.entryPrice + step)
+      : Math.min(snap, bracket.entryPrice - step);
+  };
+
+  const setChartInteractionEnabled = (enabled: boolean) => {
+    chart?.applyOptions({
+      handleScroll: enabled,
+      handleScale: enabled,
+    });
+  };
+
+  const handleBracketPointerDown = (kind: BracketDragKind, event: PointerEvent) => {
+    const bracket = props.bracket;
+    if (!bracket || !candleSeries) {
+      return;
+    }
+    const currentPrice =
+      kind === "stop" ? bracket.stopPrice : bracket.targetPrice;
+    if (currentPrice === null || currentPrice === undefined) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    const target = event.currentTarget as HTMLElement;
+    target.setPointerCapture(event.pointerId);
+    setBracketDrag({
+      kind,
+      pointerId: event.pointerId,
+      livePrice: currentPrice,
+      committed: false,
+    });
+    setChartInteractionEnabled(false);
+  };
+
+  const handleBracketPointerMove = (event: PointerEvent) => {
+    const drag = bracketDrag();
+    const bracket = props.bracket;
+    if (!drag || !bracket || !candleSeries || !overlayContainer) {
+      return;
+    }
+    if (event.pointerId !== drag.pointerId) {
+      return;
+    }
+
+    const rect = overlayContainer.getBoundingClientRect();
+    const y = event.clientY - rect.top;
+    const rawPrice = candleSeries.coordinateToPrice(y);
+    if (rawPrice === null || !Number.isFinite(rawPrice as number)) {
+      return;
+    }
+    const nextPrice = clampBracketPrice(rawPrice as number, drag.kind, bracket);
+    if (nextPrice === drag.livePrice) {
+      return;
+    }
+    setBracketDrag({ ...drag, livePrice: nextPrice });
+  };
+
+  const finishBracketDrag = (commit: boolean) => {
+    const drag = bracketDrag();
+    const bracket = props.bracket;
+    setBracketDrag(null);
+    setChartInteractionEnabled(true);
+    if (!drag || !bracket) {
+      return;
+    }
+    if (!commit) {
+      return;
+    }
+    if (
+      bracket.stopPrice === null ||
+      bracket.stopPrice === undefined ||
+      bracket.targetPrice === null ||
+      bracket.targetPrice === undefined
+    ) {
+      return;
+    }
+
+    const nextStop =
+      drag.kind === "stop"
+        ? drag.livePrice
+        : (bracket.stopPrice as number);
+    const nextTarget =
+      drag.kind === "target"
+        ? drag.livePrice
+        : (bracket.targetPrice as number);
+
+    if (
+      nextStop === bracket.stopPrice &&
+      nextTarget === bracket.targetPrice
+    ) {
+      return;
+    }
+
+    bracket.onCommit?.({ stopPrice: nextStop, targetPrice: nextTarget });
+  };
+
+  const handleBracketPointerUp = (event: PointerEvent) => {
+    const drag = bracketDrag();
+    if (!drag || event.pointerId !== drag.pointerId) {
+      return;
+    }
+    const target = event.currentTarget as HTMLElement;
+    if (target.hasPointerCapture(event.pointerId)) {
+      target.releasePointerCapture(event.pointerId);
+    }
+    finishBracketDrag(true);
+  };
+
+  const handleBracketPointerCancel = (event: PointerEvent) => {
+    const drag = bracketDrag();
+    if (!drag || event.pointerId !== drag.pointerId) {
+      return;
+    }
+    finishBracketDrag(false);
+  };
+
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.key !== "Escape") {
+      return;
+    }
+    if (bracketDrag()) {
+      finishBracketDrag(false);
+      return;
+    }
+    if (bracketMenu()) {
+      setBracketMenu(null);
+      return;
+    }
+    if (bracketPending()) {
+      setBracketPending(null);
+      renderBracketLines();
+    }
+  };
+
+  const handleChartContextMenu = (event: MouseEvent) => {
+    const bracket = props.bracket;
+    if (!bracket || !candleSeries || !container) {
+      return;
+    }
+    const rect = container.getBoundingClientRect();
+    const y = event.clientY - rect.top;
+    const rawPrice = candleSeries.coordinateToPrice(y);
+    if (rawPrice === null || !Number.isFinite(rawPrice as number)) {
+      return;
+    }
+    event.preventDefault();
+    setBracketMenu({
+      x: event.clientX - rect.left,
+      y,
+      price: snapToTick(rawPrice as number, bracket.tickSize),
+    });
+  };
+
+  const closeBracketMenu = () => setBracketMenu(null);
+
+  const isPriceValidFor = (
+    kind: BracketDragKind,
+    price: number,
+    bracket: PriceChartBracket,
+  ): boolean => {
+    const step = bracket.tickSize > 0 ? bracket.tickSize : 0.25;
+    const isLong = bracket.side === "buy";
+    if (kind === "stop") {
+      return isLong ? price <= bracket.entryPrice - step : price >= bracket.entryPrice + step;
+    }
+    return isLong ? price >= bracket.entryPrice + step : price <= bracket.entryPrice - step;
+  };
+
+  const commitMenuPrice = (kind: BracketDragKind) => {
+    const menu = bracketMenu();
+    const bracket = props.bracket;
+    if (!menu || !bracket) {
+      return;
+    }
+    const price = clampBracketPrice(menu.price, kind, bracket);
+
+    const committedStop =
+      bracket.stopPrice !== null && bracket.stopPrice !== undefined && Number.isFinite(bracket.stopPrice)
+        ? (bracket.stopPrice as number)
+        : null;
+    const committedTarget =
+      bracket.targetPrice !== null &&
+      bracket.targetPrice !== undefined &&
+      Number.isFinite(bracket.targetPrice)
+        ? (bracket.targetPrice as number)
+        : null;
+
+    closeBracketMenu();
+
+    if (committedStop !== null && committedTarget !== null) {
+      // Move one leg of an existing bracket.
+      const nextStop = kind === "stop" ? price : committedStop;
+      const nextTarget = kind === "target" ? price : committedTarget;
+      if (nextStop === committedStop && nextTarget === committedTarget) {
+        return;
+      }
+      bracket.onCommit?.({ stopPrice: nextStop, targetPrice: nextTarget });
+      return;
+    }
+
+    // No committed bracket — building one via two right-clicks.
+    const pending = bracketPending();
+    if (pending && pending.kind !== kind) {
+      const nextStop = kind === "stop" ? price : pending.price;
+      const nextTarget = kind === "target" ? price : pending.price;
+      setBracketPending(null);
+      bracket.onCommit?.({ stopPrice: nextStop, targetPrice: nextTarget });
+      return;
+    }
+
+    setBracketPending({ kind, price });
+    renderBracketLines();
+  };
+
+  const cancelBracketFromMenu = () => {
+    const bracket = props.bracket;
+    closeBracketMenu();
+    setBracketPending(null);
+    bracket?.onCancel?.();
+  };
+
+  const clearPendingFromMenu = () => {
+    closeBracketMenu();
+    setBracketPending(null);
+    renderBracketLines();
+  };
+
   onMount(() => {
     chart = createChart(container, {
       autoSize: true,
@@ -560,14 +1031,33 @@ export default function PriceChart(props: Props) {
     markersPlugin = createSeriesMarkers(candleSeries, []);
     chart.subscribeCrosshairMove((param: MouseEventParams<Time>) => {
       setHoveredTime(param.time);
+      recomputeBracketCoords();
+    });
+    chart.timeScale().subscribeVisibleTimeRangeChange(() => {
+      recomputeBracketCoords();
     });
     renderChartState();
 
+    const resizeObserver = new ResizeObserver(() => {
+      recomputeBracketCoords();
+    });
+    resizeObserver.observe(container);
+
+    window.addEventListener("keydown", handleKeyDown);
+    container.addEventListener("contextmenu", handleChartContextMenu);
+
     onCleanup(() => {
+      window.removeEventListener("keydown", handleKeyDown);
+      container.removeEventListener("contextmenu", handleChartContextMenu);
+      resizeObserver.disconnect();
       chart?.remove();
       chart = undefined;
       candleSeries = undefined;
       markersPlugin = null;
+      stopPriceLine = undefined;
+      targetPriceLine = undefined;
+      entryPriceLine = undefined;
+      restingOrderLines = [];
       ema9Series = undefined;
       ema20Series = undefined;
       ema50Series = undefined;
@@ -582,6 +1072,41 @@ export default function PriceChart(props: Props) {
 
   createEffect(() => {
     renderChartState();
+    recomputeBracketCoords();
+  });
+
+  createEffect(() => {
+    // Touch the bracket prop and live drag price so this reruns when either changes.
+    void props.bracket;
+    void bracketDrag();
+    void bracketPending();
+    renderBracketLines();
+    recomputeBracketCoords();
+  });
+
+  createEffect(() => {
+    void props.restingOrders;
+    renderRestingOrders();
+  });
+
+  createEffect(() => {
+    // Clear pending state once the committed bracket lands.
+    const bracket = props.bracket;
+    if (!bracket) {
+      if (bracketPending()) {
+        setBracketPending(null);
+      }
+      return;
+    }
+    const hasStop =
+      bracket.stopPrice !== null && bracket.stopPrice !== undefined && Number.isFinite(bracket.stopPrice);
+    const hasTarget =
+      bracket.targetPrice !== null &&
+      bracket.targetPrice !== undefined &&
+      Number.isFinite(bracket.targetPrice);
+    if (hasStop && hasTarget && bracketPending()) {
+      setBracketPending(null);
+    }
   });
 
   return (
@@ -643,6 +1168,157 @@ export default function PriceChart(props: Props) {
               </div>
             ))}
           </div>
+        </div>
+      ) : null}
+
+      {props.bracket ? (
+        <div
+          ref={overlayContainer}
+          class="pointer-events-none absolute inset-0 z-20"
+        >
+          {bracketCoords().targetY !== null &&
+          props.bracket.targetPrice !== null &&
+          props.bracket.targetPrice !== undefined ? (
+            <div
+              class="pointer-events-auto absolute left-0 right-12 -translate-y-1/2"
+              style={{
+                top: `${bracketCoords().targetY}px`,
+                height: "14px",
+                cursor: "ns-resize",
+              }}
+              onPointerDown={(event) => handleBracketPointerDown("target", event)}
+              onPointerMove={handleBracketPointerMove}
+              onPointerUp={handleBracketPointerUp}
+              onPointerCancel={handleBracketPointerCancel}
+            />
+          ) : null}
+
+          {bracketCoords().stopY !== null &&
+          props.bracket.stopPrice !== null &&
+          props.bracket.stopPrice !== undefined ? (
+            <div
+              class="pointer-events-auto absolute left-0 right-12 -translate-y-1/2"
+              style={{
+                top: `${bracketCoords().stopY}px`,
+                height: "14px",
+                cursor: "ns-resize",
+              }}
+              onPointerDown={(event) => handleBracketPointerDown("stop", event)}
+              onPointerMove={handleBracketPointerMove}
+              onPointerUp={handleBracketPointerUp}
+              onPointerCancel={handleBracketPointerCancel}
+            />
+          ) : null}
+
+          {bracketMenu() ? (
+            <>
+              <div
+                class="pointer-events-auto absolute inset-0"
+                onClick={closeBracketMenu}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  closeBracketMenu();
+                }}
+              />
+              {(() => {
+                const menu = bracketMenu()!;
+                const bracket = props.bracket!;
+                const hasStop =
+                  bracket.stopPrice !== null &&
+                  bracket.stopPrice !== undefined &&
+                  Number.isFinite(bracket.stopPrice);
+                const hasTarget =
+                  bracket.targetPrice !== null &&
+                  bracket.targetPrice !== undefined &&
+                  Number.isFinite(bracket.targetPrice);
+                const hasCommittedBracket = hasStop && hasTarget;
+                const pending = bracketPending();
+                const stopValid = isPriceValidFor("stop", menu.price, bracket);
+                const targetValid = isPriceValidFor("target", menu.price, bracket);
+                const priceLabel = menu.price.toFixed(2);
+
+                return (
+                  <div
+                    class="pointer-events-auto absolute z-30 min-w-[200px] border border-stone-700 bg-stone-950/95 py-1 text-[12px] text-stone-100 shadow-xl shadow-black/40"
+                    style={{
+                      left: `${menu.x}px`,
+                      top: `${menu.y}px`,
+                      "border-radius": "0",
+                    }}
+                    onContextMenu={(event) => event.preventDefault()}
+                  >
+                    <div class="border-b border-stone-800 px-3 pb-1 pt-0.5 text-[10px] uppercase tracking-[0.18em] text-stone-500">
+                      <span class="app-data text-stone-300">{priceLabel}</span>
+                    </div>
+
+                    {hasCommittedBracket ? (
+                      <>
+                        <button
+                          type="button"
+                          class="block w-full px-3 py-1.5 text-left hover:bg-stone-800/80 disabled:cursor-not-allowed disabled:text-stone-600 disabled:hover:bg-transparent"
+                          disabled={!targetValid}
+                          onClick={() => commitMenuPrice("target")}
+                        >
+                          Move TP here
+                        </button>
+                        <button
+                          type="button"
+                          class="block w-full px-3 py-1.5 text-left hover:bg-stone-800/80 disabled:cursor-not-allowed disabled:text-stone-600 disabled:hover:bg-transparent"
+                          disabled={!stopValid}
+                          onClick={() => commitMenuPrice("stop")}
+                        >
+                          Move SL here
+                        </button>
+                        <div class="my-1 border-t border-stone-800" />
+                        <button
+                          type="button"
+                          class="block w-full px-3 py-1.5 text-left text-rose-300 hover:bg-stone-800/80"
+                          onClick={cancelBracketFromMenu}
+                        >
+                          Cancel bracket
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          class="block w-full px-3 py-1.5 text-left hover:bg-stone-800/80 disabled:cursor-not-allowed disabled:text-stone-600 disabled:hover:bg-transparent"
+                          disabled={!targetValid}
+                          onClick={() => commitMenuPrice("target")}
+                        >
+                          {pending?.kind === "stop"
+                            ? `Set TP here (SL @ ${pending.price.toFixed(2)})`
+                            : "Set TP here"}
+                        </button>
+                        <button
+                          type="button"
+                          class="block w-full px-3 py-1.5 text-left hover:bg-stone-800/80 disabled:cursor-not-allowed disabled:text-stone-600 disabled:hover:bg-transparent"
+                          disabled={!stopValid}
+                          onClick={() => commitMenuPrice("stop")}
+                        >
+                          {pending?.kind === "target"
+                            ? `Set SL here (TP @ ${pending.price.toFixed(2)})`
+                            : "Set SL here"}
+                        </button>
+                        {pending ? (
+                          <>
+                            <div class="my-1 border-t border-stone-800" />
+                            <button
+                              type="button"
+                              class="block w-full px-3 py-1.5 text-left text-stone-400 hover:bg-stone-800/80"
+                              onClick={clearPendingFromMenu}
+                            >
+                              Clear pending {pending.kind === "stop" ? "SL" : "TP"}
+                            </button>
+                          </>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+            </>
+          ) : null}
         </div>
       ) : null}
     </div>
