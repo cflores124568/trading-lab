@@ -697,10 +697,13 @@ export interface ReplaySessionSummary {
   start_date?: string;
   end_date?: string;
   source_backtest?: ReplaySessionSourceBacktest | null;
+  prop_firm_rules: PropFirmRules;
+  prop_firm_eval: PropFirmEvaluation;
   status: string;
   current_bar_index: number;
   total_pnl: number;
   total_trades: number;
+  equity_curve: number[];
   created_at: string;
   updated_at: string;
 }

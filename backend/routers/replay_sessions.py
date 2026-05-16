@@ -110,10 +110,13 @@ async def list_replay_sessions():
             "start_date": session.get("start_date"),
             "end_date": session.get("end_date"),
             "source_backtest": session.get("source_backtest"),
+            "prop_firm_rules": session["prop_firm_rules"],
+            "prop_firm_eval": session["prop_firm_eval"],
             "status": session["status"],
             "current_bar_index": session.get("current_bar_index", 0),
             "total_pnl": metrics.get("total_pnl", 0),
             "total_trades": metrics.get("total_trades", 0),
+            "equity_curve": session.get("equity_curve", []),
             "created_at": session["created_at"],
             "updated_at": session["updated_at"],
         })

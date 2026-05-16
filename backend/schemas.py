@@ -176,10 +176,13 @@ class ReplaySessionSummary(BaseModel):
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     source_backtest: Optional[ReplaySessionSourceBacktest] = None
+    prop_firm_rules: PropFirmRules
+    prop_firm_eval: PropFirmEvaluation
     status: str
     current_bar_index: int
     total_pnl: float
     total_trades: int
+    equity_curve: List[float] = Field(default_factory=list)
     created_at: str
     updated_at: str
 

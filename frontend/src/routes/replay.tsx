@@ -981,6 +981,25 @@ export default function ReplayLabPage() {
       propFirmRules: config.propFirmRules,
     });
   });
+  const replayEquityGuideLines = createMemo(() => {
+    const rules = launchConfig()?.propFirmRules;
+    if (!rules) return [];
+
+    const accountSize = rules.account_size;
+    return [
+      { value: accountSize, title: "Start", color: "#78716c" },
+      {
+        value: accountSize * (1 + rules.profit_target),
+        title: "Target",
+        color: "#4ade80",
+      },
+      {
+        value: accountSize * (1 - rules.max_drawdown),
+        title: "DD floor",
+        color: "#f87171",
+      },
+    ];
+  });
   const activeOrders = createMemo(() => replaySession()?.activeOrders ?? []);
   const replayBreach = createMemo(() => getReplayBreachInfo(replaySession()?.propEvaluation ?? null));
   const isAccountBreached = createMemo(() => !!replayBreach());
@@ -2354,7 +2373,10 @@ export default function ReplayLabPage() {
                       <div class="app-panel app-panel-section">
                         <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Replay Equity Curve</p>
                         <div class="mt-4">
-                          <EquityCurve data={session().equityCurve} />
+                          <EquityCurve
+                            data={session().equityCurve}
+                            referenceLines={replayEquityGuideLines()}
+                          />
                         </div>
                       </div>
 
