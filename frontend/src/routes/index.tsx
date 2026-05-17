@@ -339,26 +339,26 @@ export default function Dashboard() {
         <>
           <A
             href="/replay"
-            class="rounded-xl bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-950 transition-colors hover:bg-white"
+            class="app-button-primary rounded-xl"
           >
             Open Replay Lab
           </A>
           <A
             href="/replay-sessions"
-            class="rounded-xl border border-stone-700 px-4 py-2 text-sm font-medium text-stone-200 transition-colors hover:border-stone-500 hover:bg-stone-900"
+            class="app-button-secondary rounded-xl"
           >
             Saved Replay Sessions
           </A>
           <A
             href="/backtests/new"
-            class="rounded-xl border border-stone-700 px-4 py-2 text-sm font-medium text-stone-200 transition-colors hover:border-stone-500 hover:bg-stone-900"
+            class="app-button-secondary rounded-xl"
           >
             New Backtest
           </A>
         </>
       }
     >
-      <div class="rounded-2xl border border-stone-800/80 bg-stone-950/70 px-4 py-3">
+      <div class="app-surface-muted rounded-2xl px-4 py-3">
         <div class="flex items-center justify-between gap-3">
           <div class="flex items-center gap-2 text-stone-100">
             <SquareChartGantt size={16} class="text-stone-200" />
@@ -370,7 +370,7 @@ export default function Dashboard() {
         </div>
         <div class="mt-3 flex flex-wrap gap-2">
           {activePanels().map((panel, index) => (
-            <div class="rounded-full border border-stone-800 bg-stone-900/70 px-3 py-2 text-xs text-stone-300">
+            <div class="rounded-full border border-white/8 bg-white/[0.04] px-3 py-2 text-xs text-stone-300">
               <span class="font-semibold text-stone-100">Panel {index + 1}</span>
               <span class="mx-2 text-stone-600">·</span>
               <span>{panel.title}</span>
@@ -383,12 +383,12 @@ export default function Dashboard() {
         </div>
         <div class="mt-4 flex flex-wrap gap-2">
           {symbolMix().map(([symbol, count]) => (
-            <span class="rounded-full border border-stone-700 bg-stone-900 px-2.5 py-1.5 text-xs font-medium text-stone-200">
+            <span class="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-stone-200">
               {symbol} x{count}
             </span>
           ))}
           {intervalMix().map(([interval, count]) => (
-            <span class="rounded-full border border-stone-700 bg-stone-900 px-2.5 py-1.5 text-xs font-medium text-stone-200">
+            <span class="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-stone-200">
               {interval} x{count}
             </span>
           ))}
@@ -402,7 +402,7 @@ export default function Dashboard() {
       ) : null}
 
       <div class="flex min-h-0 flex-1 flex-col gap-6">
-        <section class="flex min-h-0 w-full flex-col overflow-hidden border-y border-stone-800/80 bg-stone-950/60 shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
+        <section class="flex min-h-0 w-full flex-1 flex-col overflow-hidden border-y border-white/8 bg-black/18 shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
             <WorkspaceToolbar
               workspaceId={activeWorkspace().id}
               defaultWorkspaceId={workspace.defaultWorkspaceId}
@@ -427,7 +427,7 @@ export default function Dashboard() {
               onPresetChange={handlePresetChange}
               onAddChart={handleAddChart}
             />
-            <div class="min-h-0 flex-1 p-4 lg:p-5">
+            <div class="min-h-0 flex-1">
               <WorkspaceGrid
                 preset={activeWorkspace().selectedPreset}
                 panels={activePresetState().panels}

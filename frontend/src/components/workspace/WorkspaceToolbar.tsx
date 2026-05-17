@@ -130,7 +130,7 @@ export default function WorkspaceToolbar(props: Props) {
   };
 
   return (
-    <div class="border-b border-stone-700/80 bg-stone-950/82 px-4 py-4 lg:px-5">
+    <div class="border-b border-white/8 bg-black/18 px-4 py-4 lg:px-5">
       <div class="flex flex-col gap-2.5">
         <div class="app-panel app-panel-selected flex flex-col gap-3 rounded-2xl p-4 xl:flex-row xl:items-center xl:justify-between">
           <div class="flex flex-wrap items-center gap-3">
@@ -138,17 +138,17 @@ export default function WorkspaceToolbar(props: Props) {
               <p class="app-kicker text-stone-200">Current Workspace</p>
               <p class="truncate text-sm font-semibold text-stone-50">{props.workspaceName}</p>
             </div>
-            <div class="rounded-full border border-stone-700 bg-stone-900 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-stone-400">
+            <div class="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-stone-400">
               {props.workspaceCount} {props.workspaceCount === 1 ? "Workspace" : "Workspaces"}
             </div>
-            <div class="rounded-full border border-stone-700 bg-stone-900 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-stone-400">
+            <div class="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-stone-400">
               {props.panelCount} {props.panelCount === 1 ? "Panel" : "Panels"}
             </div>
             <div
               class={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] ${
                 props.workspaceId === props.defaultWorkspaceId
-                  ? "border-stone-200/80 bg-stone-100/12 text-stone-50"
-                  : "border-stone-800 bg-stone-950 text-stone-500"
+                  ? "border-[rgba(232,223,209,0.82)] bg-[rgba(235,227,213,0.1)] text-stone-50"
+                  : "border-white/8 bg-white/[0.03] text-stone-500"
               }`}
             >
               {props.workspaceId === props.defaultWorkspaceId ? (
@@ -164,7 +164,7 @@ export default function WorkspaceToolbar(props: Props) {
           <div class="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              class="inline-flex items-center gap-2 rounded-xl bg-stone-100 px-3 py-2 text-sm font-semibold text-stone-950 shadow-[0_10px_24px_rgba(231,229,228,0.14)] transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-stone-800 disabled:text-stone-600"
+              class="app-button-primary gap-2 rounded-xl px-3 disabled:cursor-not-allowed disabled:bg-stone-800 disabled:text-stone-600"
               onClick={props.onAddChart}
               disabled={!props.canAddChart}
             >
@@ -173,7 +173,7 @@ export default function WorkspaceToolbar(props: Props) {
             </button>
             <button
               type="button"
-              class="inline-flex items-center gap-2 rounded-xl border border-stone-600 px-3 py-2 text-sm font-semibold text-stone-100 transition-colors hover:border-stone-400 hover:bg-stone-900"
+              class="app-button-secondary gap-2 rounded-xl px-3"
               onClick={props.onCreateWorkspace}
             >
               <CopyPlus size={15} />

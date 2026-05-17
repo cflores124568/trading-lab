@@ -219,7 +219,7 @@ export default function ChartPanel(props: Props) {
 
   return (
     <section
-      class={`app-panel app-panel-interactive flex h-full min-h-[460px] flex-col overflow-hidden ${
+      class={`app-panel app-panel-interactive flex h-full min-h-0 flex-col overflow-hidden ${
         props.expanded ? "app-panel-selected" : ""
       }`}
       style={{ "border-radius": "0" }}
@@ -252,7 +252,7 @@ export default function ChartPanel(props: Props) {
                 {panelStateLabel()}
               </span>
               <span class="text-xs text-stone-500">
-                {enabledStudyCount()} studies
+                {enabledStudyCount()} {enabledStudyCount() === 1 ? "indicator" : "indicators"}
               </span>
             </div>
             <p class="mt-1 truncate text-xs text-stone-500">{panelSummary()}</p>
@@ -277,8 +277,8 @@ export default function ChartPanel(props: Props) {
               title="Switch to historical mode"
               class={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-xs font-medium transition-colors ${
               query().mode === "historical"
-                ? "app-card-selected border-stone-200/80 text-stone-50"
-                : "border-stone-700 bg-stone-900 text-stone-400 hover:border-stone-600 hover:bg-stone-800 hover:text-stone-100"
+                ? "app-card-selected text-stone-50"
+                : "border-white/10 bg-white/[0.04] text-stone-400 hover:border-white/18 hover:bg-white/[0.06] hover:text-stone-100"
               }`}
               onClick={() => setMode("historical")}
             >
@@ -290,8 +290,8 @@ export default function ChartPanel(props: Props) {
               title={showControls() ? "Hide panel controls" : "Show panel controls"}
               class={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-xs font-medium transition-colors ${
                 showControls()
-                  ? "border-stone-200/75 bg-stone-100/10 text-stone-50"
-                  : "border-stone-700 bg-stone-900 text-stone-300 hover:border-stone-500 hover:text-stone-100"
+                  ? "border-[rgba(232,223,209,0.78)] bg-[rgba(235,227,213,0.1)] text-stone-50"
+                  : "border-white/10 bg-white/[0.04] text-stone-300 hover:border-white/18 hover:text-stone-100"
               }`}
               onClick={() => setShowControls((current) => !current)}
             >
@@ -304,17 +304,17 @@ export default function ChartPanel(props: Props) {
                 type="button"
                 title="Panel actions"
                 aria-label="Panel actions"
-                class="inline-flex items-center gap-1.5 rounded-lg border border-stone-700 bg-stone-950 px-2.5 py-1.5 text-xs font-medium text-stone-400 transition-colors hover:border-stone-600 hover:text-stone-200"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-xs font-medium text-stone-400 transition-colors hover:border-white/18 hover:text-stone-200"
                 onClick={() => setShowMenu((current) => !current)}
               >
                 <Ellipsis size={15} />
               </button>
 
               <Show when={showMenu()}>
-                <div class="absolute right-0 top-[calc(100%+0.5rem)] z-30 w-48 rounded-sm border border-stone-800 bg-stone-950/98 p-2 shadow-2xl shadow-black/40">
+                <div class="absolute right-0 top-[calc(100%+0.5rem)] z-30 w-48 rounded-sm border border-white/10 bg-[#0b0b0b]/98 p-2 shadow-2xl shadow-black/40">
                   <button
                     type="button"
-                    class="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm text-stone-200 transition-colors hover:bg-stone-900"
+                    class="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm text-stone-200 transition-colors hover:bg-white/[0.05]"
                     onClick={() => {
                       setShowMenu(false);
                       props.onToggleExpand();

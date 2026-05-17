@@ -8,12 +8,11 @@ import { loadActiveWorkspaceContext } from "./workspace/workspacePersistence";
 
 // Shared input styles 
 const field =
-  "w-full rounded-sm border border-stone-700 bg-stone-800 px-3 py-2 text-sm text-stone-100 " +
-  "focus:outline-none focus:ring-1 focus:ring-stone-500 disabled:cursor-not-allowed disabled:opacity-40";
+  "app-input w-full text-sm disabled:cursor-not-allowed disabled:opacity-40";
 const numericField = `${field} app-data`;
 const label = "mb-1 block text-[11px] uppercase tracking-[0.16em] text-stone-500";
 const sectionBase = "app-panel app-panel-section space-y-4 rounded-md p-4 lg:p-5";
-const runStatCard = "rounded-sm border border-stone-800 bg-stone-950/60 px-3 py-2";
+const runStatCard = "app-surface-muted px-3 py-2";
 
 const strategyDescriptions: Record<StrategyValue, string> = {
   ma_crossover: "Use fast and slow moving-average crossovers to capture trend shifts.",

@@ -27,8 +27,8 @@ export default function ChartIndicatorToggleBar(props: Props) {
             onClick={() => props.onToggle(option.key)}
             class={`rounded-sm border px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] transition-colors ${
               props.settings[option.key]
-                ? "border-stone-200 bg-stone-100/12 text-stone-50"
-                : "border-stone-700 bg-stone-900 text-stone-400 hover:border-stone-500 hover:text-stone-200"
+                ? "border-[rgba(232,223,209,0.78)] bg-[rgba(235,227,213,0.1)] text-stone-50"
+                : "border-white/10 bg-white/[0.04] text-stone-400 hover:border-white/18 hover:text-stone-200"
             }`}
           >
             {option.label}
@@ -39,7 +39,7 @@ export default function ChartIndicatorToggleBar(props: Props) {
   }
 
   return (
-    <div class="rounded-md border border-stone-800 bg-stone-950/60 p-4">
+    <div class="app-surface-muted p-4">
       <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Indicators</p>
 
@@ -50,8 +50,8 @@ export default function ChartIndicatorToggleBar(props: Props) {
             onClick={() => props.onToggle(option.key)}
             class={`rounded-sm border px-3 py-2 text-xs font-medium uppercase tracking-[0.16em] transition-colors ${
               props.settings[option.key]
-                ? "border-stone-200 bg-stone-100/12 text-stone-50"
-                : "border-stone-700 bg-stone-900 text-stone-400 hover:border-stone-500 hover:text-stone-200"
+                ? "border-[rgba(232,223,209,0.78)] bg-[rgba(235,227,213,0.1)] text-stone-50"
+                : "border-white/10 bg-white/[0.04] text-stone-400 hover:border-white/18 hover:text-stone-200"
               }`}
             >
               {option.label}
