@@ -383,7 +383,7 @@ function normalizeFirmName(name: string): string {
   return name
     .split(/\s+\d/)[0]
     .trim()
-    .replace(/^My Funded Futures (Rapid|Flex)?/i, "My Funded Futures")
+    .replace(/^My Funded Futures (Pro|Rapid|Flex)?/i, "My Funded Futures")
     .replace(/^Lucid Trading /i, "Lucid Trading")
     .trim();
 }
@@ -407,21 +407,32 @@ export function findMatchingPresetKey(
   presets: PropFirmPreset[],
   rules: PropFirmRules,
 ): string | null {
-  const found = presets.find((preset) => {
-    return (
-      preset.name === rules.name &&
-      preset.account_size === rules.account_size &&
-      normalizeDisabledValue(preset.daily_loss_limit) === normalizeDisabledValue(rules.daily_loss_limit) &&
-      preset.max_drawdown === rules.max_drawdown &&
-      preset.profit_target === rules.profit_target &&
-      preset.consistency_rule === rules.consistency_rule &&
-      normalizeDisabledValue(preset.consistency_threshold) === normalizeDisabledValue(rules.consistency_threshold) &&
-      preset.drawdown_type === rules.drawdown_type &&
-      preset.min_trading_days === rules.min_trading_days
-    );
-  });
+  const matchesShape = (preset: PropFirmPreset) =>
+    preset.account_size === rules.account_size &&
+    normalizeDisabledValue(preset.daily_loss_limit) === normalizeDisabledValue(rules.daily_loss_limit) &&
+    preset.max_drawdown === rules.max_drawdown &&
+    preset.profit_target === rules.profit_target &&
+    preset.consistency_rule === rules.consistency_rule &&
+    normalizeDisabledValue(preset.consistency_threshold) === normalizeDisabledValue(rules.consistency_threshold) &&
+    preset.drawdown_type === rules.drawdown_type &&
+    preset.min_trading_days === rules.min_trading_days;
 
-  return found?.key ?? null;
+  const found = presets.find(
+    (preset) =>
+      matchesShape(preset) &&
+      (preset.name === rules.name || (preset.match_names ?? []).includes(rules.name)),
+  );
+
+  if (found) {
+    return found.key;
+  }
+
+  const exactNameMatch = presets.find((preset) => preset.name === rules.name);
+  if (exactNameMatch) {
+    return exactNameMatch.key;
+  }
+
+  return null;
 }
 
 function getFirstTradeTime(trades: Trade[]): number | null {
@@ -442,6 +453,7 @@ function getLastTradeTime(trades: Trade[]): number | null {
 
 function getMffBufferBalance(accountSize: number): number | undefined {
   return {
+    25_000: 26_100,
     50_000: 52_100,
     100_000: 103_100,
     150_000: 154_600,
@@ -450,6 +462,7 @@ function getMffBufferBalance(accountSize: number): number | undefined {
 
 function getLucidProBufferBalance(accountSize: number): number | undefined {
   return {
+    25_000: 26_100,
     50_000: 52_100,
     100_000: 103_100,
     150_000: 154_600,
@@ -501,8 +514,23 @@ function getMffFlexWinningDayTarget(accountSize: number): number | undefined {
 
 function getMffFlexMaxPayout(accountSize: number): number | undefined {
   return {
-    25_000: 3_000,
-    50_000: 5_000,
+    25_000: 1_000,
+    50_000: 2_000,
+  }[accountSize];
+}
+
+function getMffFlexMinPayout(accountSize: number): number | undefined {
+  return {
+    25_000: 250,
+    50_000: 500,
+  }[accountSize];
+}
+
+function getTopstepStandardMaxPayout(accountSize: number): number | undefined {
+  return {
+    50_000: 2_000,
+    100_000: 3_000,
+    150_000: 5_000,
   }[accountSize];
 }
 
@@ -513,17 +541,23 @@ export function resolvePayoutPolicy(
   const accountSize = rules.account_size;
 
   if (presetKey?.startsWith("topstep_")) {
+    const maxPayout = getTopstepStandardMaxPayout(accountSize);
+    if (!maxPayout) {
+      return null;
+    }
+
     return {
-      label: "Topstep funded payout estimate",
+      label: "Topstep XFA Standard payout estimate",
       cadence_label: "5 winning days",
       eligible_profit_mode: "net_profit",
       request_pct: 0.5,
-      max_payout: 5_000,
-      min_payout: 0,
+      max_payout: maxPayout,
+      min_payout: 125,
       winning_days_required: 5,
       winning_day_profit: 150,
       assumptions: [
-        "Uses the funded-account 5 winning day path from Topstep's current payout policy.",
+        "Uses Topstep's current Express Funded Account Standard payout path.",
+        "The newer 3-day Consistency path is not modeled in this estimate yet.",
         "Treats modeled net profit as the payout balance proxy inside this simulator.",
       ],
     };
@@ -549,7 +583,8 @@ export function resolvePayoutPolicy(
   if (presetKey?.startsWith("mff_flex_")) {
     const winningDayProfit = getMffFlexWinningDayTarget(accountSize);
     const maxPayout = getMffFlexMaxPayout(accountSize);
-    if (!winningDayProfit || !maxPayout) {
+    const minPayout = getMffFlexMinPayout(accountSize);
+    if (!winningDayProfit || !maxPayout || !minPayout) {
       return null;
     }
 
@@ -558,12 +593,12 @@ export function resolvePayoutPolicy(
       cadence_label: "5 winning days",
       eligible_profit_mode: "net_profit",
       request_pct: 0.5,
-      min_payout: 250,
+      min_payout: minPayout,
       max_payout: maxPayout,
       winning_days_required: 5,
       winning_day_profit: winningDayProfit,
       assumptions: [
-        "Uses the current Flex first-payout rule set from the official payout overview.",
+        "Uses the current Flex first-payout rule set from the dedicated plan guides.",
         "Treats the request cap as 50% of modeled net profit, capped by the plan maximum.",
       ],
     };
