@@ -22,6 +22,11 @@ Every rule set uses the same basic fields:
 These are stored as percentages or flags, except `account_size` and
 `min_trading_days`.
 
+One important cleanup landed after I compared the presets against the current
+official firm docs: the preset rule fields are now evaluation-stage only.
+Funded-account payout rules are separate metadata and should not be read as the
+evaluation target/min-day requirements.
+
 ## What Gets Checked
 
 ### Daily Loss Limit
@@ -80,13 +85,17 @@ you opened something and left it hanging.
 Preset families currently include:
 
 - Topstep
-- My Funded Futures
+- My Funded Futures Pro
 - My Funded Futures Rapid
 - My Funded Futures Flex
 - Lucid Trading `LucidPro` and `LucidFlex`
 
 They are exposed through `/api/prop-firms` and used by both backtests and the
 standalone replay flow.
+
+The flat rule fields in those presets are for scoring the evaluation/challenge
+stage. If a firm has different funded-account payout rules, the UI surfaces that
+separately instead of pretending they are the same thing.
 
 ## Important Gaps Right Now
 
