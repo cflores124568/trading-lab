@@ -1051,7 +1051,7 @@ export default function ReplayLabPage() {
 
     const accountSize = rules.account_size;
     return [
-      { value: accountSize, title: "Start", color: "#78716c" },
+      { value: accountSize, title: "Start", color: "#8f8f94" },
       {
         value: accountSize * (1 + rules.profit_target),
         title: "Target",
@@ -2282,7 +2282,7 @@ export default function ReplayLabPage() {
                         onToggle={toggleIndicator}
                       />
 
-                      <div class="overflow-hidden rounded-3xl border border-stone-700/80 bg-stone-950/76">
+                      <div class="app-chart-shell">
                         <Show when={candles() && candles()!.length > 0}>
                           <ReplayChartStrip
                             isPlaying={isReplayActive()}
@@ -2341,7 +2341,7 @@ export default function ReplayLabPage() {
                               <Show
                                 when={!candles.loading && candles() && candles()!.length > 0}
                                 fallback={
-                                  <div class="flex h-[520px] items-center justify-center rounded-2xl border border-stone-800 bg-stone-950 px-6 text-center">
+                                  <div class="flex h-[520px] items-center justify-center rounded-2xl border border-white/10 bg-[#090909] px-6 text-center">
                                     <p class="text-sm text-stone-500">
                                       {candles.loading
                                         ? "Loading replay candles…"
@@ -2365,7 +2365,7 @@ export default function ReplayLabPage() {
                             }
                           >
                             {(error) => (
-                              <div class="flex h-[520px] items-center justify-center rounded-2xl border border-stone-800 bg-stone-950 px-6 text-center">
+                              <div class="flex h-[520px] items-center justify-center rounded-2xl border border-white/10 bg-[#090909] px-6 text-center">
                                 <p class="text-sm text-red-400">Replay data failed to load: {error().message}</p>
                               </div>
                             )}

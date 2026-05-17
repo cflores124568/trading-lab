@@ -80,12 +80,17 @@ type Props = ChartStripProps & ExecutionActionsProps & TimelineControlsProps;
 
 const speeds = [1, 2, 5, 8, 12, 20];
 
-function ghostButton(enabled: boolean): string {
+function ghostButton(enabled: boolean, tone: "neutral" | "green" | "rose" = "neutral"): string {
+  const activeTone =
+    tone === "green"
+      ? "border-green-500/50 bg-green-500/12 text-green-300 hover:border-green-400/70 hover:bg-green-500/18"
+      : tone === "rose"
+        ? "border-rose-500/50 bg-rose-500/12 text-rose-300 hover:border-rose-400/70 hover:bg-rose-500/18"
+        : "border-stone-700 bg-stone-900 text-stone-200 hover:border-stone-600 hover:bg-stone-800";
+
   return [
     "flex items-center gap-2 rounded-sm border px-3 py-2 text-sm transition-colors",
-    enabled
-      ? "border-stone-700 bg-stone-900 text-stone-200 hover:border-stone-600 hover:bg-stone-800"
-      : "cursor-not-allowed border-stone-800 bg-stone-950 text-stone-600",
+    enabled ? activeTone : "cursor-not-allowed border-stone-800 bg-stone-950 text-stone-600",
   ].join(" ");
 }
 
@@ -109,15 +114,15 @@ export function ReplayChartStrip(props: ChartStripProps) {
   const playEnabled = () => props.isPlaying || props.canStartPlayback;
 
   return (
-    <div class="flex flex-wrap items-center gap-3 border-b border-stone-700/80 bg-stone-950/78 px-4 py-3">
+    <div class="flex flex-wrap items-center gap-3 border-b border-white/10 bg-black/88 px-4 py-3">
       <div class="flex flex-wrap items-center gap-2 text-xs">
-        <span class="rounded-sm border border-stone-700/80 bg-stone-900 px-3 py-1.5 text-stone-400">
+        <span class="rounded-sm border border-white/10 bg-[#111] px-3 py-1.5 text-stone-400">
           Bar <span class="app-data ml-1 text-stone-100">{props.currentBar} / {props.totalBars}</span>
         </span>
-        <span class="rounded-sm border border-stone-700/80 bg-stone-900 px-3 py-1.5 text-stone-400">
+        <span class="rounded-sm border border-white/10 bg-[#111] px-3 py-1.5 text-stone-400">
           Last <span class="app-data ml-1 text-stone-100">{props.currentPriceLabel}</span>
         </span>
-        <span class="rounded-sm border border-stone-700/80 bg-stone-900 px-3 py-1.5 text-stone-400">
+        <span class="rounded-sm border border-white/10 bg-[#111] px-3 py-1.5 text-stone-400">
           Book <span class="app-data ml-1 text-stone-100">{props.bidAskLabel}</span>
         </span>
       </div>
@@ -156,20 +161,20 @@ export function ReplayChartStrip(props: ChartStripProps) {
 
 export function ReplayPnLStrip(props: PnLStripProps) {
   return (
-    <div class="grid gap-2 border-b border-stone-700/80 bg-stone-950/70 px-4 py-3 text-xs md:grid-cols-3">
-      <div class="rounded-sm border border-stone-700/80 bg-stone-900 px-3 py-2 text-stone-400">
+    <div class="grid gap-2 border-b border-white/10 bg-black/84 px-4 py-3 text-xs md:grid-cols-3">
+      <div class="rounded-sm border border-white/10 bg-[#111] px-3 py-2 text-stone-400">
         <p>Realized P&amp;L</p>
         <p class={`app-data mt-1 text-sm font-semibold ${props.realizedPnl >= 0 ? "text-green-300" : "text-rose-300"}`}>
           {formatSignedMoney(props.realizedPnl)}
         </p>
       </div>
-      <div class="rounded-sm border border-stone-700/80 bg-stone-900 px-3 py-2 text-stone-400">
+      <div class="rounded-sm border border-white/10 bg-[#111] px-3 py-2 text-stone-400">
         <p>Open P&amp;L</p>
         <p class={`app-data mt-1 text-sm font-semibold ${props.unrealizedPnl >= 0 ? "text-green-300" : "text-rose-300"}`}>
           {formatSignedMoney(props.unrealizedPnl)}
         </p>
       </div>
-      <div class="rounded-sm border border-stone-700/80 bg-stone-900 px-3 py-2 text-stone-400">
+      <div class="rounded-sm border border-white/10 bg-[#111] px-3 py-2 text-stone-400">
         <p class="flex items-center justify-between gap-2">
           <span>Total P&amp;L</span>
           <span class="text-stone-500">{props.isBreached ? "Locked" : "Live"}</span>
@@ -189,7 +194,7 @@ export function ReplayPnLStrip(props: PnLStripProps) {
 
 export function ReplayExecutionActions(props: ExecutionActionsProps) {
   return (
-    <div class="flex flex-wrap items-center gap-2 border-t border-stone-700/80 bg-stone-950/78 px-4 py-3">
+    <div class="flex flex-wrap items-center gap-2 border-t border-white/10 bg-black/88 px-4 py-3">
       <span class="mr-1 flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-stone-500">
         <TrendingUp size={14} />
         Execute
@@ -211,7 +216,7 @@ export function ReplayExecutionActions(props: ExecutionActionsProps) {
       <button
         onClick={props.onJoinBid}
         disabled={!props.canJoinBid}
-        class={ghostButton(props.canJoinBid)}
+        class={ghostButton(props.canJoinBid, "green")}
       >
         <CircleDot size={16} />
         Join Bid
@@ -219,7 +224,7 @@ export function ReplayExecutionActions(props: ExecutionActionsProps) {
       <button
         onClick={props.onJoinAsk}
         disabled={!props.canJoinAsk}
-        class={ghostButton(props.canJoinAsk)}
+        class={ghostButton(props.canJoinAsk, "rose")}
       >
         <CircleDot size={16} />
         Join Ask
@@ -263,34 +268,34 @@ export function ReplayExecutionActions(props: ExecutionActionsProps) {
 export function ReplayTimelineControls(props: TimelineControlsProps) {
   return (
     <div class="app-panel overflow-hidden rounded-md">
-      <div class="border-b border-stone-700/80 bg-stone-950/78 px-5 py-3">
+      <div class="border-b border-white/10 bg-black/88 px-5 py-3">
         <p class="text-xs uppercase tracking-[0.18em] text-stone-200">Replay State</p>
         <p class="mt-1 text-sm text-stone-500">{props.statusDetail}</p>
       </div>
 
       <div class="space-y-5 p-5">
         <div class="grid gap-2 md:grid-cols-3">
-          <div class="rounded-sm border border-stone-700/80 bg-stone-950 px-3 py-3 text-xs text-stone-500">
+          <div class="rounded-sm border border-white/10 bg-[#0d0d0d] px-3 py-3 text-xs text-stone-500">
             <p>Time</p>
             <p class="app-data mt-1 text-sm text-stone-200">{props.currentTimeLabel}</p>
           </div>
-          <div class="rounded-sm border border-stone-700/80 bg-stone-950 px-3 py-3 text-xs text-stone-500">
+          <div class="rounded-sm border border-white/10 bg-[#0d0d0d] px-3 py-3 text-xs text-stone-500">
             <p>Position</p>
             <p class="app-data mt-1 text-sm text-stone-200">{props.positionLabel}</p>
           </div>
-          <div class="rounded-sm border border-stone-700/80 bg-stone-950 px-3 py-3 text-xs text-stone-500">
+          <div class="rounded-sm border border-white/10 bg-[#0d0d0d] px-3 py-3 text-xs text-stone-500">
             <p>Resting Order</p>
             <p class="app-data mt-1 text-sm text-stone-200">{props.activeOrderLabel}</p>
           </div>
         </div>
 
-        <div class="rounded-md border border-stone-700/80 bg-stone-950/80 p-4">
+        <div class="rounded-md border border-white/10 bg-[#0a0a0a]/88 p-4">
           <div class="flex items-center justify-between gap-3">
             <div class="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-stone-500">
               <CircleDot size={16} />
               Timeline
             </div>
-            <div class="rounded-sm border border-stone-700/80 bg-stone-900 px-3 py-1 text-xs font-medium text-stone-400">
+            <div class="rounded-sm border border-white/10 bg-[#111] px-3 py-1 text-xs font-medium text-stone-400">
               {Math.round(props.progress * 100)}% complete
             </div>
           </div>
@@ -326,7 +331,7 @@ export function ReplayTimelineControls(props: TimelineControlsProps) {
         </div>
 
         <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <div class="rounded-md border border-stone-700/80 bg-stone-950/80 p-4">
+          <div class="rounded-md border border-white/10 bg-[#0a0a0a]/88 p-4">
             <div class="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-stone-500">
               <Gauge size={16} />
               Speed
@@ -339,7 +344,7 @@ export function ReplayTimelineControls(props: TimelineControlsProps) {
                   class={`rounded-lg border px-4 py-2 text-sm transition-colors ${
                     props.speed === speed
                       ? "app-card-selected border-stone-200/80 font-semibold text-stone-50"
-                      : "border-stone-800 bg-stone-800 text-stone-300 hover:border-stone-700 hover:bg-stone-700"
+                      : "border-white/10 bg-[#111] text-stone-300 hover:border-white/18 hover:bg-[#171717]"
                   }`}
                 >
                   {speed}x
@@ -348,7 +353,7 @@ export function ReplayTimelineControls(props: TimelineControlsProps) {
             </div>
           </div>
 
-          <div class="rounded-md border border-stone-700/80 bg-stone-950/80 p-4">
+          <div class="rounded-md border border-white/10 bg-[#0a0a0a]/88 p-4">
             <div class="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-stone-500">
               <ArrowLeft size={16} />
               Navigation
