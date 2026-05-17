@@ -705,19 +705,34 @@ export default function BackTestConfigForm() {
                   <div class="space-y-3">
                     <div class="rounded-sm border border-stone-800 bg-stone-950/60 px-4 py-3">
                       <p class="text-[11px] uppercase tracking-[0.18em] text-stone-500">
-                        Selected Challenge
+                        Evaluation Preset
                       </p>
                       <p class="mt-2 text-sm font-medium text-stone-100">{p().name}</p>
+                      <p class="mt-1 text-xs text-stone-500">
+                        This block is the evaluation stage only. Funded payout/account rules live separately.
+                      </p>
                     </div>
 
                     <div class="grid gap-2 md:grid-cols-3">
                       <StatCard label="Account" value={`$${p().account_size.toLocaleString()}`} mono />
                       <StatCard label="Daily loss" value={formatDailyLossLimit(p().daily_loss_limit)} />
                       <StatCard label="Max DD" value={`${(p().max_drawdown * 100).toFixed(0)}%`} mono />
-                      <StatCard label="Target" value={`${(p().profit_target * 100).toFixed(0)}%`} mono />
-                      <StatCard label="Min days" value={String(p().min_trading_days ?? "—")} mono />
+                      <StatCard label="Eval target" value={`${(p().profit_target * 100).toFixed(0)}%`} mono />
+                      <StatCard label="Eval min days" value={String(p().min_trading_days ?? "—")} mono />
                       <StatCard label="Drawdown type" value={p().drawdown_type ?? "eod"} mono />
                     </div>
+
+                    <Show when={p().funded_account_label || (p().funded_account_notes?.length ?? 0) > 0}>
+                      <div class="rounded-sm border border-stone-800 bg-stone-950/40 px-4 py-3">
+                        <p class="text-[11px] uppercase tracking-[0.18em] text-stone-500">Funded stage</p>
+                        <p class="mt-2 text-sm font-medium text-stone-100">
+                          {p().funded_account_label ?? "Separate funded-account rules"}
+                        </p>
+                        <For each={p().funded_account_notes ?? []}>
+                          {(note) => <p class="mt-1 text-xs leading-5 text-stone-400">{note}</p>}
+                        </For>
+                      </div>
+                    </Show>
                   </div>
                 )}
               </Show>

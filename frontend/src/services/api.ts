@@ -378,6 +378,10 @@ export interface PropFirmPreset {
   consistency_threshold: number | null;
   drawdown_type: "intraday" | "eod";
   min_trading_days: number | null;
+  rules_scope?: "evaluation";
+  funded_account_label?: string | null;
+  funded_account_notes?: string[];
+  match_names?: string[];
 }
 
 export type ExperimentScoringRule =

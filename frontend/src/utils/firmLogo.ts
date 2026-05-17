@@ -15,7 +15,7 @@ export function firmLogoSrc(firmName: string | null | undefined): string | null 
 export function firmOf(name: string): string {
   let firm = name.split(/\s+\d/)[0].trim();
   firm = firm
-    .replace(/^My Funded Futures (Rapid|Flex)?/i, "My Funded Futures")
+    .replace(/^My Funded Futures (Pro|Rapid|Flex)?/i, "My Funded Futures")
     .replace(/^Lucid Trading /i, "Lucid Trading")
     .trim();
   return firm;

@@ -137,6 +137,14 @@ function formatBreachTime(value: string | null | undefined): string {
   return new Date(value).toLocaleString();
 }
 
+function formatReplayPassLabel(value: { time: string; barIndex: number; equity: number } | null): string {
+  if (!value) {
+    return "Eval passed.";
+  }
+
+  return `Eval passed at ${formatBreachTime(value.time)} on bar ${value.barIndex + 1} with $${value.equity.toFixed(2)} equity.`;
+}
+
 function formatTradePnl(value: number): string {
   return `${value >= 0 ? "+" : ""}$${value.toFixed(2)}`;
 }
@@ -669,6 +677,7 @@ export default function ReplayLabPage() {
 
   const [isReplayActive, setIsReplayActive] = createSignal(false);
   const [isReviewMode, setIsReviewMode] = createSignal(false);
+  const [autoPauseOnPass, setAutoPauseOnPass] = createSignal(true);
   const [speed, setSpeed] = createSignal(8);
   const [currentIndex, setCurrentIndex] = createSignal(0);
   const [replayActions, setReplayActions] = createSignal<ReplayAction[]>([]);
@@ -1006,6 +1015,7 @@ export default function ReplayLabPage() {
     ];
   });
   const activeOrders = createMemo(() => replaySession()?.activeOrders ?? []);
+  const replayPass = createMemo(() => replaySession()?.firstPass ?? null);
   const replayBreach = createMemo(() => getReplayBreachInfo(replaySession()?.propEvaluation ?? null));
   const isAccountBreached = createMemo(() => !!replayBreach());
 
@@ -1368,6 +1378,26 @@ export default function ReplayLabPage() {
 
   let announcedComplete = false;
   let announcedBreach = false;
+
+  createEffect<{ passed: boolean } | undefined>((previous) => {
+    const pass = replayPass();
+    const passed = !!pass;
+
+    if (passed && !previous?.passed) {
+      setBannerError(null);
+      setBannerNotice(
+        autoPauseOnPass() && isReplayActive()
+          ? `${formatReplayPassLabel(pass)} Replay auto-paused on the first passing bar.`
+          : formatReplayPassLabel(pass),
+      );
+
+      if (autoPauseOnPass() && isReplayActive()) {
+        setIsReplayActive(false);
+      }
+    }
+
+    return { passed };
+  });
 
   createEffect(() => {
     const breach = replayBreach();
@@ -1956,8 +1986,14 @@ export default function ReplayLabPage() {
                 {(selectedPreset) => (
                   <div class="space-y-3">
                     <div class="flex items-center justify-between rounded-2xl border border-stone-800 bg-stone-950/60 px-3 py-3">
-                      <p class="app-data text-base font-semibold text-stone-100">
-                        ${selectedPreset().account_size.toLocaleString()}
+                      <div>
+                        <p class="text-[11px] uppercase tracking-[0.18em] text-stone-500">Evaluation preset</p>
+                        <p class="app-data mt-1 text-base font-semibold text-stone-100">
+                          ${selectedPreset().account_size.toLocaleString()}
+                        </p>
+                      </div>
+                      <p class="max-w-[14rem] text-right text-[11px] leading-5 text-stone-500">
+                        Evaluation target and min days are shown below. Funded-stage payout rules are separate.
                       </p>
                     </div>
 
@@ -1979,11 +2015,11 @@ export default function ReplayLabPage() {
                           TriangleAlert,
                         ],
                         [
-                          "Target",
+                          "Eval target",
                           `${(selectedPreset().profit_target * 100).toFixed(0)}%`,
                           Target,
                         ],
-                        ["Min days", selectedPreset().min_trading_days ?? "—", CalendarDays],
+                        ["Eval min days", selectedPreset().min_trading_days ?? "—", CalendarDays],
                         ["Drawdown", selectedPreset().drawdown_type ?? "eod", Activity],
                       ] as [string, string | number, typeof DollarSign][]).map(
                         ([key, value, Icon]) => (
@@ -1997,6 +2033,23 @@ export default function ReplayLabPage() {
                         ),
                       )}
                     </div>
+
+                    <Show
+                      when={
+                        selectedPreset().funded_account_label ||
+                        (selectedPreset().funded_account_notes?.length ?? 0) > 0
+                      }
+                    >
+                      <div class="rounded-xl border border-stone-800 bg-stone-950/40 px-3 py-3">
+                        <p class="text-[11px] uppercase tracking-[0.18em] text-stone-500">Funded stage</p>
+                        <p class="mt-2 text-sm font-medium text-stone-100">
+                          {selectedPreset().funded_account_label ?? "Separate funded-account rules"}
+                        </p>
+                        <For each={selectedPreset().funded_account_notes ?? []}>
+                          {(note) => <p class="mt-1 text-xs leading-5 text-stone-400">{note}</p>}
+                        </For>
+                      </div>
+                    </Show>
                   </div>
                 )}
               </Show>
@@ -2098,6 +2151,15 @@ export default function ReplayLabPage() {
                     </div>
 
                     <div class="flex flex-wrap items-center gap-2">
+                      <label class="flex items-center gap-2 rounded-full border border-stone-700 bg-stone-950 px-3 py-2 text-xs font-medium uppercase tracking-[0.16em] text-stone-300">
+                        <input
+                          type="checkbox"
+                          class="h-3.5 w-3.5 accent-green-400"
+                          checked={autoPauseOnPass()}
+                          onChange={(event) => setAutoPauseOnPass(event.currentTarget.checked)}
+                        />
+                        Auto-pause on pass
+                      </label>
                       <Show when={config().sourceBacktest}>
                         {(source) => (
                           <div class="rounded-full border border-stone-700 bg-stone-950 px-3 py-2 text-xs font-medium uppercase tracking-[0.16em] text-stone-400">
@@ -2447,6 +2509,13 @@ export default function ReplayLabPage() {
 
                       <PropEvalPanel title="Replay Prop Eval" evaluation={session().propEvaluation}>
                         <div class="space-y-2 text-sm">
+                          <Show when={replayPass()}>
+                            {(pass) => (
+                              <p class="text-green-300">
+                                {formatReplayPassLabel(pass())}
+                              </p>
+                            )}
+                          </Show>
                           <Show when={activeSourceBacktest()}>
                             {(source) => (
                               <p class="text-stone-400">

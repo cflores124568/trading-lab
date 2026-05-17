@@ -227,6 +227,43 @@ test("replay session carries configured position size through fills", () => {
   assert.equal(session.position, null);
 });
 
+test("replay session remembers the first bar where the eval really passes", () => {
+  const candles = makeDailyCandles(4);
+  const actions: ReplayAction[] = [
+    { id: "day-1-entry", barIndex: 0, type: "lift_ask", createdAt: 1 },
+    { id: "day-1-exit", barIndex: 1, type: "flatten", createdAt: 2 },
+    { id: "day-2-entry", barIndex: 2, type: "lift_ask", createdAt: 3 },
+    { id: "day-2-exit", barIndex: 3, type: "flatten", createdAt: 4 },
+  ];
+
+  const session = simulateReplaySession({
+    candles,
+    currentIndex: 3,
+    actions,
+    initialBalance: 100_000,
+    commission: 0,
+    tickValue: 20,
+    tickSize: 0.25,
+    spreadTicks: 1,
+    propFirmRules: {
+      ...rules,
+      profit_target: 0.0002,
+      consistency_rule: true,
+      consistency_threshold: 0.5,
+      min_trading_days: 2,
+    },
+  });
+
+  assert.equal(session.propEvaluation.passed, true);
+  assert.equal(session.propEvaluation.min_trading_days_passed, true);
+  assert.equal(session.propEvaluation.consistency_passed, true);
+  assert.deepEqual(session.firstPass, {
+    barIndex: 3,
+    time: new Date(Number(candles[3].time) * 1000).toISOString(),
+    equity: 100_030,
+  });
+});
+
 test("saved replay metrics stay JSON-safe after an all-win run", () => {
   const candles = makeCandles(4);
   const actions: ReplayAction[] = [

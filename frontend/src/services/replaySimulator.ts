@@ -56,6 +56,12 @@ export interface ReplayMetrics {
   worst_trade: number;
 }
 
+export interface ReplayPassInfo {
+  barIndex: number;
+  time: string;
+  equity: number;
+}
+
 export function sanitizeReplayMetrics(metrics: ReplayMetrics): PerformanceMetrics {
   return {
     total_trades: Number.isFinite(metrics.total_trades) ? metrics.total_trades : 0,
@@ -90,6 +96,7 @@ export interface ReplaySession {
   metrics: ReplayMetrics;
   equityCurve: number[];
   propEvaluation: PropFirmEvaluation;
+  firstPass: ReplayPassInfo | null;
   position: ReplayPosition | null;
   activeOrder: RestingOrder | null;
   activeOrders: RestingOrder[];
@@ -455,6 +462,7 @@ export function simulateReplaySession(args: {
       metrics: emptyMetrics(),
       equityCurve,
       propEvaluation: evaluatePropFirm(propFirmRules, [], equityCurve, initialBalance),
+      firstPass: null,
       position: null,
       activeOrder: null,
       activeOrders: [],
@@ -481,6 +489,7 @@ export function simulateReplaySession(args: {
   const trades: Trade[] = [];
   const equityCurve: number[] = [];
   const executionEvents: ExecutionEvent[] = [];
+  let firstPass: ReplayPassInfo | null = null;
   let lastCandle = visibleCandles[0];
   let lastQuote = syntheticQuoteForCandle(lastCandle, executionConfig);
 
@@ -923,6 +932,14 @@ export function simulateReplaySession(args: {
     equityCurve.push(round(balance + unrealizedPnl));
 
     const currentEvaluation = evaluatePropFirm(propFirmRules, trades, equityCurve, initialBalance);
+    if (currentEvaluation.passed && !firstPass) {
+      firstPass = {
+        barIndex: i,
+        time: getCandleTime(candle),
+        equity: equityCurve[equityCurve.length - 1],
+      };
+    }
+
     if (currentEvaluation.daily_loss_breached || currentEvaluation.drawdown_breached) {
       // Freeze the session right here so later candles can't sneak in extra fills.
       if (hasPendingOrders()) {
@@ -993,6 +1010,7 @@ export function simulateReplaySession(args: {
     metrics,
     equityCurve,
     propEvaluation: evaluatePropFirm(propFirmRules, trades, equityCurve, initialBalance),
+    firstPass,
     position: replayPosition,
     activeOrder: primaryActiveOrder(),
     activeOrders,
