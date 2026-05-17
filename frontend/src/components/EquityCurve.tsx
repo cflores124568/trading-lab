@@ -16,11 +16,19 @@ export interface EquityReferenceLine {
   lineStyle?: LineStyle;
 }
 
+export interface EquityOverlaySeries {
+  data: number[];
+  color: string;
+  lineStyle?: LineStyle;
+  lineWidth?: 1 | 2 | 3 | 4;
+}
+
 interface Props {
   data: number[];
   height?: number;
   lineColor?: string;
   referenceLines?: EquityReferenceLine[];
+  overlays?: EquityOverlaySeries[];
 }
 
 export default function EquityCurve(props: Props) {
@@ -28,12 +36,36 @@ export default function EquityCurve(props: Props) {
   let chart: IChartApi | null = null;
   let series: ISeriesApi<"Line"> | null = null;
   let priceLines: IPriceLine[] = [];
+  let overlaySeries: ISeriesApi<"Line">[] = [];
 
   const setSeriesData = (points: number[]) => {
     if (!series) return;
 
     series.setData(points.map((value, i) => ({ time: i as UTCTimestamp, value })));
     chart?.timeScale().fitContent();
+  };
+
+  const setOverlays = (overlays: EquityOverlaySeries[]) => {
+    if (!chart) return;
+
+    for (const s of overlaySeries) {
+      chart.removeSeries(s);
+    }
+    overlaySeries = [];
+
+    for (const overlay of overlays) {
+      const s = chart.addSeries(LineSeries, {
+        color: overlay.color,
+        lineWidth: overlay.lineWidth ?? 1,
+        lineStyle: overlay.lineStyle ?? LineStyle.Dotted,
+        priceLineVisible: false,
+        lastValueVisible: false,
+      });
+      s.setData(
+        overlay.data.map((value, i) => ({ time: i as UTCTimestamp, value })),
+      );
+      overlaySeries.push(s);
+    }
   };
 
   const setReferenceLines = (lines: EquityReferenceLine[]) => {
@@ -83,12 +115,14 @@ export default function EquityCurve(props: Props) {
 
     setSeriesData(props.data);
     setReferenceLines(props.referenceLines ?? []);
+    setOverlays(props.overlays ?? []);
 
     onCleanup(() => {
       chart?.remove();
       chart = null;
       series = null;
       priceLines = [];
+      overlaySeries = [];
     });
   });
 
@@ -102,6 +136,11 @@ export default function EquityCurve(props: Props) {
   createEffect(() => {
     const lines = props.referenceLines ?? [];
     setReferenceLines(lines);
+  });
+
+  createEffect(() => {
+    const overlays = props.overlays ?? [];
+    setOverlays(overlays);
   });
 
   return <div ref={container} class="w-full overflow-hidden" style={{ "border-radius": "0" }} />;

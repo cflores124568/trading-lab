@@ -164,6 +164,8 @@ export interface PropFirmRules {
   consistency_threshold: number | null;
   drawdown_type: "intraday" | "eod";
   min_trading_days: number | null;
+  funded_account_label?: string | null;
+  funded_account_notes?: string[];
 }
 
 export interface BacktestCreateRequest {

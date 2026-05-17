@@ -264,7 +264,7 @@ export function ReplayTimelineControls(props: TimelineControlsProps) {
   return (
     <div class="app-panel overflow-hidden rounded-md">
       <div class="border-b border-stone-700/80 bg-stone-950/78 px-5 py-3">
-        <p class="text-xs uppercase tracking-[0.18em] text-stone-200">Session Control</p>
+        <p class="text-xs uppercase tracking-[0.18em] text-stone-200">Replay State</p>
         <p class="mt-1 text-sm text-stone-500">{props.statusDetail}</p>
       </div>
 

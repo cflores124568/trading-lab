@@ -566,25 +566,75 @@ function ReplayStatCard(props: {
   label: string;
   value: string;
   tone?: "default" | "good" | "bad";
+  caption?: JSX.Element;
+  accessory?: JSX.Element;
   detail?: string;
 }) {
   return (
     <div class="rounded-2xl border border-stone-800 bg-stone-950/70 px-4 py-4">
-      <p class="text-xs uppercase tracking-[0.18em] text-stone-500">{props.label}</p>
-      <p
-        class={`mt-2 font-mono text-2xl font-semibold ${
-          props.tone === "good"
-            ? "text-green-300"
-            : props.tone === "bad"
-              ? "text-red-300"
-              : "text-stone-100"
-        }`}
-      >
-        {props.value}
-      </p>
+      <div class="flex items-start justify-between gap-4">
+        <div class="min-w-0">
+          <p class="text-xs uppercase tracking-[0.18em] text-stone-500">{props.label}</p>
+          <p
+            class={`mt-2 font-mono text-2xl font-semibold ${
+              props.tone === "good"
+                ? "text-green-300"
+                : props.tone === "bad"
+                  ? "text-red-300"
+                  : "text-stone-100"
+            }`}
+          >
+            {props.value}
+          </p>
+          <Show when={props.caption}>
+            <div>{props.caption}</div>
+          </Show>
+        </div>
+
+        <Show when={props.accessory}>
+          <div class="mt-0.5 shrink-0">{props.accessory}</div>
+        </Show>
+      </div>
+
       <Show when={props.detail}>
         <p class="mt-2 text-xs text-stone-500">{props.detail}</p>
       </Show>
+    </div>
+  );
+}
+
+function ReplayWinRateDonut(props: {
+  wins: number;
+  losses: number;
+  flats: number;
+  total: number;
+}) {
+  const wins = Math.max(props.wins, 0);
+  const losses = Math.max(props.losses, 0);
+  const flats = Math.max(props.flats, 0);
+  const total = Math.max(props.total, wins + losses + flats);
+  const hasTrades = total > 0;
+  const winStop = hasTrades ? wins / total : 0;
+  const lossStop = hasTrades ? (wins + losses) / total : 0;
+  const donutBackground = hasTrades
+    ? `conic-gradient(
+        rgba(74, 222, 128, 0.95) 0turn ${winStop}turn,
+        rgba(248, 113, 113, 0.95) ${winStop}turn ${lossStop}turn,
+        rgba(120, 113, 108, 0.75) ${lossStop}turn 1turn
+      )`
+    : "conic-gradient(rgba(120, 113, 108, 0.55) 0turn 1turn)";
+  const donutLabel = hasTrades
+    ? `${wins} winning trades, ${losses} losing trades${flats > 0 ? `, ${flats} flat trades` : ""}`
+    : "No closed trades yet";
+
+  return (
+    <div
+      class="relative h-14 w-14 rounded-full border border-stone-700/80 bg-stone-900/80 p-[5px] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
+      role="img"
+      aria-label={donutLabel}
+    >
+      <div class="h-full w-full rounded-full" style={{ background: donutBackground }} />
+      <div class="absolute inset-[13px] rounded-full border border-stone-800 bg-stone-950/95 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]" />
     </div>
   );
 }
@@ -1093,26 +1143,26 @@ export default function ReplayLabPage() {
     if (isAccountBreached()) {
       const breach = replayBreach();
       const time = breach ? formatBreachTime(breach.time) : "unknown time";
-      return `Account breached on ${time}. Trading is locked for this session, but review mode still works.`;
+      return `Breach hit at ${time}. Trading locked.`;
     }
 
     if (replayStatus() === "review") {
-      return "The run is done, so you can scrub and study it without changing the paper trades.";
+      return "Review-only. Full chart unlocked.";
     }
 
     if (replayStatus() === "completed") {
-      return "The sim is finished. Unlock review mode when you want full-chart inspection.";
+      return "Run complete. Review-only until restart.";
     }
 
     if (replayStatus() === "active") {
-      return "Future candles stay hidden while the session rolls forward bar by bar.";
+      return "Live tape. Forward bars hidden.";
     }
 
     if (replayStatus() === "paused") {
-      return "The sim is paused at the current bar. You can step forward, trade, save, or restart.";
+      return "Paused. Step, trade, save, or restart.";
     }
 
-    return "Pick a market window and launch a session to start the simulated-live run.";
+    return "Set range. Launch replay.";
   });
 
   const sessionSummary = createMemo(() => {
@@ -1145,13 +1195,51 @@ export default function ReplayLabPage() {
       return [];
     }
 
+    const wins = session.metrics.winning_trades;
+    const losses = session.metrics.losing_trades;
+    const totalTrades = session.metrics.total_trades;
+    const flatTrades = Math.max(totalTrades - wins - losses, 0);
+
     return [
-      ["Realized PnL", formatCurrency(session.realizedPnl)],
-      ["Total PnL", formatCurrency(session.totalPnl)],
-      ["Win Rate", `${(session.metrics.win_rate * 100).toFixed(1)}%`],
-      ["Trades", String(session.metrics.total_trades)],
-      ["Balance", `$${session.balance.toFixed(2)}`],
-    ] as [string, string][];
+      {
+        label: "Realized PnL",
+        value: formatCurrency(session.realizedPnl),
+        tone:
+          session.realizedPnl > 0
+            ? ("good" as const)
+            : session.realizedPnl < 0
+              ? ("bad" as const)
+              : ("default" as const),
+      },
+      {
+        label: "Total PnL",
+        value: formatCurrency(session.totalPnl),
+        tone:
+          session.totalPnl > 0
+            ? ("good" as const)
+            : session.totalPnl < 0
+              ? ("bad" as const)
+              : ("default" as const),
+      },
+      {
+        label: "Win Rate",
+        value: `${(session.metrics.win_rate * 100).toFixed(1)}%`,
+        donut: {
+          wins,
+          losses,
+          flats: flatTrades,
+          total: totalTrades,
+        },
+      },
+      {
+        label: "Trades",
+        value: String(totalTrades),
+      },
+      {
+        label: "Balance",
+        value: `$${session.balance.toFixed(2)}`,
+      },
+    ];
   });
 
   const executionAnalytics = createMemo(() => {
@@ -2414,17 +2502,41 @@ export default function ReplayLabPage() {
                   <>
                     <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
                       <For each={replayMetrics()}>
-                        {([key, value]) => (
+                        {(metric) => (
                           <ReplayStatCard
-                            label={key}
-                            value={value}
-                            tone={key === "Realized PnL" || key === "Total PnL"
-                              ? value.startsWith("+")
-                                ? "good"
-                                : value.startsWith("-")
-                                  ? "bad"
-                                  : "default"
-                              : "default"}
+                            label={metric.label}
+                            value={metric.value}
+                            tone={metric.tone}
+                            caption={
+                              metric.donut ? (
+                                <div class="mt-2 flex flex-wrap items-center gap-3 text-[11px] uppercase tracking-[0.16em] text-stone-500">
+                                  <span class="inline-flex items-center gap-1.5">
+                                    <span class="h-2 w-2 rounded-full bg-green-400" />
+                                    {metric.donut.wins}W
+                                  </span>
+                                  <span class="inline-flex items-center gap-1.5">
+                                    <span class="h-2 w-2 rounded-full bg-red-400" />
+                                    {metric.donut.losses}L
+                                  </span>
+                                  <Show when={metric.donut.flats > 0}>
+                                    <span class="inline-flex items-center gap-1.5">
+                                      <span class="h-2 w-2 rounded-full bg-stone-500" />
+                                      {metric.donut.flats} flat
+                                    </span>
+                                  </Show>
+                                </div>
+                              ) : undefined
+                            }
+                            accessory={
+                              metric.donut ? (
+                                <ReplayWinRateDonut
+                                  wins={metric.donut.wins}
+                                  losses={metric.donut.losses}
+                                  flats={metric.donut.flats}
+                                  total={metric.donut.total}
+                                />
+                              ) : undefined
+                            }
                           />
                         )}
                       </For>

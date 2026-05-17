@@ -299,13 +299,6 @@ function formatDuration(minutes: number): string {
   return `${(minutes / (24 * 60)).toFixed(1)} d`;
 }
 
-function formatMemory(megabytes: number): string {
-  if (megabytes < 1024) {
-    return `${Math.round(megabytes)} MB`;
-  }
-  return `${(megabytes / 1024).toFixed(1)} GB`;
-}
-
 function resolveBackendInterval(raw?: string | null): string | null {
   if (!raw) {
     return null;
@@ -324,11 +317,6 @@ function buildSeedName(backtest: BacktestResult): string {
 
 function intervalMinutes(interval: string): number {
   return intervalMinutesMap[interval] ?? 60;
-}
-
-function rangeToIntervals(startIndex: number, endIndex: number): string[] {
-  const [from, to] = [startIndex, endIndex].sort((a, b) => a - b);
-  return BACKTEST_INTERVALS.slice(from, to + 1).map((interval) => getBackendInterval(interval));
 }
 
 function describeComplexity(runCount: number): {
@@ -486,8 +474,7 @@ export default function ExperimentsIndexPage() {
   const [error, setError] = createSignal<string | null>(null);
   const [appliedSeedId, setAppliedSeedId] = createSignal("");
   const [appliedTemplate, setAppliedTemplate] = createSignal("");
-  const [dragStartIndex, setDragStartIndex] = createSignal<number | null>(null);
-  const [autoOptimizeIntervals, setAutoOptimizeIntervals] = createSignal(false);
+  const [sweepIntervals, setSweepIntervals] = createSignal(false);
   const [validatedSignature, setValidatedSignature] = createSignal("");
   const [sortKey, setSortKey] = createSignal<SortKey>("updated");
   const [sortDirection, setSortDirection] = createSignal<SortDirection>("desc");
@@ -576,14 +563,6 @@ export default function ExperimentsIndexPage() {
       selectedIntervals().length * 0.3;
     return (runs * secondsPerRun) / 60;
   });
-  const memoryEstimateMb = createMemo(
-    () =>
-      140 +
-      estimatedRunCount() * 5.5 +
-      selectedSymbols().length * 28 +
-      selectedIntervals().length * 16 +
-      parameterComboCount() * 1.8,
-  );
   const complexity = createMemo(() => describeComplexity(estimatedRunCount()));
   const queueDepth = createMemo(
     () => (experiments() ?? []).filter((experiment) => experiment.status === "running").length,
@@ -838,7 +817,6 @@ export default function ExperimentsIndexPage() {
       setSpreadTicks(request.spread_ticks ?? 1);
       setVolatileBarThresholdTicks(request.volatile_bar_threshold_ticks ?? 0);
       setVolatileBarExtraTicks(request.volatile_bar_extra_ticks ?? 0);
-      setAutoOptimizeIntervals(false);
       setError(null);
       setValidatedSignature("");
     });
@@ -1023,7 +1001,6 @@ export default function ExperimentsIndexPage() {
       setVolatileBarThresholdTicks(seed.run_config?.volatile_bar_threshold_ticks ?? 0);
       setVolatileBarExtraTicks(seed.run_config?.volatile_bar_extra_ticks ?? 0);
       setAppliedSeedId(seedId);
-      setAutoOptimizeIntervals(false);
       setValidatedSignature("");
     });
   });
@@ -1050,40 +1027,6 @@ export default function ExperimentsIndexPage() {
     if (validatedSignature() && validatedSignature() !== signature) {
       setValidatedSignature("");
     }
-  });
-
-  createEffect(() => {
-    if (!autoOptimizeIntervals()) {
-      return;
-    }
-
-    let nextRange: [number, number];
-    switch (strategy()) {
-      case "ma_crossover":
-        nextRange = [1, 5];
-        break;
-      case "ema_crossover":
-        nextRange = [2, 5];
-        break;
-      case "rsi_overbought":
-        nextRange = [2, 4];
-        break;
-      default:
-        nextRange = [3, 6];
-        break;
-    }
-
-    setSelectedIntervals(rangeToIntervals(nextRange[0], nextRange[1]));
-  });
-
-  createEffect(() => {
-    if (dragStartIndex() === null) {
-      return;
-    }
-
-    const stopDragging = () => setDragStartIndex(null);
-    window.addEventListener("mouseup", stopDragging);
-    onCleanup(() => window.removeEventListener("mouseup", stopDragging));
   });
 
   createEffect(() => {
@@ -1206,34 +1149,15 @@ export default function ExperimentsIndexPage() {
                   <span class="text-stone-600"> · </span>
                   <span class="text-stone-100">{selectedIntervals().length}</span> int
                   <span class="text-stone-600"> · </span>
-                  <span class="text-stone-100">1</span> strat
-                  <span class="text-stone-600"> · </span>
                   <span class="text-stone-100">{parameterComboCount()}</span> params
                 </p>
-                <div class="mt-4 flex flex-wrap gap-2">
-                  <span class="rounded-full border border-stone-800 bg-stone-950/70 px-3 py-1 text-xs text-stone-300">
-                    {selectedStrategyProfile().glyph} {selectedStrategyProfile().description}
-                  </span>
-                  <span class="rounded-full border border-stone-800 bg-stone-950/70 px-3 py-1 text-xs text-stone-300">
-                    {scoringOptions.find((option) => option.value === scoringRule())?.label}
-                  </span>
-                  <span class="rounded-full border border-stone-800 bg-stone-950/70 px-3 py-1 text-xs text-stone-300">
-                    {formatDuration(runtimeEstimateMinutes())} est. runtime
-                  </span>
-                </div>
               </div>
 
-              <div class="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+              <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
                 <div class="rounded-md border border-stone-800 bg-stone-950/80 px-4 py-4">
                   <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Runtime</p>
                   <p class="app-data mt-2 text-2xl font-semibold text-stone-100">
                     {formatDuration(runtimeEstimateMinutes())}
-                  </p>
-                </div>
-                <div class="rounded-md border border-stone-800 bg-stone-950/80 px-4 py-4">
-                  <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Memory Footprint</p>
-                  <p class="app-data mt-2 text-2xl font-semibold text-stone-100">
-                    {formatMemory(memoryEstimateMb())}
                   </p>
                 </div>
                 <div class="rounded-md border border-stone-800 bg-stone-950/80 px-4 py-4">
@@ -1333,83 +1257,63 @@ export default function ExperimentsIndexPage() {
             </div>
 
             <div class="rounded-md border border-stone-800 bg-stone-950/75 p-4">
-              <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <label class={label}>Intervals</label>
-                </div>
+              <div class="flex items-center justify-between gap-3">
+                <label class={label}>Interval</label>
                 <button
                   type="button"
-                  onClick={() => setAutoOptimizeIntervals((current) => !current)}
-                  class={`rounded-full border px-3 py-2 text-xs font-medium transition-colors ${
-                    autoOptimizeIntervals()
-                      ? "app-card-glow"
-                      : "border-stone-700 bg-stone-950 text-stone-300 hover:border-stone-500"
-                  }`}
+                  onClick={() =>
+                    setSweepIntervals((current) => {
+                      const next = !current;
+                      if (!next && selectedIntervals().length > 1) {
+                        setSelectedIntervals([selectedIntervals()[0]]);
+                      }
+                      return next;
+                    })
+                  }
+                  class="text-[11px] uppercase tracking-[0.18em] text-stone-500 hover:text-stone-300"
                 >
-                  {autoOptimizeIntervals() ? "Auto-optimize on" : "Auto-optimize intervals"}
+                  {sweepIntervals() ? "− Single" : "+ Sweep multiple"}
                 </button>
               </div>
 
-              <div class="relative mt-5">
-                <div class="absolute left-5 right-5 top-6 h-px bg-gradient-to-r from-stone-800 via-stone-700 to-stone-800" />
-                <div class="relative grid gap-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9">
-                  <For each={BACKTEST_INTERVALS}>
-                    {(interval, index) => {
-                      const backendValue = getBackendInterval(interval);
-                      const checked = () => selectedIntervals().includes(backendValue);
-                      const availability = () =>
-                        availabilityBadge(backendValue, coverageStats().minRows || 0);
+              <div class="mt-3 flex flex-wrap gap-1.5">
+                <For each={BACKTEST_INTERVALS}>
+                  {(interval) => {
+                    const backendValue = getBackendInterval(interval);
+                    const checked = () => selectedIntervals().includes(backendValue);
+                    const sparse = () =>
+                      availabilityBadge(backendValue, coverageStats().minRows || 0).label === "Sparse";
 
-                      return (
-                        <button
-                          type="button"
-                          onMouseDown={(event) => {
-                            event.preventDefault();
-                            setDragStartIndex(index());
-                            setSelectedIntervals(rangeToIntervals(index(), index()));
-                          }}
-                          onMouseEnter={() => {
-                            if (dragStartIndex() !== null) {
-                              setSelectedIntervals(rangeToIntervals(dragStartIndex()!, index()));
-                            }
-                          }}
-                          onClick={() => {
-                            setDragStartIndex(null);
+                    return (
+                      <button
+                        type="button"
+                        disabled={sparse() && !checked()}
+                        onClick={() => {
+                          if (sweepIntervals()) {
                             setSelectedIntervals((current) =>
-                              current.includes(backendValue) && current.length === 1
-                                ? current
-                                : rangeToIntervals(index(), index()),
+                              current.includes(backendValue)
+                                ? current.length === 1
+                                  ? current
+                                  : current.filter((v) => v !== backendValue)
+                                : [...current, backendValue],
                             );
-                          }}
-                          class={`rounded-md border px-3 py-3 text-center transition-all ${
-                            checked()
-                              ? "app-card-glow"
+                          } else {
+                            setSelectedIntervals([backendValue]);
+                          }
+                        }}
+                        class={`app-data rounded-sm border px-3 py-1.5 text-xs transition-colors ${
+                          checked()
+                            ? "border-stone-300 bg-stone-100 text-stone-950"
+                            : sparse()
+                              ? "cursor-not-allowed border-stone-900 bg-stone-950/40 text-stone-700"
                               : "border-stone-800 bg-stone-950/75 text-stone-300 hover:border-stone-600"
-                          }`}
-                        >
-                          <div class="mx-auto flex w-full max-w-[88px] items-center justify-center gap-2">
-                            <span class={`h-2.5 w-2.5 rounded-full ${availability().tone}`} />
-                            <span class="text-xs text-stone-500">{availability().label}</span>
-                          </div>
-                          <p class="mt-3 text-sm font-semibold">{interval.label}</p>
-                          <p class="mt-1 app-data text-[11px] text-stone-500">
-                            {intervalMinutes(backendValue)}m
-                          </p>
-                        </button>
-                      );
-                    }}
-                  </For>
-                </div>
-              </div>
-
-              <div class="mt-4 flex flex-wrap gap-2">
-                <For each={selectedIntervals()}>
-                  {(interval) => (
-                    <span class="rounded-full border border-green-800/70 bg-green-950/40 px-3 py-1 text-xs text-green-100">
-                      {BACKTEST_INTERVALS.find((candidate) => getBackendInterval(candidate) === interval)
-                        ?.label ?? interval}
-                    </span>
-                  )}
+                        }`}
+                        title={sparse() ? "Not enough bars at this timeframe" : undefined}
+                      >
+                        {interval.value}
+                      </button>
+                    );
+                  }}
                 </For>
               </div>
             </div>
@@ -1421,16 +1325,16 @@ export default function ExperimentsIndexPage() {
               <div class="app-hairline" />
             </div>
 
-            <div class="flex flex-wrap gap-2">
-              <span class="rounded-full border border-green-800/70 bg-green-950/40 px-3 py-1 text-xs text-green-100">
-                Active strategy: {STRATEGIES.find((item) => item.value === strategy())?.label}
-              </span>
-              <span class="rounded-full border border-stone-800 bg-stone-950/70 px-3 py-1 text-xs text-stone-300">
-                {STRATEGY_PARAMS[strategy()].length} params
-              </span>
-              <span class="rounded-full border border-stone-800 bg-stone-950/70 px-3 py-1 text-xs text-stone-300">
-                Formula: {selectedStrategyProfile().formula}
-              </span>
+            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <p class="text-sm text-stone-200">
+                {STRATEGIES.find((item) => item.value === strategy())?.label}
+                <span class="ml-2 text-xs text-stone-500">
+                  {STRATEGY_PARAMS[strategy()].length} params
+                </span>
+              </p>
+              <p class="app-data text-xs text-stone-500">
+                {selectedStrategyProfile().formula}
+              </p>
             </div>
 
             <div class="grid gap-3 md:grid-cols-2">
@@ -1450,7 +1354,7 @@ export default function ExperimentsIndexPage() {
                           setError(null);
                         });
                       }}
-                      class={`rounded-[24px] border p-4 text-left transition-all ${
+                      class={`rounded-md border p-4 text-left transition-all ${
                         checked()
                           ? "app-card-glow"
                           : "border-stone-800 bg-stone-950/75 text-stone-300 hover:border-stone-600"
@@ -1477,8 +1381,8 @@ export default function ExperimentsIndexPage() {
                         <For each={profile.spark}>
                           {(value) => (
                             <span
-                              class={`w-5 rounded-sm ${
-                                checked() ? "bg-green-300/80" : "bg-stone-700/90"
+                              class={`w-5 ${
+                                checked() ? "bg-stone-200/90" : "bg-stone-700/80"
                               }`}
                               style={{ height: `${12 + value * 3}px` }}
                             />
@@ -1679,14 +1583,6 @@ export default function ExperimentsIndexPage() {
                   </div>
                   <p class="app-data shrink-0 text-xl font-semibold text-stone-100">
                     {formatDuration(runtimeEstimateMinutes() + queueDepth() * 4)}
-                  </p>
-                </div>
-                <div class="flex items-center justify-between gap-4 rounded-md border border-stone-800 bg-stone-950/75 px-4 py-3">
-                  <div class="min-w-0">
-                    <p class="text-[11px] uppercase tracking-[0.18em] text-stone-500">Scoring Bias</p>
-                  </div>
-                  <p class="shrink-0 truncate text-sm font-semibold text-stone-100">
-                    {scoringOptions.find((option) => option.value === scoringRule())?.label}
                   </p>
                 </div>
                 <div class="flex items-center justify-between gap-4 rounded-md border border-stone-800 bg-stone-950/75 px-4 py-3">

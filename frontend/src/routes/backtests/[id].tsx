@@ -26,7 +26,11 @@ import {
 } from "../../services/api";
 import { DATABENTO_SYMBOLS } from "../../constants";
 import ChartIndicatorToggleBar from "../../components/ChartIndicatorToggleBar";
-import EquityCurve from "../../components/EquityCurve";
+import EquityCurve, {
+  type EquityOverlaySeries,
+  type EquityReferenceLine,
+} from "../../components/EquityCurve";
+import { LineStyle } from "lightweight-charts";
 import PriceChart, { type PriceChartMarker } from "../../components/PriceChart";
 import ReplayControls from "../../components/ReplayControls";
 import {
@@ -886,6 +890,8 @@ export default function BacktestDetail() {
   const params = useParams<{ id: string }>();
   const [activeTab, setActiveTab] = createSignal<DetailTab>("overview");
   const [selectedPresetKey, setSelectedPresetKey] = createSignal<string | null>(null);
+  const [showTrailingDD, setShowTrailingDD] = createSignal(true);
+  const [showProfitTarget, setShowProfitTarget] = createSignal(true);
   const [result] = createResource(() => params.id, fetchBacktest);
   const [presets] = createResource(fetchPropPresets);
   const [candles] = createResource(
@@ -1844,14 +1850,85 @@ export default function BacktestDetail() {
                     </For>
                   </div>
 
-                  <div class="app-panel p-4">
-                    <div class="mb-4 flex items-center justify-between">
-                      <div>
-                        <p class="text-sm text-stone-400">Strategy Equity Curve</p>
+                  {(() => {
+                    const rules = bt().prop_firm_rules;
+                    const equity = bt().equity_curve;
+                    const targetValue = rules.account_size * (1 + rules.profit_target);
+
+                    const referenceLines: EquityReferenceLine[] = [];
+                    const overlays: EquityOverlaySeries[] = [];
+
+                    if (showProfitTarget()) {
+                      referenceLines.push({
+                        value: targetValue,
+                        title: "Profit target",
+                        color: "rgba(74, 222, 128, 0.7)",
+                        lineStyle: LineStyle.Dashed,
+                      });
+                    }
+
+                    if (showTrailingDD() && rules.max_drawdown > 0) {
+                      if (rules.drawdown_type === "intraday") {
+                        let peak = equity.length ? equity[0] : rules.account_size;
+                        const floor = equity.map((value) => {
+                          if (value > peak) peak = value;
+                          return peak * (1 - rules.max_drawdown);
+                        });
+                        overlays.push({
+                          data: floor,
+                          color: "rgba(248, 113, 113, 0.6)",
+                          lineStyle: LineStyle.Dotted,
+                          lineWidth: 1,
+                        });
+                      } else {
+                        referenceLines.push({
+                          value: rules.account_size * (1 - rules.max_drawdown),
+                          title: "Drawdown floor",
+                          color: "rgba(248, 113, 113, 0.7)",
+                          lineStyle: LineStyle.Dashed,
+                        });
+                      }
+                    }
+
+                    return (
+                      <div class="app-panel p-4">
+                        <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+                          <p class="text-sm text-stone-400">Strategy Equity Curve</p>
+                          <div class="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.18em]">
+                            <button
+                              type="button"
+                              onClick={() => setShowTrailingDD((v) => !v)}
+                              class={`rounded-sm border px-2.5 py-1 transition-colors ${
+                                showTrailingDD()
+                                  ? "border-red-800/70 bg-red-950/30 text-red-200"
+                                  : "border-stone-800 bg-stone-950/70 text-stone-500 hover:text-stone-300"
+                              }`}
+                            >
+                              {rules.drawdown_type === "intraday"
+                                ? "Trailing DD"
+                                : "DD floor"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setShowProfitTarget((v) => !v)}
+                              class={`rounded-sm border px-2.5 py-1 transition-colors ${
+                                showProfitTarget()
+                                  ? "border-green-800/70 bg-green-950/30 text-green-200"
+                                  : "border-stone-800 bg-stone-950/70 text-stone-500 hover:text-stone-300"
+                              }`}
+                            >
+                              Target
+                            </button>
+                          </div>
+                        </div>
+                        <EquityCurve
+                          data={equity}
+                          referenceLines={referenceLines}
+                          overlays={overlays}
+                        />
                       </div>
-                    </div>
-                    <EquityCurve data={bt().equity_curve} />
-                  </div>
+                    );
+                  })()}
 
                   <section class="app-panel app-panel-section space-y-5">
                     <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
