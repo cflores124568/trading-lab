@@ -10,6 +10,7 @@ import {
   type IPriceLine,
   type ISeriesApi,
   type ISeriesMarkersPluginApi,
+  type LogicalRange,
   type MouseEventParams,
   type Time,
 } from "lightweight-charts";
@@ -191,6 +192,7 @@ export default function PriceChart(props: Props) {
   let candleSeries: ISeriesApi<"Candlestick"> | undefined;
   let markersPlugin: ISeriesMarkersPluginApi<Time> | null = null;
   const [hoveredTime, setHoveredTime] = createSignal<Time | undefined>();
+  const [isFollowingLatest, setIsFollowingLatest] = createSignal(true);
   const indicatorSettings = createMemo(() =>
     normalizePriceChartIndicatorSettings(props.indicators),
   );
@@ -355,6 +357,39 @@ export default function PriceChart(props: Props) {
   let previousDayLowSeries: ISeriesApi<"Line"> | undefined;
   let volumeSeries: ISeriesApi<"Histogram"> | undefined;
   let didInitialFit = false;
+  let skipNextFollowLockUpdate = false;
+  let lastFollowLatestProp = false;
+
+  const syncFollowLock = (range?: LogicalRange | null) => {
+    if (!chart) {
+      return;
+    }
+
+    if (skipNextFollowLockUpdate) {
+      skipNextFollowLockUpdate = false;
+      return;
+    }
+
+    const scrollPosition = chart.timeScale().scrollPosition();
+    if (!Number.isFinite(scrollPosition)) {
+      return;
+    }
+
+    const isNearLiveEdge = scrollPosition <= 0.5;
+    if (isNearLiveEdge) {
+      setIsFollowingLatest(true);
+      return;
+    }
+
+    if (range) {
+      setIsFollowingLatest(false);
+      return;
+    }
+
+    if (scrollPosition > 0.5) {
+      setIsFollowingLatest(false);
+    }
+  };
 
   const filterVisibleLinePoints = (
     points: IndicatorLinePoint[],
@@ -424,8 +459,9 @@ export default function PriceChart(props: Props) {
 
     candleSeries.setData(nextVisibleCandles);
 
-    if (props.followLatest) {
-      // Live replay should stay pinned to the newest visible bar.
+    if (props.followLatest && isFollowingLatest()) {
+      // Keep live replay pinned only while the user is already following.
+      skipNextFollowLockUpdate = true;
       chart.timeScale().scrollToRealTime();
     }
 
@@ -1042,6 +1078,9 @@ export default function PriceChart(props: Props) {
     chart.timeScale().subscribeVisibleTimeRangeChange(() => {
       recomputeBracketCoords();
     });
+    chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+      syncFollowLock(range);
+    });
     renderChartState();
 
     const resizeObserver = new ResizeObserver(() => {
@@ -1074,6 +1113,17 @@ export default function PriceChart(props: Props) {
       previousDayLowSeries = undefined;
       volumeSeries = undefined;
     });
+  });
+
+  createEffect(() => {
+    const followLatest = props.followLatest ?? false;
+    if (followLatest && !lastFollowLatestProp) {
+      setIsFollowingLatest(true);
+    }
+    if (!followLatest) {
+      setIsFollowingLatest(false);
+    }
+    lastFollowLatestProp = followLatest;
   });
 
   createEffect(() => {
