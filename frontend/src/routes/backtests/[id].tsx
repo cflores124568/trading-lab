@@ -1664,6 +1664,7 @@ export default function BacktestDetail() {
                                   candles={candles() as Candle[]}
                                   markers={chartMarkers()}
                                   visibleIndex={replayIndex()}
+                                  followLatest={isReplayActive()}
                                   height={520}
                                   indicators={indicatorSettings()}
                                   indicatorLegend="full"

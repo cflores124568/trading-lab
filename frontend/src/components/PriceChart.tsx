@@ -53,6 +53,7 @@ interface Props {
   candles: Candle[];
   markers?: PriceChartMarker[];
   visibleIndex?: number;
+  followLatest?: boolean;
   height?: number;
   class?: string;
   indicators?: Partial<PriceChartIndicatorSettings>;
@@ -422,6 +423,11 @@ export default function PriceChart(props: Props) {
     }
 
     candleSeries.setData(nextVisibleCandles);
+
+    if (props.followLatest) {
+      // Live replay should stay pinned to the newest visible bar.
+      chart.timeScale().scrollToRealTime();
+    }
 
     const lastVisibleTime = nextVisibleCandles[nextVisibleCandles.length - 1]?.time;
     const visibleMarkers = (props.markers ?? [])

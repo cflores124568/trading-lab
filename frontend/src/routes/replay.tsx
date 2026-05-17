@@ -2354,6 +2354,7 @@ export default function ReplayLabPage() {
                                   candles={candles() as Candle[]}
                                   markers={chartMarkers()}
                                   visibleIndex={replayIndex()}
+                                  followLatest={isReplayActive() && !isReviewMode()}
                                   height={520}
                                   indicators={indicatorSettings()}
                                   indicatorLegend="full"
