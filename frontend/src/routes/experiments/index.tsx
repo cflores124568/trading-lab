@@ -327,27 +327,27 @@ function describeComplexity(runCount: number): {
   if (runCount >= 180) {
     return {
       label: "Extreme",
-      tone: "border-red-800/80 bg-red-950/45 text-red-200",
+      tone: "text-red-300",
       note: "This is getting expensive. Great for a real sweep, not great for casual poking.",
     };
   }
   if (runCount >= 90) {
     return {
       label: "High",
-      tone: "border-amber-800/80 bg-amber-950/40 text-amber-200",
+      tone: "text-amber-300",
       note: "Still sane, but you're definitely committing real compute now.",
     };
   }
   if (runCount >= 30) {
     return {
       label: "Medium",
-      tone: "border-green-800/80 bg-green-950/45 text-green-200",
+      tone: "text-emerald-300",
       note: "Good middle ground for directional exploration.",
     };
   }
   return {
     label: "Low",
-    tone: "border-green-800/80 bg-green-950/45 text-green-200",
+    tone: "text-emerald-300",
     note: "Cheap enough to validate ideas fast without much drama.",
   };
 }
@@ -1132,11 +1132,10 @@ export default function ExperimentsIndexPage() {
               >
                 <div class="flex items-center justify-between gap-3">
                   <p class="text-xs uppercase tracking-[0.22em] text-stone-500">Live Scope Preview</p>
-                  <span
-                    class={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold ${complexity().tone}`}
-                  >
-                    {complexity().label} complexity
-                  </span>
+                  <p class="app-data shrink-0 whitespace-nowrap text-xs uppercase tracking-[0.16em] text-stone-600">
+                    <span class={`font-semibold ${complexity().tone}`}>{complexity().label}</span>
+                    <span class="text-stone-600"> complexity</span>
+                  </p>
                 </div>
                 <div class="mt-3 flex items-baseline gap-3">
                   <span class="app-data text-4xl font-semibold text-white">
@@ -1239,7 +1238,7 @@ export default function ExperimentsIndexPage() {
                         class={`rounded-md border px-4 py-3 text-left transition-all ${
                           checked()
                             ? "app-card-glow"
-                            : "border-stone-800 bg-stone-950/70 text-stone-300 hover:border-stone-600"
+                            : "border-white/8 bg-white/[0.03] text-stone-300 hover:border-white/16"
                         }`}
                       >
                         <div class="flex items-start justify-between gap-3">
@@ -1256,7 +1255,7 @@ export default function ExperimentsIndexPage() {
               </div>
             </div>
 
-            <div class="rounded-md border border-stone-800 bg-stone-950/75 p-4">
+            <div class="app-surface-muted p-4">
               <div class="flex items-center justify-between gap-3">
                 <label class={label}>Interval</label>
                 <button
@@ -1303,10 +1302,10 @@ export default function ExperimentsIndexPage() {
                         }}
                         class={`app-data rounded-sm border px-3 py-1.5 text-xs transition-colors ${
                           checked()
-                            ? "border-stone-300 bg-stone-100 text-stone-950"
+                            ? "border-[rgba(232,223,209,0.86)] bg-[rgba(235,227,213,1)] text-[#171411]"
                             : sparse()
-                              ? "cursor-not-allowed border-stone-900 bg-stone-950/40 text-stone-700"
-                              : "border-stone-800 bg-stone-950/75 text-stone-300 hover:border-stone-600"
+                              ? "cursor-not-allowed border-white/6 bg-white/[0.02] text-stone-700"
+                              : "border-white/8 bg-white/[0.03] text-stone-300 hover:border-white/16"
                         }`}
                         title={sparse() ? "Not enough bars at this timeframe" : undefined}
                       >

@@ -29,9 +29,9 @@ function statusTone(status: string): string {
     case "ready":
       return "border-green-700 bg-green-950/40 text-green-200";
     case "paused":
-      return "border-stone-700 bg-stone-900 text-stone-200";
+      return "border-white/10 bg-white/[0.04] text-stone-200";
     case "stopped":
-      return "border-stone-800 bg-stone-950/70 text-stone-300";
+      return "border-white/8 bg-white/[0.03] text-stone-300";
     case "failed":
       return "border-red-700 bg-red-950/40 text-red-200";
     default:
@@ -244,14 +244,12 @@ function statusActions(status: PaperSessionStatus): Array<{
         {
           label: "Mark Ready",
           status: "ready",
-          tone:
-            "border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 hover:border-stone-500 hover:bg-stone-900",
+          tone: "app-button-secondary",
         },
         {
           label: "Stop",
           status: "stopped",
-          tone:
-            "border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 hover:border-stone-500 hover:bg-stone-900",
+          tone: "app-button-secondary",
         },
         {
           label: "Mark Failed",
@@ -265,19 +263,17 @@ function statusActions(status: PaperSessionStatus): Array<{
         {
           label: "Start Running",
           status: "running",
-          tone: "bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-950 hover:bg-white",
+          tone: "app-button-primary",
         },
         {
           label: "Pause",
           status: "paused",
-          tone:
-            "border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 hover:border-stone-500 hover:bg-stone-900",
+          tone: "app-button-secondary",
         },
         {
           label: "Stop",
           status: "stopped",
-          tone:
-            "border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 hover:border-stone-500 hover:bg-stone-900",
+          tone: "app-button-secondary",
         },
         {
           label: "Mark Failed",
@@ -291,14 +287,12 @@ function statusActions(status: PaperSessionStatus): Array<{
         {
           label: "Pause",
           status: "paused",
-          tone:
-            "border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 hover:border-stone-500 hover:bg-stone-900",
+          tone: "app-button-secondary",
         },
         {
           label: "Stop",
           status: "stopped",
-          tone:
-            "border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 hover:border-stone-500 hover:bg-stone-900",
+          tone: "app-button-secondary",
         },
         {
           label: "Mark Failed",
@@ -312,19 +306,17 @@ function statusActions(status: PaperSessionStatus): Array<{
         {
           label: "Move to Ready",
           status: "ready",
-          tone:
-            "border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 hover:border-stone-500 hover:bg-stone-900",
+          tone: "app-button-secondary",
         },
         {
           label: "Resume",
           status: "running",
-          tone: "bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-950 hover:bg-white",
+          tone: "app-button-primary",
         },
         {
           label: "Stop",
           status: "stopped",
-          tone:
-            "border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 hover:border-stone-500 hover:bg-stone-900",
+          tone: "app-button-secondary",
         },
         {
           label: "Mark Failed",
@@ -338,13 +330,12 @@ function statusActions(status: PaperSessionStatus): Array<{
         {
           label: "Reopen Ready",
           status: "ready",
-          tone:
-            "border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 hover:border-stone-500 hover:bg-stone-900",
+          tone: "app-button-secondary",
         },
         {
           label: "Resume",
           status: "running",
-          tone: "bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-950 hover:bg-white",
+          tone: "app-button-primary",
         },
       ];
     case "failed":
@@ -352,8 +343,7 @@ function statusActions(status: PaperSessionStatus): Array<{
         {
           label: "Recover to Ready",
           status: "ready",
-          tone:
-            "border border-stone-700 px-4 py-2 text-sm font-medium text-stone-100 hover:border-stone-500 hover:bg-stone-900",
+          tone: "app-button-secondary",
         },
         {
           label: "Stop",

@@ -77,7 +77,7 @@ export default function CandidateRegistryPage() {
       actions={
         <A
           href="/experiments"
-          class="rounded-sm border border-stone-700 px-4 py-2 text-sm font-medium text-stone-200 transition-colors hover:border-stone-500 hover:bg-stone-900"
+          class="app-button-secondary"
         >
           Back to Experiments
         </A>
@@ -86,7 +86,7 @@ export default function CandidateRegistryPage() {
       <div class="space-y-6">
         <section class="app-panel app-panel-section">
           <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-            <div class="rounded-md border border-stone-800 bg-stone-950/60 px-4 py-3">
+            <div class="app-surface-muted px-4 py-3">
               <p class="app-kicker">Total</p>
               <p class="mt-2 text-2xl font-semibold text-stone-100">{counts().total}</p>
               <p class="mt-1 text-xs text-stone-500">All promoted candidates</p>
@@ -128,7 +128,7 @@ export default function CandidateRegistryPage() {
             <Show
               when={(candidates() ?? []).length > 0}
               fallback={
-                <div class="mt-6 rounded-md border border-stone-800 bg-stone-950/60 px-4 py-10 text-center text-sm text-stone-500">
+                <div class="app-surface-muted mt-6 px-4 py-10 text-center text-sm text-stone-500">
                   No candidates yet. Promote a run from an experiment to start the Phase 2 review flow.
                 </div>
               }

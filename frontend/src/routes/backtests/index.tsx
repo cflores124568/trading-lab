@@ -248,18 +248,18 @@ export default function BacktestList() {
                         onClick={() => navigate(detailHref)}
                         class={`app-panel group block cursor-pointer overflow-hidden transition-all duration-150 hover:-translate-y-px ${
                           isSelected()
-                            ? "border-stone-200/80 bg-stone-100/8 ring-1 ring-stone-200/50"
-                            : "hover:border-stone-700 hover:bg-stone-900"
+                            ? "app-panel-selected"
+                            : "hover:border-white/14 hover:bg-white/[0.035]"
                         }`}
                       >
                         <div class="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_220px] lg:p-5">
                           <div class="min-w-0">
                             <div class="flex flex-wrap items-center gap-2">
-                              <span class="inline-flex items-center gap-1.5 rounded-full border border-stone-700 bg-stone-950 px-2.5 py-1 text-xs font-semibold text-stone-100">
+                              <span class="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-semibold text-stone-100">
                                 <BarChart3 size={13} class="text-stone-300" />
                                 {bt.symbol}
                               </span>
-                              <span class="rounded-full border border-stone-800 bg-stone-950 px-2.5 py-1 text-xs uppercase tracking-[0.16em] text-stone-500">
+                              <span class="rounded-full border border-white/8 bg-white/[0.03] px-2.5 py-1 text-xs uppercase tracking-[0.16em] text-stone-500">
                                 {bt.status}
                               </span>
                               <span class="inline-flex items-center gap-1.5 text-xs text-stone-500">
@@ -286,8 +286,8 @@ export default function BacktestList() {
                                 }}
                                 class={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
                                   isSelected()
-                                    ? "border-stone-200/80 bg-stone-100 text-stone-950"
-                                    : "border-stone-700 bg-stone-950 text-stone-400 hover:border-stone-500 hover:text-stone-100"
+                                    ? "border-[rgba(232,223,209,0.86)] bg-[rgba(235,227,213,1)] text-[#171411]"
+                                    : "border-white/10 bg-white/[0.03] text-stone-400 hover:border-white/18 hover:text-stone-100"
                                 }`}
                               >
                                 {isSelected() ? <Check size={14} /> : <GitCompareArrows size={14} />}
@@ -297,7 +297,7 @@ export default function BacktestList() {
                           </div>
 
                           <div class="grid grid-cols-2 gap-2 lg:text-right">
-                            <div class="rounded-xl border border-stone-800 bg-stone-950/60 px-3 py-2">
+                            <div class="app-surface-muted rounded-xl px-3 py-2">
                               <p class="text-xs text-stone-500">Total PnL</p>
                               <p
                                 class={`mt-1 font-mono text-sm font-semibold ${
@@ -307,7 +307,7 @@ export default function BacktestList() {
                                 {formatMoney(bt.total_pnl)}
                               </p>
                             </div>
-                            <div class="rounded-xl border border-stone-800 bg-stone-950/60 px-3 py-2">
+                            <div class="app-surface-muted rounded-xl px-3 py-2">
                               <p class="text-xs text-stone-500">Win Rate</p>
                               <p class="mt-1 font-mono text-sm font-semibold text-stone-100">
                                 {formatPercent(bt.win_rate)}
@@ -316,7 +316,7 @@ export default function BacktestList() {
                           </div>
                         </div>
 
-                        <div class="flex flex-col gap-3 border-t border-stone-800 bg-stone-950/35 px-4 py-3 lg:flex-row lg:items-center lg:justify-between lg:px-5">
+                        <div class="flex flex-col gap-3 border-t border-white/8 bg-white/[0.025] px-4 py-3 lg:flex-row lg:items-center lg:justify-between lg:px-5">
                           <div class="flex flex-wrap items-center gap-2 text-xs text-stone-500">
                             <span class="inline-flex items-center gap-1.5">
                               <TrendingUp size={13} />

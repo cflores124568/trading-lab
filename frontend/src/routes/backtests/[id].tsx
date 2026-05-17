@@ -308,7 +308,7 @@ function formatMinutesDuration(minutes: number): string {
 
 function calendarTone(pnl: number | null): string {
   if (pnl === null) {
-    return "border-stone-900 bg-stone-950/40";
+    return "border-white/6 bg-white/[0.02]";
   }
   if (pnl > 0) {
     return "border-green-900/80 bg-green-950/40";
@@ -316,7 +316,7 @@ function calendarTone(pnl: number | null): string {
   if (pnl < 0) {
     return "border-red-900/80 bg-red-950/40";
   }
-  return "border-stone-800 bg-stone-900/70";
+  return "border-white/8 bg-white/[0.04]";
 }
 
 function parseUtcDate(value: string): Date {
@@ -428,7 +428,7 @@ function HeroMetricCard(props: {
   tone?: "default" | "good" | "bad";
 }) {
   return (
-    <div class="rounded-md border border-stone-800 bg-stone-950/70 px-4 py-4">
+    <div class="app-surface-muted px-4 py-4">
       <p class="text-xs uppercase tracking-[0.18em] text-stone-500">{props.label}</p>
       <p
         class={`mt-2 font-mono text-2xl font-semibold ${
@@ -502,7 +502,7 @@ function PropEvalPanel(props: {
           </Show>
         </div>
 
-        <div class="rounded-sm border border-stone-800 bg-stone-950/70 px-4 py-3 text-right">
+        <div class="app-surface-muted px-4 py-3 text-right">
           <p class="text-xs uppercase tracking-[0.18em] text-stone-500">{equityLabel()}</p>
           <p class="mt-2 font-mono text-xl font-semibold text-stone-100">
             {formatCurrency(props.summary.current_balance)}
@@ -584,7 +584,7 @@ function PropEvalPanel(props: {
 
       <Show when={props.payoutEstimate}>
         {(estimate) => (
-          <div class="mt-5 rounded-md border border-stone-800 bg-stone-950/70 p-4">
+          <div class="app-surface-muted mt-5 p-4">
             {(() => {
               const winningDaysRequired = estimate().winning_days_required;
               const winningDayProfit = estimate().winning_day_profit;
@@ -606,7 +606,7 @@ function PropEvalPanel(props: {
                 <p class="text-sm font-semibold text-stone-100">Estimated Payout</p>
                 <p class="text-xs text-stone-500">{estimate().policy_label}</p>
               </div>
-              <div class="rounded-sm border border-stone-800 bg-stone-950 px-4 py-3 text-right">
+              <div class="app-surface-strong px-4 py-3 text-right">
                 <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Payout Status</p>
                 <p
                   class={`mt-2 font-mono text-lg font-semibold ${
@@ -1901,7 +1901,7 @@ export default function BacktestDetail() {
                               class={`rounded-sm border px-2.5 py-1 transition-colors ${
                                 showTrailingDD()
                                   ? "border-red-800/70 bg-red-950/30 text-red-200"
-                                  : "border-stone-800 bg-stone-950/70 text-stone-500 hover:text-stone-300"
+                                  : "border-white/8 bg-white/[0.03] text-stone-500 hover:text-stone-300"
                               }`}
                             >
                               {rules.drawdown_type === "intraday"
@@ -1914,7 +1914,7 @@ export default function BacktestDetail() {
                               class={`rounded-sm border px-2.5 py-1 transition-colors ${
                                 showProfitTarget()
                                   ? "border-green-800/70 bg-green-950/30 text-green-200"
-                                  : "border-stone-800 bg-stone-950/70 text-stone-500 hover:text-stone-300"
+                                  : "border-white/8 bg-white/[0.03] text-stone-500 hover:text-stone-300"
                               }`}
                             >
                               Target

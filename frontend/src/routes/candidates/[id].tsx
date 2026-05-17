@@ -74,7 +74,7 @@ function statusTone(status: CandidateLifecycleStatus): string {
     case "paper_running":
       return "border-amber-700 bg-amber-950/40 text-amber-200";
     case "paper_paused":
-      return "border-stone-700 bg-stone-900 text-stone-200";
+      return "border-white/10 bg-white/[0.04] text-stone-200";
     case "rejected":
       return "border-red-700 bg-red-950/40 text-red-200";
     default:
@@ -86,9 +86,9 @@ function describeStatus(status: CandidateLifecycleStatus): string {
   return status.replace(/_/g, " ");
 }
 
-function metricCard(label: string, value: string, note: string, tone = "border-stone-800 bg-stone-950/60") {
+function metricCard(label: string, value: string, note: string, tone = "app-surface-muted") {
   return (
-    <div class={`rounded-md border px-4 py-3 ${tone}`}>
+    <div class={`rounded-md px-4 py-3 ${tone}`}>
       <p class="app-kicker">{label}</p>
       <p class="mt-2 text-sm font-semibold text-stone-100">{value}</p>
       <p class="mt-1 text-xs text-stone-500">{note}</p>

@@ -95,7 +95,6 @@ export default function BacktestComparePage() {
   return (
     <AppShell
       title="Compare Backtests"
-      subtitle="Two saved runs, side by side."
       actions={
         <A
           href="/backtests"
@@ -179,19 +178,19 @@ export default function BacktestComparePage() {
                 <div class="space-y-6">
                   <section class="grid gap-4 md:grid-cols-3">
                     <div class="app-panel rounded-md px-4 py-4">
-                      <p class="app-metric-label">PnL Delta</p>
+                      <p class="app-metric-label">PnL Δ</p>
                       <p class="app-metric-value">
                         {formatMoney((a.metrics.total_pnl ?? 0) - (b.metrics.total_pnl ?? 0))}
                       </p>
                     </div>
                     <div class="app-panel rounded-md px-4 py-4">
-                      <p class="app-metric-label">Win Rate Delta</p>
+                      <p class="app-metric-label">Win Rate Δ</p>
                       <p class="app-metric-value">
                         {formatPercent((a.metrics.win_rate ?? 0) - (b.metrics.win_rate ?? 0))}
                       </p>
                     </div>
                     <div class="app-panel rounded-md px-4 py-4">
-                      <p class="app-metric-label">Drawdown Delta</p>
+                      <p class="app-metric-label">Drawdown Δ</p>
                       <p class="app-metric-value">
                         {formatPercent((a.metrics.max_drawdown ?? 0) - (b.metrics.max_drawdown ?? 0))}
                       </p>
@@ -201,18 +200,18 @@ export default function BacktestComparePage() {
                   <section class="app-panel overflow-x-auto">
                     <div class="min-w-[720px]">
                       <div class="grid grid-cols-[minmax(0,1fr)_180px_180px_120px] border-b border-stone-700/80 bg-stone-950/80">
-                      <div class="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-500">
-                        Execution Assumption
-                      </div>
-                      <div class="app-data border-l border-stone-700/80 px-3 py-2.5 text-sm font-semibold text-stone-200">
-                        {a.backtest_id}
-                      </div>
-                      <div class="app-data border-l border-stone-700/80 px-3 py-2.5 text-sm font-semibold text-stone-200">
-                        {b.backtest_id}
-                      </div>
-                      <div class="border-l border-stone-700/80 px-3 py-2.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-500">
-                        Diff
-                      </div>
+                        <div class="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-500">
+                          Execution Assumption
+                        </div>
+                        <div class="app-data border-l border-stone-700/80 px-3 py-2.5 text-sm font-semibold text-stone-200">
+                          {a.backtest_id}
+                        </div>
+                        <div class="app-data border-l border-stone-700/80 px-3 py-2.5 text-sm font-semibold text-stone-200">
+                          {b.backtest_id}
+                        </div>
+                        <div class="border-l border-stone-700/80 px-3 py-2.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-500">
+                          Δ
+                        </div>
                       </div>
 
                       <For each={executionRows}>
@@ -227,15 +226,16 @@ export default function BacktestComparePage() {
                               <div class="app-data border-l border-stone-700/80 px-3 py-2.5 text-sm text-stone-200">
                                 {row.valueB}
                               </div>
-                              <div class="border-l border-stone-700/80 px-3 py-2.5">
+                              <div class="border-l border-stone-700/80 px-3 py-2.5 text-sm">
                                 <span
-                                  class={`rounded-full px-2 py-1 text-[11px] font-semibold uppercase tracking-wide ${
-                                    isSame
-                                      ? "border border-green-900/80 bg-green-950/40 text-green-300"
-                                      : "border border-amber-900/80 bg-amber-950/40 text-amber-300"
+                                  class={`app-data inline-flex items-center gap-2 ${
+                                    isSame ? "text-stone-500" : "text-stone-200"
                                   }`}
                                 >
-                                  {isSame ? "same" : "different"}
+                                  <span class={isSame ? "text-stone-700" : "text-stone-500"}>
+                                    {isSame ? "·" : "Δ"}
+                                  </span>
+                                  {isSame ? "match" : "changed"}
                                 </span>
                               </div>
                             </div>
