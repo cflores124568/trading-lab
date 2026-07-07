@@ -115,6 +115,8 @@ class ReplayAction(BaseModel):
     price: Optional[float] = Field(default=None, gt=0)
     stop_price: Optional[float] = Field(default=None, gt=0)
     target_price: Optional[float] = Field(default=None, gt=0)
+    order_id: Optional[str] = None
+    bracket_role: Optional[Literal["stop", "target"]] = None
 
 
 class ReplaySessionSourceBacktest(BaseModel):

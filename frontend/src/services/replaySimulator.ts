@@ -38,6 +38,8 @@ export interface ReplayAction {
   price?: number;
   stopPrice?: number;
   targetPrice?: number;
+  orderId?: string;
+  bracketRole?: "stop" | "target";
 }
 
 export interface ReplayMetrics {
@@ -546,8 +548,37 @@ export function simulateReplaySession(args: {
 
   const primaryActiveOrder = (): RestingOrder | null => activeOrders[0] ?? null;
   const hasPendingOrders = (): boolean => activeOrders.some((order) => order.status === "pending");
+  const canReplaceBracketOrders = (): boolean => {
+    const pending = activeOrders.filter((order) => order.status === "pending");
+    return (
+      pending.length > 0 &&
+      pending.every(
+        (order) =>
+          order.intent === "exit" &&
+          Boolean(order.bracket_id) &&
+          (order.bracket_role === "stop" || order.bracket_role === "target"),
+      )
+    );
+  };
   const clearActiveOrders = (): void => {
     activeOrders = [];
+  };
+
+  const bracketValidityError = (
+    activePosition: OpenReplayPosition,
+    stopPrice: number,
+    targetPrice: number,
+    quote: SyntheticQuote,
+  ): string | null => {
+    if (activePosition.side === "buy") {
+      if (stopPrice >= quote.reference) return "Long brackets need the stop below the current reference price.";
+      if (targetPrice <= quote.reference) return "Long brackets need the target above the current reference price.";
+      return null;
+    }
+
+    if (stopPrice <= quote.reference) return "Short brackets need the stop above the current reference price.";
+    if (targetPrice >= quote.reference) return "Short brackets need the target below the current reference price.";
+    return null;
   };
 
   for (let i = 0; i < visibleCandles.length; i += 1) {
@@ -649,8 +680,22 @@ export function simulateReplaySession(args: {
       const actionType = normalizeExecutionAction(action.type);
 
       if (actionType === "cancel") {
-        if (hasPendingOrders()) {
-          for (const order of activeOrders.filter((candidate) => candidate.status === "pending")) {
+        const cancelTargets = activeOrders.filter((candidate) => {
+          if (candidate.status !== "pending") {
+            return false;
+          }
+          if (action.orderId) {
+            return candidate.id === action.orderId;
+          }
+          if (action.bracketRole) {
+            return candidate.bracket_role === action.bracketRole;
+          }
+          return true;
+        });
+
+        if (cancelTargets.length > 0) {
+          const cancelTargetIds = new Set(cancelTargets.map((order) => order.id));
+          for (const order of cancelTargets) {
             appendEvent({
               type: "resting_canceled",
               action: action.type,
@@ -661,14 +706,16 @@ export function simulateReplaySession(args: {
               order_id: order.id,
             });
           }
-          clearActiveOrders();
+          activeOrders = activeOrders.filter((order) => !cancelTargetIds.has(order.id));
         } else {
           appendEvent({
             type: "ignored",
             action: action.type,
             bar_index: i,
             time: getCandleTime(candle),
-            reason: "No pending order to cancel.",
+            reason: action.bracketRole
+              ? `No pending ${action.bracketRole} order to cancel.`
+              : "No pending order to cancel.",
           });
         }
         continue;
@@ -846,7 +893,7 @@ export function simulateReplaySession(args: {
           });
           continue;
         }
-        if (hasPendingOrders()) {
+        if (hasPendingOrders() && !canReplaceBracketOrders()) {
           appendEvent({
             type: "ignored",
             action: action.type,
@@ -869,6 +916,23 @@ export function simulateReplaySession(args: {
         }
 
         const bracketPosition = activePosition as OpenReplayPosition;
+        const validityError = bracketValidityError(
+          bracketPosition,
+          action.stopPrice,
+          action.targetPrice,
+          quote,
+        );
+        if (validityError) {
+          appendEvent({
+            type: "ignored",
+            action: action.type,
+            bar_index: i,
+            time: getCandleTime(candle),
+            reason: validityError,
+          });
+          continue;
+        }
+
         const bracketOrders = createBracketExitOrders({
           bracketId: action.id,
           positionSide: bracketPosition.side,
@@ -878,6 +942,21 @@ export function simulateReplaySession(args: {
           targetPrice: action.targetPrice,
           quantity: bracketPosition.quantity,
         });
+
+        if (hasPendingOrders() && canReplaceBracketOrders()) {
+          for (const order of activeOrders.filter((candidate) => candidate.status === "pending")) {
+            appendEvent({
+              type: "resting_canceled",
+              action: action.type,
+              side: order.side,
+              price: order.price,
+              bar_index: i,
+              time: getCandleTime(candle),
+              order_id: order.id,
+              reason: "Bracket moved.",
+            });
+          }
+        }
         activeOrders = bracketOrders;
         for (const order of bracketOrders) {
           appendEvent({

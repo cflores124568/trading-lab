@@ -650,6 +650,8 @@ export interface ReplaySessionAction {
   price?: number;
   stop_price?: number;
   target_price?: number;
+  order_id?: string;
+  bracket_role?: "stop" | "target";
 }
 
 export interface ReplaySessionSourceBacktest {

@@ -14,6 +14,7 @@ import {
   type MouseEventParams,
   type Time,
 } from "lightweight-charts";
+import { X } from "lucide-solid";
 import type { Candle } from "../services/api";
 import {
   buildPriceChartIndicatorSeries,
@@ -31,8 +32,11 @@ export interface PriceChartMarker {
   text: string;
 }
 
+export type PriceChartBracketLeg = "stop" | "target";
+
 export interface PriceChartBracket {
   entryPrice: number;
+  referencePrice?: number | null;
   side: "buy" | "sell";
   quantity: number;
   tickSize: number;
@@ -40,7 +44,7 @@ export interface PriceChartBracket {
   stopPrice?: number | null;
   targetPrice?: number | null;
   onCommit?: (next: { stopPrice: number; targetPrice: number }) => void;
-  onCancel?: () => void;
+  onCancel?: (kind?: PriceChartBracketLeg) => void;
 }
 
 export interface PriceChartRestingOrder {
@@ -319,7 +323,7 @@ export default function PriceChart(props: Props) {
   let restingOrderLines: IPriceLine[] = [];
   let overlayContainer: HTMLDivElement | undefined;
 
-  type BracketDragKind = "stop" | "target";
+  type BracketDragKind = PriceChartBracketLeg;
   interface BracketDragState {
     kind: BracketDragKind;
     pointerId: number;
@@ -727,15 +731,21 @@ export default function PriceChart(props: Props) {
   ): number => {
     const snap = snapToTick(rawPrice, bracket.tickSize);
     const step = bracket.tickSize > 0 ? bracket.tickSize : 0.25;
+    const reference =
+      bracket.referencePrice !== null &&
+      bracket.referencePrice !== undefined &&
+      Number.isFinite(bracket.referencePrice)
+        ? bracket.referencePrice
+        : bracket.entryPrice;
     const isLong = bracket.side === "buy";
     if (kind === "stop") {
       return isLong
-        ? Math.min(snap, bracket.entryPrice - step)
-        : Math.max(snap, bracket.entryPrice + step);
+        ? Math.min(snap, reference - step)
+        : Math.max(snap, reference + step);
     }
     return isLong
-      ? Math.max(snap, bracket.entryPrice + step)
-      : Math.min(snap, bracket.entryPrice - step);
+      ? Math.max(snap, reference + step)
+      : Math.min(snap, reference - step);
   };
 
   const setChartInteractionEnabled = (enabled: boolean) => {
@@ -896,11 +906,17 @@ export default function PriceChart(props: Props) {
     bracket: PriceChartBracket,
   ): boolean => {
     const step = bracket.tickSize > 0 ? bracket.tickSize : 0.25;
+    const reference =
+      bracket.referencePrice !== null &&
+      bracket.referencePrice !== undefined &&
+      Number.isFinite(bracket.referencePrice)
+        ? bracket.referencePrice
+        : bracket.entryPrice;
     const isLong = bracket.side === "buy";
     if (kind === "stop") {
-      return isLong ? price <= bracket.entryPrice - step : price >= bracket.entryPrice + step;
+      return isLong ? price <= reference - step : price >= reference + step;
     }
-    return isLong ? price >= bracket.entryPrice + step : price <= bracket.entryPrice - step;
+    return isLong ? price >= reference + step : price <= reference - step;
   };
 
   const commitMenuPrice = (kind: BracketDragKind) => {
@@ -954,6 +970,14 @@ export default function PriceChart(props: Props) {
     closeBracketMenu();
     setBracketPending(null);
     bracket?.onCancel?.();
+  };
+
+  const cancelBracketLeg = (kind: BracketDragKind, event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const bracket = props.bracket;
+    setBracketPending(null);
+    bracket?.onCancel?.(kind);
   };
 
   const clearPendingFromMenu = () => {
@@ -1239,14 +1263,26 @@ export default function PriceChart(props: Props) {
               class="pointer-events-auto absolute left-0 right-12 -translate-y-1/2"
               style={{
                 top: `${bracketCoords().targetY}px`,
-                height: "14px",
+                height: "24px",
                 cursor: "ns-resize",
               }}
               onPointerDown={(event) => handleBracketPointerDown("target", event)}
               onPointerMove={handleBracketPointerMove}
               onPointerUp={handleBracketPointerUp}
               onPointerCancel={handleBracketPointerCancel}
-            />
+            >
+              <button
+                type="button"
+                title="Cancel TP"
+                aria-label="Cancel take profit"
+                class="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center border border-emerald-500/70 bg-stone-950/90 text-emerald-200 shadow-sm shadow-black/30 transition-colors hover:border-emerald-300 hover:bg-emerald-950/70"
+                style={{ "border-radius": "0" }}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => cancelBracketLeg("target", event)}
+              >
+                <X size={12} strokeWidth={2} />
+              </button>
+            </div>
           ) : null}
 
           {bracketCoords().stopY !== null &&
@@ -1256,14 +1292,26 @@ export default function PriceChart(props: Props) {
               class="pointer-events-auto absolute left-0 right-12 -translate-y-1/2"
               style={{
                 top: `${bracketCoords().stopY}px`,
-                height: "14px",
+                height: "24px",
                 cursor: "ns-resize",
               }}
               onPointerDown={(event) => handleBracketPointerDown("stop", event)}
               onPointerMove={handleBracketPointerMove}
               onPointerUp={handleBracketPointerUp}
               onPointerCancel={handleBracketPointerCancel}
-            />
+            >
+              <button
+                type="button"
+                title="Cancel SL"
+                aria-label="Cancel stop loss"
+                class="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center border border-rose-500/70 bg-stone-950/90 text-rose-200 shadow-sm shadow-black/30 transition-colors hover:border-rose-300 hover:bg-rose-950/70"
+                style={{ "border-radius": "0" }}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => cancelBracketLeg("stop", event)}
+              >
+                <X size={12} strokeWidth={2} />
+              </button>
+            </div>
           ) : null}
 
           {bracketMenu() ? (

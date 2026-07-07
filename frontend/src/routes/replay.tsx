@@ -36,6 +36,7 @@ import { firmLogoSrc, firmOf, stripFirmPrefix } from "../utils/firmLogo";
 import EquityCurve from "../components/EquityCurve";
 import PriceChart, {
   type PriceChartBracket,
+  type PriceChartBracketLeg,
   type PriceChartMarker,
   type PriceChartRestingOrder,
 } from "../components/PriceChart";
@@ -163,7 +164,7 @@ function markerTimeFromIso(value: string): number {
 function createReplayAction(
   type: ReplayAction["type"],
   barIndex: number,
-  fields: Partial<Pick<ReplayAction, "price" | "stopPrice" | "targetPrice">> = {},
+  fields: Partial<Pick<ReplayAction, "price" | "stopPrice" | "targetPrice" | "orderId" | "bracketRole">> = {},
 ): ReplayAction {
   return {
     id: `${type}_${barIndex}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -859,6 +860,8 @@ export default function ReplayLabPage() {
           price: action.price,
           stopPrice: action.stop_price,
           targetPrice: action.target_price,
+          orderId: action.order_id,
+          bracketRole: action.bracket_role,
         })),
       );
       setLaunchConfig({
@@ -1435,6 +1438,7 @@ export default function ReplayLabPage() {
       quantity: position.quantity,
       tickSize,
       tickValue,
+      referencePrice: session.currentQuote?.reference ?? position.current_price,
       stopPrice: stopOrder?.price ?? null,
       targetPrice: targetOrder?.price ?? null,
       onCommit: ({ stopPrice, targetPrice }) => {
@@ -1444,9 +1448,9 @@ export default function ReplayLabPage() {
           targetPrice: Number(targetPrice.toFixed(4)),
         });
       },
-      onCancel: () => {
+      onCancel: (kind?: PriceChartBracketLeg) => {
         setBannerError(null);
-        recordReplayAction("cancel");
+        recordReplayAction("cancel", kind ? { bracketRole: kind } : {});
       },
     };
   });
@@ -1530,7 +1534,7 @@ export default function ReplayLabPage() {
 
   const recordReplayAction = (
     type: ReplayAction["type"],
-    fields: Partial<Pick<ReplayAction, "price" | "stopPrice" | "targetPrice">> = {},
+    fields: Partial<Pick<ReplayAction, "price" | "stopPrice" | "targetPrice" | "orderId" | "bracketRole">> = {},
   ) => {
     if (!candles() || totalBars() === 0 || isReviewMode()) {
       return;
@@ -1725,6 +1729,8 @@ export default function ReplayLabPage() {
         price: action.price,
         stop_price: action.stopPrice,
         target_price: action.targetPrice,
+        order_id: action.orderId,
+        bracket_role: action.bracketRole,
       })),
       active_order: session.activeOrder ? { ...session.activeOrder } : null,
       active_orders: session.activeOrders.map((order) => ({ ...order })),
