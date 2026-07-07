@@ -11,14 +11,12 @@ import {
   createWorkspaceCopyName,
   createWorkspacePanel,
   normalizeWorkspaceCollectionState,
-  normalizeWorkspaceAccountProfile,
   normalizePanelTitle,
   normalizeWorkspaceName,
   MAX_WORKSPACE_PANELS,
   reconcileWorkspaceLayout,
   WORKSPACE_PRESET_OPTIONS,
   type ChartPanelQuery,
-  type WorkspaceAccountProfile,
   type WorkspaceLayout,
   type WorkspacePreset,
 } from "../components/workspace/chartPanelTypes";
@@ -85,17 +83,6 @@ export default function Dashboard() {
       workspaceIndex,
       "name",
       normalizeWorkspaceName(nextName, currentName),
-    );
-  };
-
-  const handleWorkspaceAccountProfileChange = (nextProfile: WorkspaceAccountProfile) => {
-    const workspaceIndex = activeWorkspaceIndex();
-    const currentProfile = workspace.workspaces[workspaceIndex]?.accountProfile;
-    setWorkspace(
-      "workspaces",
-      workspaceIndex,
-      "accountProfile",
-      normalizeWorkspaceAccountProfile(nextProfile, currentProfile),
     );
   };
 
@@ -408,7 +395,6 @@ export default function Dashboard() {
               defaultWorkspaceId={workspace.defaultWorkspaceId}
               workspaceName={activeWorkspace().name}
               workspaceCount={workspace.workspaces.length}
-              accountProfile={activeWorkspace().accountProfile}
               workspaces={workspace.workspaces.map((candidate) => ({
                 id: candidate.id,
                 name: candidate.name,
@@ -421,7 +407,6 @@ export default function Dashboard() {
               onWorkspaceChange={handleWorkspaceChange}
               onDefaultWorkspaceChange={handleDefaultWorkspaceChange}
               onWorkspaceNameChange={handleWorkspaceNameChange}
-              onWorkspaceAccountProfileChange={handleWorkspaceAccountProfileChange}
               onCreateWorkspace={handleCreateWorkspace}
               onDeleteWorkspace={handleDeleteWorkspace}
               onPresetChange={handlePresetChange}
