@@ -13,12 +13,16 @@ from services.execution_model import (
     synthetic_quote_for_bar,
 )
 
-#Try to import compiled C++ kernel 
+#Try to import compiled C++ kernel
 try:
     import backtest_core as _core      #built via CMakeLists.txt
     _CPP_AVAILABLE = True
 except ImportError:
     _CPP_AVAILABLE = False
+
+# A stale .so from before the batch entry point still works for single runs,
+# so batch availability gets its own flag instead of piggybacking.
+_CPP_BATCH_AVAILABLE = _CPP_AVAILABLE and hasattr(_core, "run_backtest_batch")
 
 # Public API  
 
@@ -51,7 +55,12 @@ def run_backtest(
     uses_synthetic_quotes = resolved_execution_mode == "synthetic_quotes"
     _validate(df, require_ohlc_range=uses_brackets)
 
-    if _CPP_AVAILABLE and not uses_brackets and not uses_synthetic_quotes:
+    # C++ is the primary engine for every mode now. The Python loop below is
+    # the reference implementation: it keeps dev working without a compiler
+    # and it's what the parity test checks the kernel against.
+    has_ohlc_range = {"high", "low"} <= set(df.columns)
+    needs_ohlc_range = uses_brackets or uses_synthetic_quotes
+    if _CPP_AVAILABLE and (has_ohlc_range or not needs_ohlc_range):
         try:
             return _run_cpp(
                 df,
@@ -61,6 +70,12 @@ def run_backtest(
                 tick_size,
                 tick_value,
                 slippage_ticks,
+                stop_loss_ticks,
+                take_profit_ticks,
+                uses_synthetic_quotes,
+                spread_ticks,
+                volatile_bar_threshold_ticks,
+                volatile_bar_extra_ticks,
             )
         except TypeError:
             # Local dev can have an old compiled extension hanging around. Falling
@@ -81,6 +96,98 @@ def run_backtest(
         volatile_bar_threshold_ticks,
         volatile_bar_extra_ticks,
     )
+
+def run_backtest_batch(
+    df:              pd.DataFrame,
+    signal_arrays:   list[np.ndarray],
+    initial_balance: float = 100_000,
+    position_size:   float = 1.0,
+    commission:      float = 5.0,
+    tick_size:       float = 0.25,
+    tick_value:      float = 12.50,
+    slippage_ticks:  float = 1.0,
+    stop_loss_ticks: float | None = None,
+    take_profit_ticks: float | None = None,
+    execution_mode: str = DEFAULT_BACKTEST_EXECUTION_MODE,
+    spread_ticks: int = DEFAULT_SPREAD_TICKS,
+    volatile_bar_threshold_ticks: int = DEFAULT_VOLATILE_BAR_THRESHOLD_TICKS,
+    volatile_bar_extra_ticks: int = DEFAULT_VOLATILE_BAR_EXTRA_TICKS,
+    max_threads: int = 0,
+) -> list[dict]:
+    """Run many signal variants over one shared OHLC frame.
+
+    This is the parameter-grid fast path: every run reads the same price
+    columns from `df` and only the signal array changes, so the C++ pool can
+    fan out across cores without copying the dataset per run. Results come
+    back in input order, each shaped exactly like `run_backtest`'s output.
+    Without the compiled kernel it just loops the Python oracle, so callers
+    don't need their own fallback.
+    """
+    resolved_execution_mode = normalize_backtest_execution_mode(execution_mode)
+    uses_synthetic_quotes = resolved_execution_mode == "synthetic_quotes"
+    uses_brackets = _uses_bracket_exits(stop_loss_ticks, take_profit_ticks)
+
+    # Same column contract as _validate, minus `signal` — signals arrive as
+    # separate arrays here instead of living on the frame.
+    required = {"open", "close"} | ({"high", "low"} if uses_brackets else set())
+    missing = required - set(df.columns)
+    if missing:
+        raise KeyError(f"DataFrame is missing required columns: {missing}")
+
+    has_ohlc_range = {"high", "low"} <= set(df.columns)
+    needs_ohlc_range = uses_brackets or uses_synthetic_quotes
+    if _CPP_BATCH_AVAILABLE and (has_ohlc_range or not needs_ohlc_range):
+        closes = df["close"].to_numpy(dtype=np.float64)
+        raw_results = _core.run_backtest_batch(
+            df["open"].to_numpy(dtype=np.float64),
+            df["high"].to_numpy(dtype=np.float64) if "high" in df.columns else closes,
+            df["low"].to_numpy(dtype=np.float64) if "low" in df.columns else closes,
+            closes,
+            [np.asarray(signals, dtype=np.int32) for signals in signal_arrays],
+            initial_balance, position_size, commission,
+            tick_size, tick_value, slippage_ticks,
+            stop_loss_ticks, take_profit_ticks,
+            uses_synthetic_quotes,
+            int(spread_ticks), int(volatile_bar_threshold_ticks), int(volatile_bar_extra_ticks),
+            int(max_threads),
+        )
+        # One isoformat pass over the index beats calling it per trade — with
+        # a big grid the same timestamps get referenced thousands of times.
+        iso_index = [_iso(ts) for ts in df.index]
+        return [
+            {
+                "trades": _trades_from_raw(
+                    raw, iso_index,
+                    position_size=position_size,
+                    commission=commission,
+                    tick_size=tick_size,
+                    tick_value=tick_value,
+                    slippage_ticks=slippage_ticks,
+                ),
+                "equity_curve": raw["equity_curve"].tolist(),
+            }
+            for raw in raw_results
+        ]
+
+    return [
+        _run_python(
+            df.assign(signal=np.asarray(signals, dtype=int)),
+            initial_balance,
+            position_size,
+            commission,
+            tick_size,
+            tick_value,
+            slippage_ticks,
+            stop_loss_ticks,
+            take_profit_ticks,
+            resolved_execution_mode,
+            spread_ticks,
+            volatile_bar_threshold_ticks,
+            volatile_bar_extra_ticks,
+        )
+        for signals in signal_arrays
+    ]
+
 
 #Internal helpers
 def _validate(df: pd.DataFrame, *, require_ohlc_range: bool = False) -> None:
@@ -107,22 +214,62 @@ def _run_cpp(
     tick_size:       float,
     tick_value:      float,
     slippage_ticks:  float,
+    stop_loss_ticks: float | None = None,
+    take_profit_ticks: float | None = None,
+    use_synthetic_quotes: bool = False,
+    spread_ticks: int = DEFAULT_SPREAD_TICKS,
+    volatile_bar_threshold_ticks: int = DEFAULT_VOLATILE_BAR_THRESHOLD_TICKS,
+    volatile_bar_extra_ticks: int = DEFAULT_VOLATILE_BAR_EXTRA_TICKS,
 ) -> dict:
     """Call the C++ kernel, then stitch timestamps back onto trades."""
     opens = df["open"].to_numpy(dtype=np.float64)
     closes = df["close"].to_numpy(dtype=np.float64)
     signals = df["signal"].to_numpy(dtype=np.int32)
+    # high/low only matter for brackets and quote volatility; the dispatch in
+    # run_backtest guarantees they exist whenever a mode actually reads them.
+    highs = df["high"].to_numpy(dtype=np.float64) if "high" in df.columns else closes
+    lows = df["low"].to_numpy(dtype=np.float64) if "low" in df.columns else closes
 
-    #Hot loop lives entirely in C++ 
+    #Hot loop lives entirely in C++
     raw = _core.run_backtest_kernel(
-        opens, closes, signals,
+        opens, highs, lows, closes, signals,
         initial_balance, position_size, commission,
         tick_size, tick_value, slippage_ticks,
+        stop_loss_ticks, take_profit_ticks,
+        use_synthetic_quotes,
+        int(spread_ticks), int(volatile_bar_threshold_ticks), int(volatile_bar_extra_ticks),
     )
 
-    #Reconstruct trade dicts
-    idx = df.index
-    trades: List[dict] = [
+    return {
+        "trades": _trades_from_raw(
+            raw, df.index,
+            position_size=position_size,
+            commission=commission,
+            tick_size=tick_size,
+            tick_value=tick_value,
+            slippage_ticks=slippage_ticks,
+        ),
+        "equity_curve": raw["equity_curve"].tolist(),
+    }
+
+
+def _trades_from_raw(
+    raw: dict,
+    idx,
+    *,
+    position_size: float,
+    commission: float,
+    tick_size: float,
+    tick_value: float,
+    slippage_ticks: float,
+) -> List[dict]:
+    """Stitch timestamps and run config back onto the kernel's flat arrays.
+
+    `idx` can be the DataFrame index itself or a pre-rendered list of iso
+    strings — `_iso` passes strings through untouched, so batch callers can
+    pay the isoformat cost once instead of per trade.
+    """
+    return [
         {
             "trade_id":    trade_id,
             "entry_time":  _iso(idx[raw["entry_indices"][trade_id]]),
@@ -140,11 +287,6 @@ def _run_cpp(
         }
         for trade_id in range(len(raw["entry_indices"]))
     ]
-
-    return {
-        "trades":       trades,
-        "equity_curve": raw["equity_curve"].tolist(),
-    }
 
 
 #Pure Python fallback

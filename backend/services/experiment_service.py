@@ -3,13 +3,20 @@ from datetime import datetime
 from itertools import product
 from typing import Any
 
+import numpy as np
+
 from schemas import (
     BacktestRequest,
     ExperimentCreate,
     ExperimentResult,
     Strategy,
 )
-from services.backtest_service import build_backtest_result, persist_backtest_result
+from services.backtest_engine import run_backtest_batch
+from services.backtest_service import (
+    complete_backtest_result,
+    persist_backtest_result,
+    prepare_backtest_frame,
+)
 from services.data_loader import get_dataset, load_from_db, normalise_interval
 from services.experiment_repo import (
     list_experiment_runs as list_experiment_runs_db,
@@ -92,11 +99,16 @@ def run_experiment(experiment: dict) -> tuple[dict, list[dict]]:
     }
     _save_experiment_any(running)
 
+    # Phase 1: prepare every plan's frame and signals in Python. This is
+    # where indicators and signal generation happen, so failures here stay
+    # scoped to the one plan that caused them.
     dataset_cache: dict[tuple[str, str], dict] = {}
-    runs: list[dict] = []
+    entries: list[dict] = []
 
     for plan in plans:
         run_started_at = datetime.utcnow().isoformat()
+        entry: dict[str, Any] = {"plan": plan, "created_at": run_started_at, "error": None}
+        entries.append(entry)
         try:
             dataset_info = dataset_cache.get((plan["symbol"], plan["interval"]))
             if dataset_info is None:
@@ -129,62 +141,77 @@ def run_experiment(experiment: dict) -> tuple[dict, list[dict]]:
                 volatile_bar_threshold_ticks=max(0, int(experiment.get("volatile_bar_threshold_ticks") or 0)),
                 volatile_bar_extra_ticks=max(0, int(experiment.get("volatile_bar_extra_ticks") or 0)),
             )
-            backtest = build_backtest_result(dataset, request)
-            persist_backtest_result(backtest)
-
-            runs.append({
-                "experiment_run_id": str(uuid.uuid4()),
-                "experiment_id": experiment["experiment_id"],
-                "candidate_id": None,
-                "backtest_id": backtest["backtest_id"],
-                "symbol": plan["symbol"],
-                "interval": plan["interval"],
-                "strategy_type": experiment["strategy_type"],
-                "strategy_params": plan["strategy_params"],
-                "dataset_id": dataset_info["dataset_id"],
-                "status": "completed",
-                "score": score_backtest(backtest, experiment["scoring_rule"]),
-                "rank": None,
-                "total_pnl": backtest["metrics"]["total_pnl"],
-                "win_rate": backtest["metrics"]["win_rate"],
-                "max_drawdown": backtest["metrics"]["max_drawdown"],
-                "profit_factor": backtest["metrics"]["profit_factor"],
-                "passed": backtest["prop_firm_eval"]["passed"],
-                "error": None,
-                "metrics": backtest["metrics"],
-                "prop_firm_eval": backtest["prop_firm_eval"],
-                "is_candidate": False,
-                "promoted_at": None,
-                "created_at": run_started_at,
-                "updated_at": datetime.utcnow().isoformat(),
+            frame = prepare_backtest_frame(dataset, request)
+            entry.update({
+                "dataset_info": dataset_info,
+                "dataset": dataset,
+                "request": request,
+                "signals": frame["signal"].to_numpy(dtype=np.int32),
+                "frame": frame,
             })
         except Exception as exc:
-            runs.append({
-                "experiment_run_id": str(uuid.uuid4()),
-                "experiment_id": experiment["experiment_id"],
-                "candidate_id": None,
-                "backtest_id": None,
-                "symbol": plan["symbol"],
-                "interval": plan["interval"],
-                "strategy_type": experiment["strategy_type"],
-                "strategy_params": plan["strategy_params"],
-                "dataset_id": None,
-                "status": "failed",
-                "score": None,
-                "rank": None,
-                "total_pnl": None,
-                "win_rate": None,
-                "max_drawdown": None,
-                "profit_factor": None,
-                "passed": None,
-                "error": str(exc),
-                "metrics": None,
-                "prop_firm_eval": None,
-                "is_candidate": False,
-                "promoted_at": None,
-                "created_at": run_started_at,
-                "updated_at": datetime.utcnow().isoformat(),
-            })
+            entry["error"] = str(exc)
+
+    # Phase 2: hand each dataset group to the batch engine in one call.
+    # Plans in a group share the same OHLC window, so the C++ pool reads one
+    # set of price arrays across every core instead of copying per run. Only
+    # one representative frame per group survives — the rest just needed to
+    # give up their signal column.
+    groups: dict[str, dict] = {}
+    for entry in entries:
+        if entry["error"] is not None:
+            continue
+        group = groups.setdefault(
+            entry["dataset_info"]["dataset_id"],
+            {"frame": entry["frame"], "entries": []},
+        )
+        group["entries"].append(entry)
+        entry["frame"] = None
+
+    for group in groups.values():
+        group_entries = group["entries"]
+        request = group_entries[0]["request"]
+        try:
+            engine_results = run_backtest_batch(
+                group["frame"],
+                [group_entry["signals"] for group_entry in group_entries],
+                initial_balance=request.initial_balance,
+                position_size=request.position_size,
+                commission=request.commission,
+                tick_size=request.tick_size,
+                tick_value=request.tick_value,
+                slippage_ticks=request.slippage_ticks,
+                stop_loss_ticks=request.stop_loss_ticks,
+                take_profit_ticks=request.take_profit_ticks,
+                execution_mode=request.execution_mode,
+                spread_ticks=request.spread_ticks,
+                volatile_bar_threshold_ticks=request.volatile_bar_threshold_ticks,
+                volatile_bar_extra_ticks=request.volatile_bar_extra_ticks,
+            )
+            for group_entry, engine_result in zip(group_entries, engine_results):
+                group_entry["engine_result"] = engine_result
+        except Exception as exc:
+            for group_entry in group_entries:
+                group_entry["error"] = str(exc)
+
+    # Phase 3: metrics, prop eval, and persistence per plan, in plan order.
+    runs: list[dict] = []
+    for entry in entries:
+        if entry["error"] is None:
+            try:
+                group = groups[entry["dataset_info"]["dataset_id"]]
+                backtest = complete_backtest_result(
+                    group["frame"],
+                    entry["engine_result"],
+                    entry["dataset"],
+                    entry["request"],
+                )
+                persist_backtest_result(backtest)
+                runs.append(_completed_run_entry(experiment, entry, backtest))
+                continue
+            except Exception as exc:
+                entry["error"] = str(exc)
+        runs.append(_failed_run_entry(experiment, entry))
 
     ranked_runs = rank_experiment_runs(runs)
     completed_runs = sum(1 for run in ranked_runs if run["status"] == "completed")
@@ -213,6 +240,66 @@ def run_experiment(experiment: dict) -> tuple[dict, list[dict]]:
         save_experiment(updated_experiment)
 
     return updated_experiment, ranked_runs
+
+
+def _completed_run_entry(experiment: dict, entry: dict, backtest: dict) -> dict:
+    plan = entry["plan"]
+    return {
+        "experiment_run_id": str(uuid.uuid4()),
+        "experiment_id": experiment["experiment_id"],
+        "candidate_id": None,
+        "backtest_id": backtest["backtest_id"],
+        "symbol": plan["symbol"],
+        "interval": plan["interval"],
+        "strategy_type": experiment["strategy_type"],
+        "strategy_params": plan["strategy_params"],
+        "dataset_id": entry["dataset_info"]["dataset_id"],
+        "status": "completed",
+        "score": score_backtest(backtest, experiment["scoring_rule"]),
+        "rank": None,
+        "total_pnl": backtest["metrics"]["total_pnl"],
+        "win_rate": backtest["metrics"]["win_rate"],
+        "max_drawdown": backtest["metrics"]["max_drawdown"],
+        "profit_factor": backtest["metrics"]["profit_factor"],
+        "passed": backtest["prop_firm_eval"]["passed"],
+        "error": None,
+        "metrics": backtest["metrics"],
+        "prop_firm_eval": backtest["prop_firm_eval"],
+        "is_candidate": False,
+        "promoted_at": None,
+        "created_at": entry["created_at"],
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+
+
+def _failed_run_entry(experiment: dict, entry: dict) -> dict:
+    plan = entry["plan"]
+    return {
+        "experiment_run_id": str(uuid.uuid4()),
+        "experiment_id": experiment["experiment_id"],
+        "candidate_id": None,
+        "backtest_id": None,
+        "symbol": plan["symbol"],
+        "interval": plan["interval"],
+        "strategy_type": experiment["strategy_type"],
+        "strategy_params": plan["strategy_params"],
+        "dataset_id": None,
+        "status": "failed",
+        "score": None,
+        "rank": None,
+        "total_pnl": None,
+        "win_rate": None,
+        "max_drawdown": None,
+        "profit_factor": None,
+        "passed": None,
+        "error": entry["error"],
+        "metrics": None,
+        "prop_firm_eval": None,
+        "is_candidate": False,
+        "promoted_at": None,
+        "created_at": entry["created_at"],
+        "updated_at": datetime.utcnow().isoformat(),
+    }
 
 
 def expand_experiment_runs(experiment: dict) -> list[dict]:

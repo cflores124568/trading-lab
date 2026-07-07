@@ -92,13 +92,14 @@ class BacktestEngineBracketTests(unittest.TestCase):
         self.assertEqual(result["trades"][0]["pnl"], 4.0)
         self.assertEqual(result["equity_curve"], [100.0, 104.0, 104.0])
 
-    def test_bracketed_runs_skip_cpp_path(self):
+    def test_bracketed_runs_use_cpp_path(self):
         df = _bars(high=104.0, low=99.0, close=103.0)
+        sentinel = {"trades": [], "equity_curve": []}
 
         with patch("services.backtest_engine._CPP_AVAILABLE", True), patch(
             "services.backtest_engine._run_cpp",
-            side_effect=AssertionError("C++ path should not run for bracket exits"),
-        ):
+            return_value=sentinel,
+        ) as run_cpp:
             result = run_backtest(
                 df,
                 initial_balance=100.0,
@@ -109,7 +110,8 @@ class BacktestEngineBracketTests(unittest.TestCase):
                 take_profit_ticks=4.0,
             )
 
-        self.assertEqual(result["trades"][0]["exit_price"], 104.0)
+        run_cpp.assert_called_once()
+        self.assertIs(result, sentinel)
 
     def test_synthetic_quote_mode_changes_fills_vs_bar_mode(self):
         df = _bars(high=104.0, low=99.0, close=100.0)
@@ -141,12 +143,34 @@ class BacktestEngineBracketTests(unittest.TestCase):
         self.assertEqual(quote_mode["trades"][0]["exit_price"], 99.0)
         self.assertEqual(quote_mode["trades"][0]["pnl"], -2.0)
 
-    def test_synthetic_quote_runs_skip_cpp_path(self):
+    def test_synthetic_quote_runs_use_cpp_path(self):
         df = _bars(high=104.0, low=99.0, close=100.0)
+        sentinel = {"trades": [], "equity_curve": []}
 
         with patch("services.backtest_engine._CPP_AVAILABLE", True), patch(
             "services.backtest_engine._run_cpp",
-            side_effect=AssertionError("C++ path should not run for synthetic quote mode"),
+            return_value=sentinel,
+        ) as run_cpp:
+            result = run_backtest(
+                df,
+                initial_balance=100.0,
+                commission=0.0,
+                tick_size=1.0,
+                tick_value=1.0,
+                slippage_ticks=0.0,
+                execution_mode="synthetic_quotes",
+                spread_ticks=2,
+            )
+
+        run_cpp.assert_called_once()
+        self.assertIs(result, sentinel)
+
+    def test_missing_high_low_falls_back_to_python_for_quote_mode(self):
+        df = _bars(high=104.0, low=99.0, close=100.0).drop(columns=["high", "low"])
+
+        with patch("services.backtest_engine._CPP_AVAILABLE", True), patch(
+            "services.backtest_engine._run_cpp",
+            side_effect=AssertionError("C++ path needs high/low for quote mode"),
         ):
             result = run_backtest(
                 df,

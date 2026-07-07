@@ -27,18 +27,7 @@ def build_backtest_result(
     and experiment batches use the exact same indicator, signal, metrics, and
     prop-eval path instead of drifting apart later.
     """
-    df = dataset["df"].copy()
-
-    if request.start_date:
-        df = df.loc[request.start_date:]
-    if request.end_date:
-        df = df.loc[:request.end_date]
-
-    if df.empty:
-        raise ValueError("Date range produced an empty dataset.")
-
-    df = add_all_indicators(df, request.strategy.params, strategy_type=request.strategy.type)
-    df = generate_signals(df, request.strategy.type, request.strategy.params)
+    df = prepare_backtest_frame(dataset, request)
 
     engine_result = run_backtest(
         df,
@@ -56,6 +45,52 @@ def build_backtest_result(
         volatile_bar_extra_ticks=request.volatile_bar_extra_ticks,
     )
 
+    return complete_backtest_result(
+        df,
+        engine_result,
+        dataset,
+        request,
+        backtest_id=backtest_id,
+        created_at=created_at,
+    )
+
+
+def prepare_backtest_frame(dataset: dict, request: BacktestRequest):
+    """Slice the dataset window and attach indicators plus signals.
+
+    Split out of `build_backtest_result` so experiment batches can prepare
+    every plan's signals first, hand them to the C++ batch engine in one go,
+    and still share this exact pipeline with single runs.
+    """
+    df = dataset["df"].copy()
+
+    if request.start_date:
+        df = df.loc[request.start_date:]
+    if request.end_date:
+        df = df.loc[:request.end_date]
+
+    if df.empty:
+        raise ValueError("Date range produced an empty dataset.")
+
+    df = add_all_indicators(df, request.strategy.params, strategy_type=request.strategy.type)
+    return generate_signals(df, request.strategy.type, request.strategy.params)
+
+
+def complete_backtest_result(
+    df,
+    engine_result: dict,
+    dataset: dict,
+    request: BacktestRequest,
+    *,
+    backtest_id: str | None = None,
+    created_at: str | None = None,
+) -> dict:
+    """Turn a raw engine result into the saved backtest shape.
+
+    Everything downstream of the bar loop lives here: prop-firm eval, the
+    stop-at-first-breach freeze, metrics, and the API payload. `df` only needs
+    to carry the bar index the engine ran over.
+    """
     trades = engine_result["trades"]
     equity_curve = engine_result["equity_curve"]
     equity_timestamps = list(df.index)

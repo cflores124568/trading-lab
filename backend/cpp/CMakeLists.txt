@@ -9,10 +9,11 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
+# Just -O3 on purpose. -ffast-math licenses the compiler to reorder float
+# math, which breaks bit-level parity with the Python oracle, and
+# -march=native makes the Docker .so non-portable.
 add_compile_options(
   $<$<CONFIG:Release>:-O3>
-  $<$<CONFIG:Release>:-march=native>
-  $<$<CONFIG:Release>:-ffast-math>
 )
 
 #Locate Python + pybind11 
