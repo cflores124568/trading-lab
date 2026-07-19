@@ -28,6 +28,10 @@ __pycache__/
 *.csv
 *.json
 !example.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!tsconfig.*.json
 
 # Editor directories and files
 .vscode/*
