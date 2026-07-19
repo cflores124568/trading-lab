@@ -37,6 +37,9 @@ the Phase 4 bar-strategy roadmap below.
 Build the durable contracts and bookkeeping required by every later Alpha Lab
 phase.
 
+Status: complete. See [`PHASE_4A.md`](PHASE_4A.md) for the frozen contracts,
+partition semantics, persistence boundary, and verification notes.
+
 Scope:
 
 - persisted research campaigns
@@ -65,6 +68,9 @@ Not in 4A:
 Add the validation engine that distinguishes a parameter-grid winner from a
 research finalist.
 
+Status: complete. See [`PHASE_4B.md`](PHASE_4B.md) for the frozen evidence,
+scoring, rejection, finalist-freeze, and sealed-holdout contracts.
+
 Scope:
 
 - leakage-resistant rolling or expanding walk-forward folds
@@ -88,6 +94,9 @@ tested assumptions. Do not attach a recognized name to an improvised metric.
 Make bounded bar-strategy campaigns safe to leave running without an operator
 at the keyboard.
 
+Status: complete. See [`PHASE_4C.md`](PHASE_4C.md) for deterministic search,
+budget, lease, recovery, pause, and worker-runtime contracts.
+
 Scope:
 
 - deterministic search across the existing strategy families
@@ -110,6 +119,9 @@ be treated as a supported runtime workflow.
 Expose the durable research workflow to an operator without requiring direct
 API or terminal use.
 
+Status: complete. See [`PHASE_4D.md`](PHASE_4D.md) for the operator workflow,
+frontend routes, manual promotion contract, and frozen safety boundary.
+
 Scope:
 
 - campaign creation and configuration review
@@ -129,6 +141,10 @@ Promotion must not automatically create or start a paper session.
 
 Allow a research agent to propose new, bounded strategy hypotheses after the
 deterministic research and validation infrastructure is trustworthy.
+
+Status: complete. See [`PHASE_4E.md`](PHASE_4E.md) for typed proposal,
+allowlist, static validation, durable accounting, deterministic compilation,
+budget, deduplication, and explicit research-execution contracts.
 
 Scope:
 

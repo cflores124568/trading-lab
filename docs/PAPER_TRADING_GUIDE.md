@@ -265,3 +265,39 @@ The next research milestone is documented separately in
 into six deliberately bounded phases: research persistence, robust evaluation,
 an unattended worker, the operator frontend, agentic hypothesis generation,
 and forward paper qualification.
+
+Alpha Lab Phases 4A and 4B are backend-only foundations. They persist
+research campaigns and trials, validate walk-forward evidence, freeze research
+finalists, and keep final holdout evidence sealed until a one-time evaluation.
+They do not create candidates or paper sessions, and they do not change or
+advance this guide's paper runtime. Phase 4C is the first phase that may add an
+unattended research worker.
+
+Phase 4C now provides that separate durable research worker. Run
+`./venv/bin/python research_search_worker.py` locally, or use the
+`research_worker` Docker Compose service. It searches development partitions
+only and cannot create candidates, paper sessions, policy decisions, or paper
+orders. The paper worker and research worker are separate processes with
+separate lease tables.
+
+Phase 4D adds the **Alpha Lab** operator screens at `/alpha-lab`. Draft creation
+shows exact chronological partitions after the backend calculates them. Launch
+review shows the deterministic grid size, trial cap, and wall-clock cap before
+work is queued. Campaign detail keeps failed attempts visible and separates
+validation ranking from sealed-holdout results.
+
+A manual Alpha Lab promotion records a validated research candidate only after
+all validation gates pass and the finalist is frozen. It does not create an
+experiment candidate, paper bot, paper session, runner intent, policy decision,
+or order.
+
+Phase 4E adds a bounded backend contract for agent-proposed hypotheses. An
+operator configures hypothesis and trial budgets first; unsupported, unsafe,
+duplicate, near-duplicate, and over-budget attempts remain visible with
+rejection reasons. Accepted proposals compile to the normal research trial
+shape, but they do not run automatically. A human must explicitly invoke the
+research execution route, after which the existing Alpha Lab validation and
+finalist screens remain the review surface. The agent cannot change execution
+assumptions or risk limits, promote a candidate, create or advance a paper
+session, or place an order. The Phase 4F forward-paper handoff remains a
+separate future step.

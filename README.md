@@ -85,6 +85,7 @@ Frontend:
 - dashboard for live/historical market inspection
 - saved backtest list, detail, compare, and replay flows
 - standalone replay lab and replay-session resume flow
+- Alpha Lab campaign setup, bounded launch controls, durable progress, trial ledger, and validation evidence review
 
 Backend:
 
@@ -115,6 +116,11 @@ Data layer:
 - [`PHASE_3E.md`](PHASE_3E.md) records durable paper-runner ownership, leases, heartbeats, and stale-worker takeover
 - [`PHASE_3F.md`](PHASE_3F.md) freezes the source-neutral BBO/trade event boundary before Databento MBP-1 ingestion
 - [`PHASE_4_ROADMAP.md`](PHASE_4_ROADMAP.md) is the canonical Alpha Lab sequence from research persistence through forward paper qualification
+- [`PHASE_4A.md`](PHASE_4A.md) records the Alpha Lab research contracts, chronological partition rules, durable trial ledger, and Phase 4A safety boundary
+- [`PHASE_4B.md`](PHASE_4B.md) records leakage-resistant validation, robustness gates and scoring, finalist freezing, and sealed-holdout semantics
+- [`PHASE_4C.md`](PHASE_4C.md) records deterministic budgeted search, PostgreSQL campaign leases, restart-safe progress, and the Alpha Lab worker runtime
+- [`PHASE_4D.md`](PHASE_4D.md) records the Alpha Lab operator screens, bounded launch review, evidence inspection, and manual validated-candidate promotion boundary
+- [`PHASE_4E.md`](PHASE_4E.md) records bounded agent hypothesis proposals, static allowlist validation, durable attempt accounting, deterministic trial compilation, and the human execution boundary
 - [`docs/MCP.md`](docs/MCP.md) explains Codex connection setup, MCP resources, and the narrow control safety boundary
 
 ## Core Features
@@ -255,6 +261,22 @@ Key routes:
 | POST | `/api/candidates/{id}/notes` | Add a review note |
 | POST | `/api/candidates/{id}/paper-bot` | Create the paper bot config stub |
 | PATCH | `/api/candidates/{id}/paper-bot/status` | Move the paper bot stub between draft/ready/running/stopped |
+| POST | `/api/research-campaigns` | Create a draft Alpha Lab campaign with exact chronological partitions |
+| GET | `/api/research-campaigns` | List bounded Alpha Lab campaign summaries |
+| GET | `/api/research-campaigns/{id}` | Fetch campaign partitions and bounded audit history |
+| POST | `/api/research-campaigns/{id}/trials` | Record a completed or failed research attempt idempotently |
+| GET | `/api/research-campaigns/{id}/trials` | List bounded research attempts, including failures |
+| POST | `/api/research-campaigns/{id}/trials/{trial_id}/validation` | Persist walk-forward evidence and an explainable robustness decision |
+| POST | `/api/research-campaigns/{id}/trials/{trial_id}/freeze-finalist` | Freeze a passing research finalist before holdout evaluation |
+| POST | `/api/research-campaigns/{id}/trials/{trial_id}/holdout` | Record one sealed-holdout result exactly once |
+| POST | `/api/research-campaigns/{id}/queue` | Configure and queue a budgeted deterministic search |
+| POST | `/api/research-campaigns/{id}/pause` | Pause search intent and revoke its worker lease |
+| POST | `/api/research-campaigns/{id}/resume` | Resume search from its durable cursor |
+| POST | `/api/research-campaigns/{id}/trials/{trial_id}/promote` | Manually record a frozen, gate-passing finalist as a validated research candidate |
+| GET | `/api/research-campaigns/{id}/candidate-promotions` | List bounded Alpha Lab promotion records |
+| PUT | `/api/research-campaigns/{id}/hypothesis-budget` | Configure the bounded Phase 4E proposal and compiled-trial envelope |
+| POST | `/api/research-campaigns/{id}/hypotheses` | Persist and statically validate one typed agent hypothesis |
+| POST | `/api/research-campaigns/{id}/hypotheses/{attempt_id}/execute` | Explicitly execute one human-reviewed accepted hypothesis as a research trial |
 | POST | `/api/paper-sessions/{id}/runner/start` | Start a historical runner in shadow, approval, or autonomous-paper mode |
 | POST | `/api/paper-sessions/{id}/runner/decision/resolve` | Approve or reject a durable pending policy decision |
 | POST | `/api/paper-sessions/{id}/runner/kill-switch` | Engage or reset the durable emergency runner stop |
