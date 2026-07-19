@@ -24,6 +24,7 @@ node_modules/
 docs/*
 !docs/CPP_KERNEL.md
 !docs/DEPLOYMENT.md
+!docs/PAPER_TRADING_GUIDE.md
 !docs/PROP_FIRM_RULES.md
 docs/style.local.md
 docs/*.local.md

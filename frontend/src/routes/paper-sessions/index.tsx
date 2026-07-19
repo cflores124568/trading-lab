@@ -97,12 +97,20 @@ export default function PaperSessionListPage() {
       title="Paper Sessions"
       subtitle="Paper runtime sessions and event trails."
       actions={
-        <A
-          href="/candidates"
-          class="rounded-sm border border-stone-700 px-4 py-2 text-sm font-medium text-stone-200 transition-colors hover:border-stone-500 hover:bg-stone-900"
-        >
-          Candidate Registry
-        </A>
+        <>
+          <A
+            href="/paper-sessions/guide"
+            class="rounded-sm border border-stone-700 px-4 py-2 text-sm font-medium text-stone-200 transition-colors hover:border-stone-500 hover:bg-stone-900"
+          >
+            Paper Trading Guide
+          </A>
+          <A
+            href="/candidates"
+            class="rounded-sm border border-stone-700 px-4 py-2 text-sm font-medium text-stone-200 transition-colors hover:border-stone-500 hover:bg-stone-900"
+          >
+            Candidate Registry
+          </A>
+        </>
       }
     >
       <div class="mx-auto w-full max-w-5xl">

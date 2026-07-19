@@ -106,9 +106,16 @@ Data layer:
 
 ## Docs
 
+- [`docs/PAPER_TRADING_GUIDE.md`](docs/PAPER_TRADING_GUIDE.md) is the operator guide for startup, candidate handoff, paper-session modes, persistence, shutdown, MCP, and troubleshooting
 - [`docs/CPP_KERNEL.md`](docs/CPP_KERNEL.md) explains when to build the pybind11 kernel, where the compiled module needs to land, and how the Python fallback works
 - [`docs/PROP_FIRM_RULES.md`](docs/PROP_FIRM_RULES.md) spells out what the evaluator actually checks today, including a couple rules that exist in presets but are not fully enforced yet
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) lays out the clean split between static frontend hosting and a containerized backend + database
+- [`PHASE_3C.md`](PHASE_3C.md) records the frozen agent-ready paper core, policy modes, pre-trade risk gate, durable scorecard, and restart-safe approvals
+- [`PHASE_3D.md`](PHASE_3D.md) tracks the MCP research plane, audited paper notes, and the safety boundary for future control tools
+- [`PHASE_3E.md`](PHASE_3E.md) records durable paper-runner ownership, leases, heartbeats, and stale-worker takeover
+- [`PHASE_3F.md`](PHASE_3F.md) freezes the source-neutral BBO/trade event boundary before Databento MBP-1 ingestion
+- [`PHASE_4_ROADMAP.md`](PHASE_4_ROADMAP.md) is the canonical Alpha Lab sequence from research persistence through forward paper qualification
+- [`docs/MCP.md`](docs/MCP.md) explains Codex connection setup, MCP resources, and the narrow control safety boundary
 
 ## Core Features
 
@@ -248,6 +255,9 @@ Key routes:
 | POST | `/api/candidates/{id}/notes` | Add a review note |
 | POST | `/api/candidates/{id}/paper-bot` | Create the paper bot config stub |
 | PATCH | `/api/candidates/{id}/paper-bot/status` | Move the paper bot stub between draft/ready/running/stopped |
+| POST | `/api/paper-sessions/{id}/runner/start` | Start a historical runner in shadow, approval, or autonomous-paper mode |
+| POST | `/api/paper-sessions/{id}/runner/decision/resolve` | Approve or reject a durable pending policy decision |
+| POST | `/api/paper-sessions/{id}/runner/kill-switch` | Engage or reset the durable emergency runner stop |
 | POST | `/api/replay-sessions` | Create a standalone replay session |
 | PUT | `/api/replay-sessions/{id}` | Update an existing replay session |
 | GET | `/api/replay-sessions` | List saved replay sessions |
@@ -267,6 +277,13 @@ Implemented:
 - saved backtest persistence
 - backtest list/detail/compare flows
 - candidate registry, review detail, and paper-bot handoff stub
+- deterministic historical paper runner with shadow, approval-required, and autonomous-paper policy modes
+- append-only policy decisions with durable pending-approval state
+- typed autonomous pre-trade risk assessments, explicit blocked-action events, and a durable kill switch
+- durable shadow-policy scorecards and restart-safe, single-resolution approvals
+- a local MCP server for read-only candidate, paper-session, risk, scorecard, and decision-trace inspection plus audited paper-session notes
+- a dedicated paper-runner worker with PostgreSQL leases, heartbeats, and stale-owner recovery
+- a source-neutral paper market-event sequencer with durable duplicate, stale, gap, and locked/crossed-market handling
 - interactive replay for saved backtests
 - standalone replay session launch, save, and resume flow
 - shared app shell and replay-first UX
@@ -280,11 +297,9 @@ Not built yet:
 
 Near-term roadmap:
 
-1. Turn the paper-bot stub into a real paper trading loop with durable execution logs
-2. Tighten prop-firm evaluation so replay sessions and backtests share the same fully enforced rules
-3. Add more realistic execution details like richer order handling and session-aware constraints
-4. Deploy a recruiter-friendly hosted demo
-5. Add authentication once the single-user flow feels settled
+1. Add the Databento MBP-1 adapter when data access is available
+2. Run longer worker/database restart and duplicate-delivery soak tests
+3. Deploy a recruiter-friendly hosted demo, then add authentication
 
 The next major milestone is taking the new candidate pipeline from "research handoff exists" into "paper execution behaves like a serious trading lab instead of a stub."
 
