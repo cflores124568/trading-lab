@@ -1,0 +1,16 @@
+[mcp_servers.trading_lab]
+enabled = true
+required = false
+command = "/Users/christopherflores/trading-lab/backend/venv/bin/python"
+args = ["/Users/christopherflores/trading-lab/backend/mcp_server.py"]
+cwd = "/Users/christopherflores/trading-lab/backend"
+startup_timeout_sec = 15.0
+tool_timeout_sec = 30.0
+enabled_tools = [
+  "list_candidates",
+  "get_candidate",
+  "list_paper_sessions",
+  "get_paper_session",
+  "list_policy_decisions",
+  "add_operator_note",
+]
