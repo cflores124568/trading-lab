@@ -166,6 +166,9 @@ modify risk limits, start paper sessions, or trade.
 Connect manually approved research finalists to the frozen paper runtime and
 collect forward evidence before any separate future live-trading discussion.
 
+Status: complete. See [`PHASE_4F.md`](PHASE_4F.md) for the explicit handoff,
+shadow-first runtime, evidence gates, diagnostics, and durable terminal outcome.
+
 Scope:
 
 - explicit human handoff from research finalist to candidate

@@ -242,6 +242,12 @@ class ResearchHoldoutStatus(str, Enum):
     EVALUATED = "evaluated"
 
 
+class ResearchForwardQualificationStatus(str, Enum):
+    COLLECTING = "collecting"
+    QUALIFIED = "qualified"
+    REJECTED = "rejected"
+
+
 class CandidateLifecycleStatus(str, Enum):
     CANDIDATE = "candidate"
     APPROVED = "approved"
@@ -776,6 +782,63 @@ class ResearchCandidatePromotionResult(BaseModel):
     promotion_reason: str
     promoted_by: str
     promoted_at: datetime
+
+
+class ResearchForwardExpectation(BaseModel):
+    min_actionable_rate: float = Field(default=0.01, ge=0, le=1, allow_inf_nan=False)
+    max_actionable_rate: float = Field(default=0.50, ge=0, le=1, allow_inf_nan=False)
+    max_risk_block_rate: float = Field(default=0.25, ge=0, le=1, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def _validate_actionable_range(self) -> "ResearchForwardExpectation":
+        if self.min_actionable_rate > self.max_actionable_rate:
+            raise ValueError("min_actionable_rate cannot exceed max_actionable_rate.")
+        return self
+
+
+class ResearchForwardHandoffRequest(BaseModel):
+    handoff_rationale: str = Field(min_length=1, max_length=1000)
+    min_forward_observations: int = Field(default=100, ge=1, le=1_000_000)
+    min_forward_decisions: int = Field(default=20, ge=1, le=1_000_000)
+    expected_behavior: ResearchForwardExpectation = Field(default_factory=ResearchForwardExpectation)
+    prop_firm_rules: PropFirmRules
+    approval_required: bool = True
+    actor: str = Field(default="local-user", min_length=1, max_length=120)
+
+
+class ResearchForwardDecisionRequest(BaseModel):
+    outcome: Literal["qualified", "rejected"]
+    decision_reason: str = Field(min_length=1, max_length=2000)
+    approved: bool = False
+    actor: str = Field(default="local-user", min_length=1, max_length=120)
+
+
+class ResearchForwardRefreshRequest(BaseModel):
+    actor: str = Field(default="local-user", min_length=1, max_length=120)
+
+
+class ResearchForwardQualificationResult(BaseModel):
+    qualification_id: str
+    research_candidate_id: str
+    campaign_id: str
+    trial_id: str
+    candidate_id: str
+    paper_session_id: str
+    status: ResearchForwardQualificationStatus
+    min_forward_observations: int = Field(ge=1)
+    min_forward_decisions: int = Field(ge=1)
+    expected_behavior: ResearchForwardExpectation
+    evidence: dict[str, Any] = Field(default_factory=dict)
+    diagnostics: dict[str, Any] = Field(default_factory=dict)
+    gates: dict[str, bool] = Field(default_factory=dict)
+    approval_required: bool
+    handoff_rationale: str
+    handed_off_by: str
+    handed_off_at: datetime
+    refreshed_at: Optional[datetime] = None
+    decided_by: Optional[str] = None
+    decided_at: Optional[datetime] = None
+    decision_reason: Optional[str] = None
 
 
 class ResearchHoldoutEvaluationRequest(BaseModel):

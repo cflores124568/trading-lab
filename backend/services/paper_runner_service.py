@@ -94,6 +94,7 @@ def start_historical_runner(
             raise ValueError("Reset the emergency kill switch before starting the runner.")
         if state.get("pending_decision"):
             raise ValueError("Resolve the pending policy decision before restarting the runner.")
+        _validate_forward_qualification_mode(state, policy_mode)
         if policy_mode is not None:
             state["policy_mode"] = normalize_policy_mode(policy_mode).value
         if start_ts is not None:
@@ -162,6 +163,34 @@ def start_historical_runner(
         )
 
     return _ensure_session_defaults(_require_paper_session(paper_session_id))
+
+
+def _validate_forward_qualification_mode(
+    state: dict,
+    requested_mode: str | PaperPolicyMode | None,
+) -> None:
+    forward = dict(state.get("forward_qualification") or {})
+    if not forward:
+        return
+    status = forward.get("status")
+    if status == "rejected":
+        raise ValueError("Rejected forward qualifications cannot resume their paper runner.")
+    if status != "collecting":
+        return
+
+    mode = normalize_policy_mode(requested_mode or state.get("policy_mode"))
+    if mode == PaperPolicyMode.AUTONOMOUS_PAPER:
+        raise ValueError("Forward qualification remains paper-only and cannot use autonomous-paper mode while collecting evidence.")
+    if mode != PaperPolicyMode.APPROVAL_REQUIRED:
+        return
+
+    scorecard = dict(state.get("shadow_scorecard") or {})
+    observations = int(scorecard.get("total_decisions") or 0)
+    decisions = int(scorecard.get("actionable_decisions") or 0)
+    if observations < int(forward.get("min_forward_observations") or 1):
+        raise ValueError("Complete the minimum shadow observation count before approval-required paper mode.")
+    if decisions < int(forward.get("min_forward_decisions") or 1):
+        raise ValueError("Complete the minimum actionable shadow decision count before approval-required paper mode.")
 
 
 def pause_historical_runner(

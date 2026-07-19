@@ -11,6 +11,10 @@ from schemas import (
     ResearchCampaignSummary,
     ResearchFinalistFreezeRequest,
     ResearchFinalistResult,
+    ResearchForwardDecisionRequest,
+    ResearchForwardHandoffRequest,
+    ResearchForwardQualificationResult,
+    ResearchForwardRefreshRequest,
     ResearchHoldoutEvaluationRequest,
     ResearchHypothesisAttemptResult,
     ResearchHypothesisAttemptStatus,
@@ -24,7 +28,12 @@ from schemas import (
     ResearchValidationRequest,
     ResearchValidationResult,
 )
-from services import research_evaluation_service, research_hypothesis_service, research_service
+from services import (
+    research_evaluation_service,
+    research_forward_qualification_service,
+    research_hypothesis_service,
+    research_service,
+)
 
 
 router = APIRouter()
@@ -326,3 +335,86 @@ async def list_research_candidate_promotions(
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Research promotion storage unavailable: {exc}")
+
+
+@router.post(
+    "/{campaign_id}/candidate-promotions/{research_candidate_id}/forward-qualification",
+    response_model=ResearchForwardQualificationResult,
+    status_code=http_status.HTTP_201_CREATED,
+)
+async def create_research_forward_handoff(
+    campaign_id: str,
+    research_candidate_id: str,
+    request: ResearchForwardHandoffRequest,
+):
+    try:
+        return research_forward_qualification_service.create_handoff(
+            campaign_id, research_candidate_id, request
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Forward qualification handoff failed: {exc}")
+
+
+@router.get(
+    "/{campaign_id}/candidate-promotions/{research_candidate_id}/forward-qualification",
+    response_model=ResearchForwardQualificationResult,
+)
+async def get_research_forward_qualification(
+    campaign_id: str,
+    research_candidate_id: str,
+):
+    try:
+        result = research_forward_qualification_service.get_for_research_candidate(
+            campaign_id, research_candidate_id
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Forward qualification storage unavailable: {exc}")
+    if result is None:
+        raise HTTPException(status_code=404, detail="Forward qualification not found.")
+    return result
+
+
+@router.post(
+    "/{campaign_id}/forward-qualifications/{qualification_id}/refresh",
+    response_model=ResearchForwardQualificationResult,
+)
+async def refresh_research_forward_qualification(
+    campaign_id: str,
+    qualification_id: str,
+    request: ResearchForwardRefreshRequest,
+):
+    try:
+        return research_forward_qualification_service.refresh(
+            campaign_id, qualification_id, actor=request.actor
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Forward evidence refresh failed: {exc}")
+
+
+@router.post(
+    "/{campaign_id}/forward-qualifications/{qualification_id}/decision",
+    response_model=ResearchForwardQualificationResult,
+)
+async def decide_research_forward_qualification(
+    campaign_id: str,
+    qualification_id: str,
+    request: ResearchForwardDecisionRequest,
+):
+    try:
+        return research_forward_qualification_service.decide(
+            campaign_id, qualification_id, request
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Forward qualification decision failed: {exc}")

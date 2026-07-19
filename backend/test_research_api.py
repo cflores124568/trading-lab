@@ -125,6 +125,18 @@ class ResearchApiTests(unittest.TestCase):
         self.assertIn("/api/research-campaigns/{campaign_id}/trials/{trial_id}/holdout", paths)
         self.assertIn("/api/research-campaigns/{campaign_id}/trials/{trial_id}/promote", paths)
         self.assertIn("/api/research-campaigns/{campaign_id}/candidate-promotions", paths)
+        self.assertIn(
+            "/api/research-campaigns/{campaign_id}/candidate-promotions/{research_candidate_id}/forward-qualification",
+            paths,
+        )
+        self.assertIn(
+            "/api/research-campaigns/{campaign_id}/forward-qualifications/{qualification_id}/refresh",
+            paths,
+        )
+        self.assertIn(
+            "/api/research-campaigns/{campaign_id}/forward-qualifications/{qualification_id}/decision",
+            paths,
+        )
         self.assertEqual(invalid.status_code, 422)
 
     def test_manual_promotion_route_fails_closed_when_gates_are_not_met(self):

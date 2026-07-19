@@ -512,6 +512,21 @@ export default function PaperSessionDetailPage() {
   const shadowScorecard = createMemo(
     () => (runnerState().shadow_scorecard ?? {}) as Record<string, unknown>,
   );
+  const forwardQualification = createMemo(
+    () => (runnerState().forward_qualification ?? {}) as Record<string, unknown>,
+  );
+  const forwardModeBlocked = (mode: PaperPolicyMode): boolean => {
+    const forward = forwardQualification();
+    if (!stringFromUnknown(forward.qualification_id)) return false;
+    if (forward.status === "rejected") return true;
+    if (forward.status !== "collecting") return false;
+    if (mode === "autonomous_paper") return true;
+    if (mode !== "approval_required") return false;
+    const observations = numberFromUnknown(shadowScorecard().total_decisions) ?? 0;
+    const decisions = numberFromUnknown(shadowScorecard().actionable_decisions) ?? 0;
+    return observations < (numberFromUnknown(forward.min_forward_observations) ?? 1)
+      || decisions < (numberFromUnknown(forward.min_forward_decisions) ?? 1);
+  };
   const activePolicyMode = createMemo<PaperPolicyMode>(() => {
     const mode = runnerState().policy_mode;
     return isPaperPolicyMode(mode) ? mode : "autonomous_paper";
@@ -905,6 +920,11 @@ export default function PaperSessionDetailPage() {
                     </div>
 
                     <div class="app-subpanel px-4 py-4">
+                      <Show when={stringFromUnknown(forwardQualification().qualification_id)}>
+                        <div class="mb-4 rounded-sm border border-sky-900 bg-sky-950/20 px-3 py-3 text-xs leading-5 text-sky-100">
+                          Forward qualification is {String(forwardQualification().status ?? "collecting")}. Shadow mode is required first; approval mode unlocks after {String(forwardQualification().min_forward_observations ?? "—")} observations and {String(forwardQualification().min_forward_decisions ?? "—")} actionable decisions. Autonomous paper stays blocked while evidence is collecting.
+                        </div>
+                      </Show>
                       <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                         <div>
                           <p class="app-kicker">Policy Mode</p>
@@ -923,7 +943,8 @@ export default function PaperSessionDetailPage() {
                               type="button"
                               disabled={
                                 stringFromUnknown(runnerState().mode) === "running" ||
-                                Boolean(pendingPolicyDecision())
+                                Boolean(pendingPolicyDecision()) ||
+                                forwardModeBlocked(mode)
                               }
                               aria-pressed={runnerPolicyMode() === mode}
                               onClick={() => setRunnerPolicyMode(mode)}

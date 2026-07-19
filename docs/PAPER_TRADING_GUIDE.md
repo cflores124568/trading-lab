@@ -299,5 +299,19 @@ shape, but they do not run automatically. A human must explicitly invoke the
 research execution route, after which the existing Alpha Lab validation and
 finalist screens remain the review surface. The agent cannot change execution
 assumptions or risk limits, promote a candidate, create or advance a paper
-session, or place an order. The Phase 4F forward-paper handoff remains a
-separate future step.
+session, or place an order.
+
+Phase 4F adds the explicit operator-controlled seam after that promotion. A
+holdout-qualified finalist can be handed to one ordinary candidate, paper-bot
+draft, and draft paper session from the Alpha Lab campaign screen. The handoff
+does not start or advance the session. Complete the normal candidate review and
+paper-bot readiness steps before running it.
+
+Forward qualification starts in shadow mode. Autonomous-paper mode is blocked
+while evidence is collecting, and approval-required mode stays blocked until
+the configured minimum shadow observations and actionable decisions have been
+recorded. Back in Alpha Lab, refresh the durable evidence snapshot to review
+behavior drift, modeled execution cost, risk blocks, and all gates. Pause the
+session before recording the one-way qualified or rejected outcome. A qualified
+paper result is evidence under this protocol, not authorization for live
+trading or a guarantee of profitability.

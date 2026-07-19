@@ -519,6 +519,13 @@ export interface PaperRunnerState extends Record<string, unknown> {
   last_decision?: PaperPolicyDecision | null;
   pending_decision?: PaperPolicyDecision | null;
   shadow_scorecard?: PaperShadowScorecard | null;
+  forward_qualification?: {
+    qualification_id: string;
+    status: ResearchForwardQualificationStatus;
+    min_forward_observations: number;
+    min_forward_decisions: number;
+    shadow_gates_passed: boolean;
+  } | null;
 }
 
 export interface ExperimentCreateRequest {
@@ -731,6 +738,36 @@ export interface ResearchCandidatePromotionResult {
   promotion_reason: string;
   promoted_by: string;
   promoted_at: string;
+}
+
+export type ResearchForwardQualificationStatus = "collecting" | "qualified" | "rejected";
+
+export interface ResearchForwardQualificationResult {
+  qualification_id: string;
+  research_candidate_id: string;
+  campaign_id: string;
+  trial_id: string;
+  candidate_id: string;
+  paper_session_id: string;
+  status: ResearchForwardQualificationStatus;
+  min_forward_observations: number;
+  min_forward_decisions: number;
+  expected_behavior: {
+    min_actionable_rate: number;
+    max_actionable_rate: number;
+    max_risk_block_rate: number;
+  };
+  evidence: Record<string, unknown>;
+  diagnostics: Record<string, unknown>;
+  gates: Record<string, boolean>;
+  approval_required: boolean;
+  handoff_rationale: string;
+  handed_off_by: string;
+  handed_off_at: string;
+  refreshed_at?: string | null;
+  decided_by?: string | null;
+  decided_at?: string | null;
+  decision_reason?: string | null;
 }
 
 export interface CandidateNote {
@@ -1514,6 +1551,85 @@ export const promoteResearchCandidate = async (
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ promotion_reason: promotionReason, actor: "local-user" }),
+    },
+  );
+};
+
+export const fetchResearchForwardQualification = async (
+  campaignId: string,
+  researchCandidateId: string,
+): Promise<ResearchForwardQualificationResult | null> => {
+  try {
+    return await api<ResearchForwardQualificationResult>(
+      `${API_ROUTES.researchCampaigns}/${campaignId}/candidate-promotions/${researchCandidateId}/forward-qualification`,
+    );
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("Forward qualification not found")) {
+      return null;
+    }
+    throw error;
+  }
+};
+
+export const createResearchForwardQualification = async (
+  campaignId: string,
+  researchCandidateId: string,
+  payload: {
+    handoff_rationale: string;
+    min_forward_observations: number;
+    min_forward_decisions: number;
+    expected_behavior: {
+      min_actionable_rate: number;
+      max_actionable_rate: number;
+      max_risk_block_rate: number;
+    };
+    prop_firm_rules: PropFirmRules;
+    approval_required: boolean;
+    actor: string;
+  },
+): Promise<ResearchForwardQualificationResult> => {
+  return api<ResearchForwardQualificationResult>(
+    `${API_ROUTES.researchCampaigns}/${campaignId}/candidate-promotions/${researchCandidateId}/forward-qualification`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+};
+
+export const refreshResearchForwardQualification = async (
+  campaignId: string,
+  qualificationId: string,
+): Promise<ResearchForwardQualificationResult> => {
+  return api<ResearchForwardQualificationResult>(
+    `${API_ROUTES.researchCampaigns}/${campaignId}/forward-qualifications/${qualificationId}/refresh`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actor: "local-user" }),
+    },
+  );
+};
+
+export const decideResearchForwardQualification = async (
+  campaignId: string,
+  qualificationId: string,
+  outcome: "qualified" | "rejected",
+  decisionReason: string,
+  approved: boolean,
+): Promise<ResearchForwardQualificationResult> => {
+  return api<ResearchForwardQualificationResult>(
+    `${API_ROUTES.researchCampaigns}/${campaignId}/forward-qualifications/${qualificationId}/decision`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        outcome,
+        decision_reason: decisionReason,
+        approved,
+        actor: "local-user",
+      }),
     },
   );
 };

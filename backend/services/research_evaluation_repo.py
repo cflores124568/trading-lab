@@ -201,6 +201,23 @@ def list_research_candidate_promotions(campaign_id: str, *, limit: int, offset: 
             return [_promotion_row(row) for row in cur.fetchall()]
 
 
+def get_research_candidate_promotion(campaign_id: str, research_candidate_id: str) -> dict | None:
+    from services.db import _conn
+
+    with _conn() as conn:
+        _ensure_research_schema(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT * FROM research_candidate_promotions
+                WHERE campaign_id = %s AND research_candidate_id = %s
+                """,
+                [campaign_id, research_candidate_id],
+            )
+            row = cur.fetchone()
+    return _promotion_row(row) if row is not None else None
+
+
 def _evaluation_row(row: dict) -> dict:
     result = dict(row)
     for key in ("score_components", "gates", "rejection_reasons", "warnings", "diagnostics", "evidence"):

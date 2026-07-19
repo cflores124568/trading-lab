@@ -595,6 +595,46 @@ CREATE INDEX IF NOT EXISTS research_hypothesis_attempts_campaign_created_idx
 CREATE INDEX IF NOT EXISTS research_hypothesis_attempts_fingerprint_idx
     ON research_hypothesis_attempts (campaign_id, fingerprint);
 
+-- Phase 4F links an explicitly handed-off Alpha Lab candidate to one draft
+-- paper session and retains the forward qualification decision.
+CREATE TABLE IF NOT EXISTS research_forward_qualifications (
+    qualification_id TEXT PRIMARY KEY,
+    research_candidate_id TEXT NOT NULL UNIQUE
+        REFERENCES research_candidate_promotions(research_candidate_id),
+    campaign_id TEXT NOT NULL REFERENCES research_campaigns(campaign_id),
+    trial_id TEXT NOT NULL REFERENCES research_trials(trial_id),
+    candidate_id TEXT NOT NULL UNIQUE REFERENCES candidates(candidate_id),
+    paper_session_id TEXT NOT NULL UNIQUE REFERENCES paper_sessions(paper_session_id),
+    status TEXT NOT NULL DEFAULT 'collecting',
+    min_forward_observations INTEGER NOT NULL,
+    min_forward_decisions INTEGER NOT NULL,
+    expected_behavior JSONB NOT NULL,
+    evidence JSONB NOT NULL DEFAULT '{}'::jsonb,
+    diagnostics JSONB NOT NULL DEFAULT '{}'::jsonb,
+    gates JSONB NOT NULL DEFAULT '{}'::jsonb,
+    approval_required BOOLEAN NOT NULL DEFAULT TRUE,
+    handoff_rationale TEXT NOT NULL,
+    handed_off_by TEXT NOT NULL,
+    handed_off_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    refreshed_at TIMESTAMPTZ,
+    decided_by TEXT,
+    decided_at TIMESTAMPTZ,
+    decision_reason TEXT,
+    CONSTRAINT research_forward_status_check
+        CHECK (status IN ('collecting', 'qualified', 'rejected')),
+    CONSTRAINT research_forward_observation_count_check CHECK (min_forward_observations > 0),
+    CONSTRAINT research_forward_decision_count_check CHECK (min_forward_decisions > 0),
+    CONSTRAINT research_forward_terminal_state_check CHECK (
+        (status = 'collecting' AND decided_by IS NULL AND decided_at IS NULL AND decision_reason IS NULL)
+        OR
+        (status IN ('qualified', 'rejected') AND decided_by IS NOT NULL
+         AND decided_at IS NOT NULL AND decision_reason IS NOT NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS research_forward_campaign_idx
+    ON research_forward_qualifications (campaign_id, handed_off_at DESC);
+
 CREATE OR REPLACE FUNCTION reject_research_trial_evaluation_mutation()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN

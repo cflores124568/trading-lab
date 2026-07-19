@@ -176,6 +176,90 @@ def promote_experiment_run_candidate(
     return updated_run
 
 
+def create_research_candidate_handoff(
+    campaign: dict,
+    trial: dict,
+    promotion: dict,
+    *,
+    prop_firm_rules: dict,
+    handoff_rationale: str,
+    actor: str = "local-user",
+) -> dict:
+    """Create the ordinary candidate record used by the frozen paper runtime.
+
+    Alpha Lab promotions deliberately stop before this seam. Phase 4F crosses it
+    only on an explicit operator request and keeps the research provenance in the
+    frozen snapshot instead of pretending the trial came from an experiment run.
+    """
+    synthetic_run_id = f"research:{campaign['campaign_id']}:{trial['trial_id']}"
+    existing = get_candidate_by_run_any(synthetic_run_id)
+    if existing is not None:
+        return existing
+
+    now = _now()
+    result = dict(trial.get("result") or {})
+    metrics = dict(result.get("metrics") or {})
+    candidate = {
+        "candidate_id": str(uuid.uuid4()),
+        "experiment_id": f"research:{campaign['campaign_id']}",
+        "experiment_name": campaign["name"],
+        "experiment_run_id": synthetic_run_id,
+        "backtest_id": f"research-trial:{trial['trial_id']}",
+        "symbol": campaign["symbol"],
+        "interval": campaign["interval"],
+        "strategy_type": trial["strategy_type"],
+        "strategy_params": trial.get("strategy_params") or {},
+        "prop_firm_rules": prop_firm_rules,
+        "experiment_snapshot": {
+            "source_kind": "alpha_lab",
+            "campaign_id": campaign["campaign_id"],
+            "trial_id": trial["trial_id"],
+            "research_candidate_id": promotion["research_candidate_id"],
+            "validation_score": promotion["validation_score"],
+            "name": campaign["name"],
+            "symbols": [campaign["symbol"]],
+            "intervals": [campaign["interval"]],
+            "start_date": _iso_value(campaign.get("start_time")),
+            "end_date": _iso_value(campaign.get("end_time")),
+            "status": campaign.get("status"),
+            "created_at": _iso_value(campaign.get("created_at")),
+        },
+        "score": promotion["validation_score"],
+        "rank": None,
+        "total_pnl": metrics.get("total_pnl"),
+        "win_rate": metrics.get("win_rate"),
+        "max_drawdown": metrics.get("max_drawdown"),
+        "profit_factor": metrics.get("profit_factor"),
+        "passed": None,
+        "metrics": metrics or None,
+        "prop_firm_eval": None,
+        "lifecycle_status": CandidateLifecycleStatus.CANDIDATE.value,
+        "promotion_reason": handoff_rationale.strip(),
+        "promoted_by": actor,
+        "promoted_at": now,
+        "approved_by": None,
+        "approved_at": None,
+        "paper_bot": None,
+        "notes": [],
+        "audit_log": [
+            _make_event(
+                event_type="research_forward_handoff",
+                actor=actor,
+                summary="Created a candidate from an explicitly handed-off Alpha Lab finalist.",
+                created_at=now,
+                changes={
+                    "research_candidate_id": promotion["research_candidate_id"],
+                    "campaign_id": campaign["campaign_id"],
+                    "trial_id": trial["trial_id"],
+                },
+            )
+        ],
+        "created_at": now,
+        "updated_at": now,
+    }
+    return _save_candidate_any(candidate)
+
+
 def reject_experiment_run_candidate(
     experiment_id: str,
     experiment_run_id: str,
@@ -252,13 +336,10 @@ def update_candidate_status(candidate_id: str, status: str, *, actor: str = "loc
     )
 
     saved = _save_candidate_any(candidate)
-    update_experiment_run_candidate_state(
-        saved["experiment_id"],
-        saved["experiment_run_id"],
-        candidate_id=saved["candidate_id"],
+    _sync_experiment_candidate_pointer(
+        saved,
         is_candidate=next_status != CandidateLifecycleStatus.REJECTED.value,
         promoted_at=saved["promoted_at"] if next_status != CandidateLifecycleStatus.REJECTED.value else None,
-        strict=False,
     )
     return saved
 
@@ -383,13 +464,10 @@ def update_candidate_paper_bot_status(
     )
 
     saved = _save_candidate_any(candidate)
-    update_experiment_run_candidate_state(
-        saved["experiment_id"],
-        saved["experiment_run_id"],
-        candidate_id=saved["candidate_id"],
+    _sync_experiment_candidate_pointer(
+        saved,
         is_candidate=saved["lifecycle_status"] != CandidateLifecycleStatus.REJECTED.value,
         promoted_at=saved["promoted_at"],
-        strict=False,
     )
     return saved
 
@@ -550,6 +628,32 @@ def _save_candidate_any(candidate: dict) -> dict:
 
 def _now() -> str:
     return datetime.utcnow().isoformat()
+
+
+def _iso_value(value) -> str | None:
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def _sync_experiment_candidate_pointer(
+    candidate: dict,
+    *,
+    is_candidate: bool,
+    promoted_at: str | None,
+) -> None:
+    if (candidate.get("experiment_snapshot") or {}).get("source_kind") == "alpha_lab":
+        return
+    update_experiment_run_candidate_state(
+        candidate["experiment_id"],
+        candidate["experiment_run_id"],
+        candidate_id=candidate["candidate_id"],
+        is_candidate=is_candidate,
+        promoted_at=promoted_at,
+        strict=False,
+    )
 
 
 def _db_required() -> bool:

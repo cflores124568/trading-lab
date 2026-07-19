@@ -121,6 +121,7 @@ Data layer:
 - [`PHASE_4C.md`](PHASE_4C.md) records deterministic budgeted search, PostgreSQL campaign leases, restart-safe progress, and the Alpha Lab worker runtime
 - [`PHASE_4D.md`](PHASE_4D.md) records the Alpha Lab operator screens, bounded launch review, evidence inspection, and manual validated-candidate promotion boundary
 - [`PHASE_4E.md`](PHASE_4E.md) records bounded agent hypothesis proposals, static allowlist validation, durable attempt accounting, deterministic trial compilation, and the human execution boundary
+- [`PHASE_4F.md`](PHASE_4F.md) records the explicit Alpha Lab paper handoff, shadow-first evidence protocol, diagnostics, and durable qualification or rejection outcome
 - [`docs/MCP.md`](docs/MCP.md) explains Codex connection setup, MCP resources, and the narrow control safety boundary
 
 ## Core Features
@@ -274,6 +275,9 @@ Key routes:
 | POST | `/api/research-campaigns/{id}/resume` | Resume search from its durable cursor |
 | POST | `/api/research-campaigns/{id}/trials/{trial_id}/promote` | Manually record a frozen, gate-passing finalist as a validated research candidate |
 | GET | `/api/research-campaigns/{id}/candidate-promotions` | List bounded Alpha Lab promotion records |
+| POST | `/api/research-campaigns/{id}/candidate-promotions/{candidate_id}/forward-qualification` | Explicitly create a draft shadow-first paper qualification handoff |
+| POST | `/api/research-campaigns/{id}/forward-qualifications/{qualification_id}/refresh` | Persist current forward observations, decisions, behavior, cost, and risk-block evidence |
+| POST | `/api/research-campaigns/{id}/forward-qualifications/{qualification_id}/decision` | Record one approved qualification or rejection outcome |
 | PUT | `/api/research-campaigns/{id}/hypothesis-budget` | Configure the bounded Phase 4E proposal and compiled-trial envelope |
 | POST | `/api/research-campaigns/{id}/hypotheses` | Persist and statically validate one typed agent hypothesis |
 | POST | `/api/research-campaigns/{id}/hypotheses/{attempt_id}/execute` | Explicitly execute one human-reviewed accepted hypothesis as a research trial |
@@ -298,7 +302,8 @@ Implemented:
 - SolidJS dashboard and charting UI
 - saved backtest persistence
 - backtest list/detail/compare flows
-- candidate registry, review detail, and paper-bot handoff stub
+- candidate registry, review detail, and paper-bot handoff
+- durable Alpha Lab campaigns from bounded research through explicit shadow-first forward-paper qualification
 - deterministic historical paper runner with shadow, approval-required, and autonomous-paper policy modes
 - append-only policy decisions with durable pending-approval state
 - typed autonomous pre-trade risk assessments, explicit blocked-action events, and a durable kill switch
@@ -323,7 +328,7 @@ Near-term roadmap:
 2. Run longer worker/database restart and duplicate-delivery soak tests
 3. Deploy a recruiter-friendly hosted demo, then add authentication
 
-The next major milestone is taking the new candidate pipeline from "research handoff exists" into "paper execution behaves like a serious trading lab instead of a stub."
+The next operational milestone is longer paper-worker and database soak testing; live brokerage execution remains outside the current roadmap.
 
 ## Resume-Friendly Summary
 
