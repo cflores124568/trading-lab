@@ -144,7 +144,8 @@ main() {
   log "Bootstrap complete"
   log "Next steps:"
   log "  1. Backend: cd $BACKEND_DIR && uvicorn main:app --reload"
-  log "  2. Frontend: cd $ROOT_DIR/frontend && npm run dev"
+  log "  2. Paper worker: cd $BACKEND_DIR && ./venv/bin/python paper_runner_worker.py"
+  log "  3. Frontend: cd $ROOT_DIR/frontend && npm run dev"
 }
 
 main "$@"

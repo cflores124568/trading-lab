@@ -10,13 +10,28 @@ import {
   fetchPaperSession,
   fetchPaperSessionEvents,
   pausePaperSessionRunner,
+  resolvePaperPolicyDecision,
   startPaperSessionRunner,
   stepPaperSessionRunner,
+  updatePaperRunnerKillSwitch,
   updatePaperSessionStatus,
 } from "../../services/api";
-import type { PaperSessionStatus, PaperSessionTradeAction, Trade } from "../../services/api";
+import type {
+  PaperEventResult,
+  PaperPolicyDecision,
+  PaperPolicyMode,
+  PaperSessionStatus,
+  PaperSessionTradeAction,
+  Trade,
+} from "../../services/api";
 import { buildPaperExecutionAnalytics } from "../../services/executionAnalytics";
 import { formatTradeLabel } from "../../services/tradeFormatting";
+
+const PAPER_POLICY_MODES: PaperPolicyMode[] = [
+  "shadow",
+  "approval_required",
+  "autonomous_paper",
+];
 
 function describeStatus(status: string): string {
   return status.replace(/_/g, " ");
@@ -193,6 +208,86 @@ function formatRestingFillMode(mode?: string | null): string {
     return "touch + 1 bar";
   }
   return "touch";
+}
+
+function isPaperPolicyMode(value: unknown): value is PaperPolicyMode {
+  return value === "shadow" || value === "approval_required" || value === "autonomous_paper";
+}
+
+function policyModeLabel(mode: PaperPolicyMode): string {
+  if (mode === "approval_required") {
+    return "Approval required";
+  }
+  if (mode === "autonomous_paper") {
+    return "Autonomous paper";
+  }
+  return "Shadow";
+}
+
+function policyModeDescription(mode: PaperPolicyMode): string {
+  if (mode === "approval_required") {
+    return "Pauses before any position-changing policy action.";
+  }
+  if (mode === "autonomous_paper") {
+    return "Executes deterministic policy actions against the synthetic book.";
+  }
+  return "Records proposals while leaving positions and orders untouched.";
+}
+
+function policyModeTone(mode: PaperPolicyMode): string {
+  if (mode === "approval_required") {
+    return "border-amber-700 bg-amber-950/40 text-amber-200";
+  }
+  if (mode === "autonomous_paper") {
+    return "border-violet-700 bg-violet-950/40 text-violet-200";
+  }
+  return "border-sky-700 bg-sky-950/40 text-sky-200";
+}
+
+function decisionStatusTone(status: string): string {
+  if (status === "executed") {
+    return "border-green-700 bg-green-950/40 text-green-200";
+  }
+  if (status === "pending_approval") {
+    return "border-amber-700 bg-amber-950/40 text-amber-200";
+  }
+  if (status === "rejected") {
+    return "border-red-700 bg-red-950/40 text-red-200";
+  }
+  if (status === "blocked") {
+    return "border-red-700 bg-red-950/40 text-red-200";
+  }
+  if (status === "shadowed") {
+    return "border-sky-700 bg-sky-950/40 text-sky-200";
+  }
+  return "border-stone-700 bg-stone-900 text-stone-300";
+}
+
+function policyDecisionFromUnknown(value: unknown): PaperPolicyDecision | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const decision = value as Partial<PaperPolicyDecision>;
+  if (
+    typeof decision.decision_id !== "string" ||
+    typeof decision.policy_name !== "string" ||
+    typeof decision.policy_version !== "string" ||
+    typeof decision.status !== "string" ||
+    typeof decision.action_label !== "string" ||
+    typeof decision.rationale !== "string" ||
+    typeof decision.created_at !== "string" ||
+    !isPaperPolicyMode(decision.policy_mode) ||
+    !Array.isArray(decision.actions)
+  ) {
+    return null;
+  }
+
+  return decision as PaperPolicyDecision;
+}
+
+function decisionFromEvent(event: PaperEventResult): PaperPolicyDecision | null {
+  return policyDecisionFromUnknown((event.payload ?? {}).decision);
 }
 
 function orderLabel(order: Record<string, unknown>): string {
@@ -385,6 +480,7 @@ export default function PaperSessionDetailPage() {
   const [runnerPollInterval, setRunnerPollInterval] = createSignal("750");
   const [runnerStepCount, setRunnerStepCount] = createSignal("1");
   const [runnerResetCursor, setRunnerResetCursor] = createSignal(false);
+  const [runnerPolicyMode, setRunnerPolicyMode] = createSignal<PaperPolicyMode>("autonomous_paper");
 
   const availableActions = createMemo(() =>
     session() ? statusActions(session()!.status) : [],
@@ -412,6 +508,39 @@ export default function PaperSessionDetailPage() {
   const runnerState = createMemo(
     () => (session()?.runner_state ?? {}) as Record<string, unknown>,
   );
+  const killSwitchEngaged = createMemo(() => Boolean(runnerState().kill_switch_engaged));
+  const shadowScorecard = createMemo(
+    () => (runnerState().shadow_scorecard ?? {}) as Record<string, unknown>,
+  );
+  const activePolicyMode = createMemo<PaperPolicyMode>(() => {
+    const mode = runnerState().policy_mode;
+    return isPaperPolicyMode(mode) ? mode : "autonomous_paper";
+  });
+  const lastPolicyDecision = createMemo(() =>
+    policyDecisionFromUnknown(runnerState().last_decision),
+  );
+  const pendingPolicyDecision = createMemo(() =>
+    policyDecisionFromUnknown(runnerState().pending_decision),
+  );
+  const policyDecisions = createMemo(() => {
+    const byId = new Map<string, PaperPolicyDecision>();
+    for (const event of events() ?? []) {
+      if (event.event_type !== "policy_decision" && event.event_type !== "policy_decision_resolved") {
+        continue;
+      }
+      const decision = decisionFromEvent(event);
+      if (decision) {
+        byId.set(decision.decision_id, decision);
+      }
+    }
+    const latest = lastPolicyDecision();
+    if (latest) {
+      byId.set(latest.decision_id, latest);
+    }
+    return [...byId.values()]
+      .sort((left, right) => right.created_at.localeCompare(left.created_at))
+      .slice(0, 12);
+  });
   const tradeLog = createMemo(() => session()?.trade_log ?? []);
   const executionAnalytics = createMemo(() => {
     const liveSession = session();
@@ -433,6 +562,10 @@ export default function PaperSessionDetailPage() {
     const poll = numberFromUnknown(state.poll_interval_ms);
     if (poll && poll > 0) {
       setRunnerPollInterval(String(Math.round(poll)));
+    }
+    const policyMode = state.policy_mode;
+    if (isPaperPolicyMode(policyMode)) {
+      setRunnerPolicyMode(policyMode);
     }
   });
 
@@ -539,9 +672,29 @@ export default function PaperSessionDetailPage() {
         endDate: runnerEndDate().trim() ? localInputToIso(runnerEndDate()) : undefined,
         pollIntervalMs: Math.round(pollMs),
         resetCursor: runnerResetCursor(),
+        policyMode: runnerPolicyMode(),
       });
       mutateSession(() => nextSession);
       setRunnerResetCursor(false);
+      await Promise.all([refetchSession(), refetchEvents()]);
+    });
+  };
+
+  const handlePolicyDecisionResolution = async (approved: boolean) => {
+    const pending = pendingPolicyDecision();
+    if (!pending) {
+      setError("This session has no pending policy decision to resolve.");
+      return;
+    }
+
+    await runSessionAction(approved ? "decision-approve" : "decision-reject", async () => {
+      const nextSession = await resolvePaperPolicyDecision(paperSessionId(), {
+        approved,
+        note: approved
+          ? `Approved ${pending.action_label} from the paper-session UI.`
+          : `Rejected ${pending.action_label} from the paper-session UI.`,
+      });
+      mutateSession(() => nextSession);
       await Promise.all([refetchSession(), refetchEvents()]);
     });
   };
@@ -550,6 +703,17 @@ export default function PaperSessionDetailPage() {
     await runSessionAction("runner-pause", async () => {
       const nextSession = await pausePaperSessionRunner(paperSessionId(), {
         summary: "Paused the historical paper runner from the session UI.",
+      });
+      mutateSession(() => nextSession);
+      await Promise.all([refetchSession(), refetchEvents()]);
+    });
+  };
+
+  const handleKillSwitch = async (engaged: boolean) => {
+    await runSessionAction(engaged ? "kill-switch-engage" : "kill-switch-reset", async () => {
+      const nextSession = await updatePaperRunnerKillSwitch(paperSessionId(), {
+        engaged,
+        reason: engaged ? "Emergency stop engaged from the paper-session UI." : undefined,
       });
       mutateSession(() => nextSession);
       await Promise.all([refetchSession(), refetchEvents()]);
@@ -580,6 +744,12 @@ export default function PaperSessionDetailPage() {
       }
       actions={
         <>
+          <A
+            href="/paper-sessions/guide"
+            class="rounded-sm border border-stone-700 px-4 py-2 text-sm font-medium text-stone-200 transition-colors hover:border-stone-500 hover:bg-stone-900"
+          >
+            Guide
+          </A>
           <A
             href="/paper-sessions"
             class="rounded-sm border border-stone-700 px-4 py-2 text-sm font-medium text-stone-200 transition-colors hover:border-stone-500 hover:bg-stone-900"
@@ -714,7 +884,7 @@ export default function PaperSessionDetailPage() {
 
                   <div class="rounded-md border border-stone-800 bg-stone-950/60 px-4 py-4 space-y-4">
                     <div class="flex flex-wrap items-center gap-2">
-                      <p class="text-sm font-medium text-stone-100">Historical Runner (Phase 3A)</p>
+                      <p class="text-sm font-medium text-stone-100">Historical Runner (Phase 3C)</p>
                       <span
                         class={`rounded-sm border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.18em] ${runnerModeTone(
                           stringFromUnknown(runnerState().mode),
@@ -723,7 +893,182 @@ export default function PaperSessionDetailPage() {
                         {stringFromUnknown(runnerState().mode) ?? "idle"}
                       </span>
                     </div>
-                    <p class="text-xs text-stone-500">Historical DB candles as fake-live feed.</p>
+                    <div class="flex flex-wrap items-center gap-2 text-xs text-stone-500">
+                      <span>Historical DB candles as fake-live feed.</span>
+                      <span
+                        class={`rounded-sm border px-2 py-1 font-medium uppercase tracking-[0.16em] ${policyModeTone(
+                          activePolicyMode(),
+                        )}`}
+                      >
+                        {policyModeLabel(activePolicyMode())}
+                      </span>
+                    </div>
+
+                    <div class="app-subpanel px-4 py-4">
+                      <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                          <p class="app-kicker">Policy Mode</p>
+                          <p class="mt-2 text-sm text-stone-300">
+                            {policyModeDescription(runnerPolicyMode())}
+                          </p>
+                        </div>
+                        <p class="text-xs text-stone-500">
+                          deterministic_signal v{lastPolicyDecision()?.policy_version ?? "1"}
+                        </p>
+                      </div>
+                      <div class="mt-4 grid gap-2 md:grid-cols-3">
+                        <For each={PAPER_POLICY_MODES}>
+                          {(mode) => (
+                            <button
+                              type="button"
+                              disabled={
+                                stringFromUnknown(runnerState().mode) === "running" ||
+                                Boolean(pendingPolicyDecision())
+                              }
+                              aria-pressed={runnerPolicyMode() === mode}
+                              onClick={() => setRunnerPolicyMode(mode)}
+                              class={`rounded-sm border px-3 py-2 text-left text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                                runnerPolicyMode() === mode
+                                  ? policyModeTone(mode)
+                                  : "border-stone-700 bg-stone-950 text-stone-400 hover:border-stone-500 hover:text-stone-200"
+                              }`}
+                            >
+                              {policyModeLabel(mode)}
+                            </button>
+                          )}
+                        </For>
+                      </div>
+                      <Show when={runnerPolicyMode() !== activePolicyMode()}>
+                        <p class="mt-3 text-xs text-amber-300">
+                          This mode becomes active the next time you start the runner.
+                        </p>
+                      </Show>
+                    </div>
+
+                    <div
+                      class={`rounded-md border px-4 py-4 ${
+                        killSwitchEngaged()
+                          ? "border-red-700 bg-red-950/30"
+                          : "border-stone-800 bg-stone-950/70"
+                      }`}
+                    >
+                      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <p class={`app-kicker ${killSwitchEngaged() ? "text-red-200" : ""}`}>
+                            Emergency Kill Switch
+                          </p>
+                          <p class="mt-2 text-sm text-stone-300">
+                            {killSwitchEngaged()
+                              ? stringFromUnknown(runnerState().kill_switch_reason) ?? "Autonomous execution is disabled."
+                              : "Clear. Autonomous actions still require a passing pre-trade risk assessment."}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={busyAction() !== null}
+                          onClick={() => handleKillSwitch(!killSwitchEngaged())}
+                          class={`rounded-sm border px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:border-stone-800 disabled:bg-stone-900 disabled:text-stone-500 ${
+                            killSwitchEngaged()
+                              ? "border-green-700 bg-green-950/30 text-green-200 hover:bg-green-950/60"
+                              : "border-red-700 bg-red-950/30 text-red-200 hover:bg-red-950/60"
+                          }`}
+                        >
+                          {busyAction() === "kill-switch-engage"
+                            ? "Engaging..."
+                            : busyAction() === "kill-switch-reset"
+                              ? "Resetting..."
+                              : killSwitchEngaged()
+                                ? "Reset Kill Switch"
+                                : "Engage Kill Switch"}
+                        </button>
+                      </div>
+                    </div>
+
+                    <Show when={(numberFromUnknown(shadowScorecard().total_decisions) ?? 0) > 0}>
+                      <div class="app-subpanel px-4 py-4">
+                        <div class="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                          <div>
+                            <p class="app-kicker">Shadow Scorecard</p>
+                            <p class="mt-2 text-sm text-stone-300">
+                              Durable summary of policy proposals that were intentionally not executed.
+                            </p>
+                          </div>
+                          <p class="text-xs text-stone-500">
+                            Last observation {formatTimestamp(stringFromUnknown(shadowScorecard().last_observed_at))}
+                          </p>
+                        </div>
+                        <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                          <div>
+                            <p class="text-xs text-stone-500">Decisions</p>
+                            <p class="mt-1 text-lg font-semibold text-stone-100">
+                              {formatNumber(numberFromUnknown(shadowScorecard().total_decisions), 0)}
+                            </p>
+                          </div>
+                          <div>
+                            <p class="text-xs text-stone-500">Actionable</p>
+                            <p class="mt-1 text-lg font-semibold text-stone-100">
+                              {formatNumber(numberFromUnknown(shadowScorecard().actionable_decisions), 0)}
+                            </p>
+                          </div>
+                          <div>
+                            <p class="text-xs text-stone-500">Buy / Sell / Exit</p>
+                            <p class="mt-1 text-sm font-semibold text-stone-100">
+                              {formatNumber(numberFromUnknown(shadowScorecard().buy_proposals), 0)} /{" "}
+                              {formatNumber(numberFromUnknown(shadowScorecard().sell_proposals), 0)} /{" "}
+                              {formatNumber(numberFromUnknown(shadowScorecard().exit_proposals), 0)}
+                            </p>
+                          </div>
+                          <div>
+                            <p class="text-xs text-stone-500">Bull / Bear / Flat</p>
+                            <p class="mt-1 text-sm font-semibold text-stone-100">
+                              {formatNumber(numberFromUnknown(shadowScorecard().bullish_observations), 0)} /{" "}
+                              {formatNumber(numberFromUnknown(shadowScorecard().bearish_observations), 0)} /{" "}
+                              {formatNumber(numberFromUnknown(shadowScorecard().flat_observations), 0)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </Show>
+
+                    <Show when={pendingPolicyDecision()}>
+                      {(pending) => (
+                        <div class="rounded-md border border-amber-700 bg-amber-950/30 px-4 py-4">
+                          <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                            <div>
+                              <div class="flex flex-wrap items-center gap-2">
+                                <p class="app-kicker text-amber-200">Approval Required</p>
+                                <span class="rounded-sm border border-amber-700 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-amber-200">
+                                  {describeStatus(pending().action_label)}
+                                </span>
+                              </div>
+                              <p class="mt-3 text-sm text-stone-200">{pending().rationale}</p>
+                              <p class="mt-2 text-xs text-stone-400">
+                                Proposed: {pending().actions.join(" → ")} · Signal {pending().signal > 0 ? "+" : ""}
+                                {pending().signal} · {formatTimestamp(pending().observed_at)}
+                              </p>
+                            </div>
+                            <div class="flex shrink-0 flex-wrap gap-2">
+                              <button
+                                type="button"
+                                disabled={busyAction() !== null}
+                                onClick={() => handlePolicyDecisionResolution(true)}
+                                class="rounded-sm bg-green-400 px-4 py-2 text-sm font-semibold text-stone-950 transition-colors hover:bg-green-300 disabled:cursor-not-allowed disabled:bg-stone-800 disabled:text-stone-500"
+                              >
+                                {busyAction() === "decision-approve" ? "Approving..." : "Approve & Execute"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busyAction() !== null}
+                                onClick={() => handlePolicyDecisionResolution(false)}
+                                class="rounded-sm border border-red-700 bg-red-950/30 px-4 py-2 text-sm font-medium text-red-200 transition-colors hover:bg-red-950/60 disabled:cursor-not-allowed disabled:border-stone-800 disabled:bg-stone-900 disabled:text-stone-500"
+                              >
+                                {busyAction() === "decision-reject" ? "Rejecting..." : "Reject"}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </Show>
 
                     <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                       <div class="app-subpanel px-4 py-3">
@@ -791,7 +1136,11 @@ export default function PaperSessionDetailPage() {
                     <div class="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
-                        disabled={busyAction() === "runner-start"}
+                        disabled={
+                          busyAction() === "runner-start" ||
+                          Boolean(pendingPolicyDecision()) ||
+                          killSwitchEngaged()
+                        }
                         onClick={handleRunnerStart}
                         class="rounded-sm bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-stone-800 disabled:text-stone-500"
                       >
@@ -816,7 +1165,11 @@ export default function PaperSessionDetailPage() {
                         />
                         <button
                           type="button"
-                          disabled={busyAction() === "runner-step"}
+                          disabled={
+                            busyAction() === "runner-step" ||
+                            Boolean(pendingPolicyDecision()) ||
+                            killSwitchEngaged()
+                          }
                           onClick={handleRunnerStep}
                           class="rounded-sm border border-stone-700 px-3 py-1.5 text-xs font-medium text-stone-100 transition-colors hover:border-stone-500 hover:bg-stone-900 disabled:cursor-not-allowed disabled:border-stone-800 disabled:text-stone-500"
                         >
@@ -824,6 +1177,82 @@ export default function PaperSessionDetailPage() {
                         </button>
                       </div>
                     </div>
+                  </div>
+
+                  <div class="rounded-md border border-stone-800 bg-stone-950/60">
+                    <div class="flex flex-col gap-2 border-b border-stone-800 px-4 py-4 md:flex-row md:items-end md:justify-between">
+                      <div>
+                        <p class="app-kicker">Decision Trace</p>
+                        <p class="mt-2 text-sm text-stone-400">
+                          Versioned policy proposals, execution status, and operator resolutions.
+                        </p>
+                      </div>
+                      <span class="text-xs text-stone-500">{policyDecisions().length} recent decisions</span>
+                    </div>
+                    <Show
+                      when={policyDecisions().length > 0}
+                      fallback={
+                        <div class="px-4 py-6 text-sm text-stone-500">
+                          Start or step the runner to create the first policy decision.
+                        </div>
+                      }
+                    >
+                      <div class="divide-y divide-stone-800">
+                        <For each={policyDecisions()}>
+                          {(decision) => (
+                            <article class="px-4 py-4">
+                              <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                <div>
+                                  <div class="flex flex-wrap items-center gap-2">
+                                    <span class="text-sm font-semibold text-stone-100">
+                                      {describeStatus(decision.action_label)}
+                                    </span>
+                                    <span
+                                      class={`rounded-sm border px-2 py-1 text-[10px] font-medium uppercase tracking-[0.16em] ${decisionStatusTone(
+                                        decision.status,
+                                      )}`}
+                                    >
+                                      {describeStatus(decision.status)}
+                                    </span>
+                                    <span class={`rounded-sm border px-2 py-1 text-[10px] ${policyModeTone(decision.policy_mode)}`}>
+                                      {policyModeLabel(decision.policy_mode)}
+                                    </span>
+                                  </div>
+                                  <p class="mt-3 text-sm text-stone-300">{decision.rationale}</p>
+                                  <p class="mt-2 text-xs text-stone-500">
+                                    Proposed {decision.actions.length > 0 ? decision.actions.join(" → ") : "no order"}
+                                    {" · "}signal {decision.signal > 0 ? "+" : ""}{decision.signal}
+                                    {" · "}bar {decision.observation?.bar_index ?? "n/a"}
+                                  </p>
+                                  <Show when={decision.resolved_by}>
+                                    <p class="mt-2 text-xs text-stone-400">
+                                      Resolved by {decision.resolved_by} at {formatTimestamp(decision.resolved_at)}
+                                    </p>
+                                  </Show>
+                                  <Show when={decision.risk_assessment?.status === "blocked"}>
+                                    <div class="mt-3 rounded-sm border border-red-800 bg-red-950/20 px-3 py-2 text-xs text-red-200">
+                                      <For each={decision.risk_assessment?.violations ?? []}>
+                                        {(violation) => <p>{violation}</p>}
+                                      </For>
+                                    </div>
+                                  </Show>
+                                  <Show when={decision.risk_assessment?.status === "approved"}>
+                                    <p class="mt-2 text-xs text-green-300">Pre-trade risk approved.</p>
+                                  </Show>
+                                </div>
+                                <div class="shrink-0 text-right text-xs text-stone-500">
+                                  <p>{formatTimestamp(decision.observed_at)}</p>
+                                  <p class="mt-1 font-mono">
+                                    {decision.policy_name} v{decision.policy_version}
+                                  </p>
+                                  <p class="mt-1 font-mono text-stone-600">{decision.decision_id.slice(0, 8)}</p>
+                                </div>
+                              </div>
+                            </article>
+                          )}
+                        </For>
+                      </div>
+                    </Show>
                   </div>
 
                   <div class="grid gap-3 md:grid-cols-2">
@@ -1206,7 +1635,12 @@ export default function PaperSessionDetailPage() {
                               <span class="text-xs text-stone-500">{event.actor}</span>
                             </div>
                             <p class="mt-3 text-sm text-stone-200">{event.summary}</p>
-                            <Show when={Object.keys(event.payload ?? {}).length > 0}>
+                            <Show
+                              when={
+                                !event.event_type.startsWith("policy_decision") &&
+                                Object.keys(event.payload ?? {}).length > 0
+                              }
+                            >
                               <pre class="mt-3 overflow-x-auto rounded-md border border-stone-800 bg-stone-950 px-4 py-3 text-xs text-stone-400">
                                 {formatJson(event.payload)}
                               </pre>

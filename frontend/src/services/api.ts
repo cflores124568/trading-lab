@@ -27,6 +27,8 @@ const API_ROUTES = {
   paperSessionRunnerStart: (paperSessionId: string) => `/paper-sessions/${paperSessionId}/runner/start`,
   paperSessionRunnerPause: (paperSessionId: string) => `/paper-sessions/${paperSessionId}/runner/pause`,
   paperSessionRunnerStep: (paperSessionId: string) => `/paper-sessions/${paperSessionId}/runner/step`,
+  paperSessionRunnerKillSwitch: (paperSessionId: string) =>
+    `/paper-sessions/${paperSessionId}/runner/kill-switch`,
   propFirms: "/prop-firms",
 } as const;
 
@@ -410,6 +412,15 @@ export type PaperSessionStatus =
   | "paused"
   | "stopped"
   | "failed";
+export type PaperPolicyMode = "shadow" | "approval_required" | "autonomous_paper";
+export type PaperDecisionStatus =
+  | "generated"
+  | "no_action"
+  | "shadowed"
+  | "pending_approval"
+  | "executed"
+  | "rejected"
+  | "blocked";
 export type PaperSessionTradeAction =
   | "buy"
   | "sell"
@@ -424,6 +435,80 @@ export type PaperSessionTradeAction =
   | "replace"
   | "cancel"
   | "flatten";
+
+export interface PaperMarketObservation {
+  paper_session_id: string;
+  candidate_id: string;
+  symbol: string;
+  interval: string;
+  observed_at: string;
+  bar_index: number;
+  bar: Record<string, unknown>;
+  signal: number;
+  current_position: Record<string, unknown>;
+  active_orders: Record<string, unknown>[];
+  metrics_snapshot: Record<string, unknown>;
+  guardrail_state: Record<string, unknown>;
+}
+
+export interface PaperRiskCheck {
+  code: string;
+  passed: boolean;
+  summary: string;
+}
+
+export interface PaperRiskAssessment {
+  assessment_id: string;
+  decision_id: string;
+  status: "approved" | "blocked";
+  checks: PaperRiskCheck[];
+  violations: string[];
+  checked_at: string;
+}
+
+export interface PaperShadowScorecard {
+  policy_name: string;
+  policy_version: string;
+  total_decisions: number;
+  actionable_decisions: number;
+  no_action_decisions: number;
+  mark_decisions: number;
+  buy_proposals: number;
+  sell_proposals: number;
+  exit_proposals: number;
+  bullish_observations: number;
+  bearish_observations: number;
+  flat_observations: number;
+  first_observed_at?: string | null;
+  last_observed_at?: string | null;
+  last_decision_id?: string | null;
+}
+
+export interface PaperPolicyDecision {
+  decision_id: string;
+  paper_session_id: string;
+  policy_name: string;
+  policy_version: string;
+  policy_mode: PaperPolicyMode;
+  status: PaperDecisionStatus;
+  observed_at: string;
+  signal: number;
+  actions: Array<"buy" | "sell" | "exit" | "mark">;
+  action_label: string;
+  rationale: string;
+  observation: PaperMarketObservation;
+  created_at: string;
+  risk_assessment?: PaperRiskAssessment | null;
+  resolved_at?: string | null;
+  resolved_by?: string | null;
+}
+
+export interface PaperRunnerState extends Record<string, unknown> {
+  policy_mode?: PaperPolicyMode;
+  last_decision?: PaperPolicyDecision | null;
+  pending_decision?: PaperPolicyDecision | null;
+  shadow_scorecard?: PaperShadowScorecard | null;
+}
 
 export interface ExperimentCreateRequest {
   name: string;
@@ -548,7 +633,7 @@ export interface PaperSessionResult {
   equity_curve: number[];
   metrics_snapshot: Record<string, unknown>;
   guardrail_state: Record<string, unknown>;
-  runner_state: Record<string, unknown>;
+  runner_state: PaperRunnerState;
   last_bar_time?: string | null;
   last_event_at?: string | null;
   created_by: string;
@@ -1000,6 +1085,7 @@ export const startPaperSessionRunner = async (
     endDate?: string;
     pollIntervalMs?: number;
     resetCursor?: boolean;
+    policyMode?: PaperPolicyMode;
   } = {},
 ): Promise<PaperSessionResult> => {
   return api<PaperSessionResult>(API_ROUTES.paperSessionRunnerStart(paperSessionId), {
@@ -1011,6 +1097,48 @@ export const startPaperSessionRunner = async (
       end_date: payload.endDate,
       poll_interval_ms: payload.pollIntervalMs,
       reset_cursor: payload.resetCursor ?? false,
+      policy_mode: payload.policyMode,
+    }),
+  });
+};
+
+export const resolvePaperPolicyDecision = async (
+  paperSessionId: string,
+  payload: {
+    approved: boolean;
+    actor?: string;
+    note?: string;
+  },
+): Promise<PaperSessionResult> => {
+  return api<PaperSessionResult>(
+    `${API_ROUTES.paperSessions}/${paperSessionId}/runner/decision/resolve`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        approved: payload.approved,
+        actor: payload.actor ?? "local-user",
+        note: payload.note,
+      }),
+    },
+  );
+};
+
+export const updatePaperRunnerKillSwitch = async (
+  paperSessionId: string,
+  payload: {
+    engaged: boolean;
+    actor?: string;
+    reason?: string;
+  },
+): Promise<PaperSessionResult> => {
+  return api<PaperSessionResult>(API_ROUTES.paperSessionRunnerKillSwitch(paperSessionId), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      engaged: payload.engaged,
+      actor: payload.actor ?? "local-user",
+      reason: payload.reason,
     }),
   });
 };

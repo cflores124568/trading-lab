@@ -54,7 +54,19 @@ def list_paper_sessions() -> list[dict]:
 def append_paper_event(paper_session_id: str, event: dict) -> None:
     entry = deepcopy(event)
     with _store_lock:
-        _paper_event_store.setdefault(paper_session_id, []).append(entry)
+        events = _paper_event_store.setdefault(paper_session_id, [])
+        if any(stored.get("paper_event_id") == entry.get("paper_event_id") for stored in events):
+            return
+        events.append(entry)
+
+
+def get_paper_event(paper_event_id: str) -> Optional[dict]:
+    with _store_lock:
+        for events in _paper_event_store.values():
+            for event in events:
+                if event.get("paper_event_id") == paper_event_id:
+                    return deepcopy(event)
+    return None
 
 
 def list_paper_events(paper_session_id: str) -> list[dict]:

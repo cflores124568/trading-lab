@@ -3,7 +3,7 @@
 The clean deployment shape for Trading Lab is a split setup:
 
 - static frontend on something like Vercel, Netlify, or Cloudflare Pages
-- containerized FastAPI backend on something like Render, Fly.io, or Railway
+- containerized FastAPI backend and paper-runner worker on something like Render, Fly.io, or Railway
 - managed Postgres/TimescaleDB behind the backend
 
 I would not try to turn this into a pure frontend app. Too much important stuff
@@ -27,9 +27,10 @@ For the first recruiter-friendly demo, I would keep it simple:
 
 1. Deploy the frontend as a static site.
 2. Deploy the backend from `backend/Dockerfile`.
-3. Use a managed Postgres instance with Timescale support if available.
-4. Point the backend at that DB with `DATABASE_URL`.
-5. Add a frontend rewrite or proxy so `/api/*` reaches the backend.
+3. Deploy a second service from the same image with `python paper_runner_worker.py` as its command.
+4. Use a managed Postgres instance with Timescale support if available.
+5. Point both backend processes at that DB with `DATABASE_URL`.
+6. Add a frontend rewrite or proxy so `/api/*` reaches the backend.
 
 That last one matters because the frontend currently calls relative `/api`
 routes in `frontend/src/services/api.ts`.
@@ -52,6 +53,12 @@ hosting rewrites or by serving the frontend and backend behind one shared domain
 - it starts FastAPI with Uvicorn
 
 That means a container platform is the path of least pain here.
+
+The API and paper runner deliberately use separate processes. The API records
+runner intent; `paper_runner_worker.py` acquires expiring PostgreSQL leases and
+advances sessions. Do not run paper execution inside Uvicorn workers. Multiple
+runner replicas are safe because lease acquisition is atomic, but one replica
+is enough for the current workload.
 
 ## Database Notes
 

@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
 
   # ── TimescaleDB ─────────────────────────────────────────────────────────────
@@ -45,6 +43,27 @@ services:
       - "8000:8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Durable paper runner ───────────────────────────────────────────────────
+  paper_runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trading_lab_paper_runner
+    restart: unless-stopped
+    command: ["python", "paper_runner_worker.py"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-trading}:${POSTGRES_PASSWORD:-trading}@db:5432/${POSTGRES_DB:-trading_lab}
+    volumes:
+      - ./data:/app/data:ro
+    healthcheck:
+      test: ["CMD", "python", "paper_runner_worker.py", "--healthcheck"]
       interval: 10s
       timeout: 5s
       retries: 5

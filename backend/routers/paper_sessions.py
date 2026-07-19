@@ -1,8 +1,10 @@
 from fastapi import APIRouter, HTTPException
 
 from schemas import (
+    PaperDecisionResolutionRequest,
     PaperEventCreate,
     PaperEventResult,
+    PaperKillSwitchRequest,
     PaperRunnerPauseRequest,
     PaperRunnerStartRequest,
     PaperRunnerStepRequest,
@@ -13,6 +15,8 @@ from schemas import (
 )
 from services.paper_runner_service import (
     pause_historical_runner,
+    resolve_pending_policy_decision,
+    set_runner_kill_switch,
     start_historical_runner,
     step_historical_runner,
 )
@@ -143,6 +147,7 @@ async def start_session_runner(
             end_date=request.end_date,
             poll_interval_ms=request.poll_interval_ms,
             reset_cursor=request.reset_cursor,
+            policy_mode=request.policy_mode,
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -192,3 +197,43 @@ async def step_session_runner(
         raise HTTPException(status_code=503, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Paper session runner step failed: {exc}")
+
+
+@router.post("/{paper_session_id}/runner/decision/resolve", response_model=PaperSessionResult)
+async def resolve_session_policy_decision(
+    paper_session_id: str,
+    request: PaperDecisionResolutionRequest,
+):
+    try:
+        return resolve_pending_policy_decision(
+            paper_session_id,
+            approved=request.approved,
+            actor=request.actor,
+            note=request.note,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Paper policy decision resolution failed: {exc}")
+
+
+@router.post("/{paper_session_id}/runner/kill-switch", response_model=PaperSessionResult)
+async def update_session_kill_switch(
+    paper_session_id: str,
+    request: PaperKillSwitchRequest,
+):
+    try:
+        return set_runner_kill_switch(
+            paper_session_id,
+            engaged=request.engaged,
+            actor=request.actor,
+            reason=request.reason,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Paper runner kill switch update failed: {exc}")

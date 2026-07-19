@@ -352,7 +352,7 @@ class PaperRunnerPhase3BTests(unittest.TestCase):
             paper_runner_service,
             "_spawn_runner_thread",
             return_value=None,
-        ), patch.object(
+        ) as spawn_runner, patch.object(
             paper_runner_service,
             "_save_paper_session_any",
             return_value=None,
@@ -391,6 +391,7 @@ class PaperRunnerPhase3BTests(unittest.TestCase):
         self.assertEqual(resumed["runner_state"]["mode"], "running")
         self.assertEqual(resumed["runner_state"]["bars_processed"], 7)
         self.assertEqual(resumed["last_bar_time"], "2026-04-20T09:37:00+00:00")
+        spawn_runner.assert_not_called()
 
         restart_session = deepcopy(resumed)
         restart_session["status"] = "paused"

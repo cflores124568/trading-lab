@@ -489,6 +489,7 @@ def execute_paper_session_action(
     actor: str = "local-user",
     note: str | None = None,
     sync_candidate: bool = True,
+    approved_decision_id: str | None = None,
 ) -> dict:
     session = _ensure_session_defaults(_require_paper_session(paper_session_id))
     raw_action = action.strip().lower()
@@ -500,7 +501,10 @@ def execute_paper_session_action(
     resolved_quantity = round(float(quantity or 1.0), 4)
 
     if action_key in {"lift_ask", "hit_bid"}:
-        if session["status"] not in OPEN_ACTION_STATUSES:
+        approval_gated_open = (
+            session["status"] == PaperSessionStatus.PAUSED.value and bool(approved_decision_id)
+        )
+        if session["status"] not in OPEN_ACTION_STATUSES and not approval_gated_open:
             raise ValueError("Paper session must be ready or running before you can open a position.")
 
         side = "buy" if action_key == "lift_ask" else "sell"
@@ -528,6 +532,7 @@ def execute_paper_session_action(
             "side": side,
             "quantity": resolved_quantity,
             "status_auto_started": previous_status != session["status"],
+            "approved_decision_id": approved_decision_id,
             "closed_trade": closed_trade,
         }
         audit_summary = summary
@@ -1495,8 +1500,15 @@ def _ensure_runner_state_defaults(state: dict | None) -> dict:
     payload.setdefault("last_signal_action", None)
     payload.setdefault("last_signal_reason", None)
     payload.setdefault("auto_trade_enabled", True)
+    payload.setdefault("policy_mode", "autonomous_paper")
+    payload.setdefault("last_decision", None)
+    payload.setdefault("pending_decision", None)
     payload.setdefault("parity_check", {})
     payload.setdefault("last_error", None)
+    payload.setdefault("execution_backend", "durable_worker")
+    payload.setdefault("worker_requested_at", None)
+    payload.setdefault("market_event_cursor", {})
+    payload.setdefault("last_market_trade", None)
     payload.setdefault("updated_at", None)
     return payload
 

@@ -121,6 +121,18 @@ def _ensure_paper_sessions_schema(conn) -> None:
                 """
             )
             cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS paper_runner_leases (
+                    paper_session_id TEXT PRIMARY KEY,
+                    owner_id          TEXT NOT NULL,
+                    lease_token       TEXT NOT NULL UNIQUE,
+                    acquired_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    heartbeat_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    expires_at        TIMESTAMPTZ NOT NULL
+                )
+                """
+            )
+            cur.execute(
                 "CREATE INDEX IF NOT EXISTS paper_sessions_updated_at_idx ON paper_sessions (updated_at DESC)"
             )
             cur.execute(
@@ -131,6 +143,9 @@ def _ensure_paper_sessions_schema(conn) -> None:
             )
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS paper_events_candidate_created_idx ON paper_events (candidate_id, created_at DESC)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS paper_runner_leases_expires_idx ON paper_runner_leases (expires_at)"
             )
         conn.commit()
         _schema_ready = True
@@ -152,7 +167,7 @@ def save_paper_session(session: dict) -> None:
         VALUES (
             %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s,
             %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
-            %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s
+            %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s
         )
         ON CONFLICT (paper_session_id) DO UPDATE SET
             candidate_id     = EXCLUDED.candidate_id,
@@ -213,10 +228,10 @@ def save_paper_session(session: dict) -> None:
                     session.get("resting_fill_mode") or "touch",
                     json.dumps(session.get("current_position") or {}),
                     json.dumps(session.get("active_order") or {}),
-                    json.dumps(session.get("active_orders") or []),
                     json.dumps(session.get("last_quote") or {}),
                     json.dumps(session.get("trade_log") or []),
                     json.dumps(session.get("equity_curve") or []),
+                    json.dumps(session.get("active_orders") or []),
                     json.dumps(session.get("metrics_snapshot") or {}),
                     json.dumps(session.get("guardrail_state") or {}),
                     json.dumps(session.get("runner_state") or {}),
@@ -259,6 +274,18 @@ def append_paper_event(event: dict) -> None:
                 ],
             )
         conn.commit()
+
+
+def get_paper_event(paper_event_id: str) -> Optional[dict]:
+    from services.db import _conn, _read_sql
+
+    sql = "SELECT * FROM paper_events WHERE paper_event_id = %s"
+    with _conn() as conn:
+        _ensure_paper_sessions_schema(conn)
+    df = _read_sql(sql, params=[paper_event_id], parse_dates=["created_at"])
+    if df.empty:
+        return None
+    return _row_to_event(df.iloc[0])
 
 
 def get_paper_session(paper_session_id: str) -> Optional[dict]:

@@ -8,7 +8,8 @@ from typing import Any
 import pandas as pd
 from services.backtest_repo import get_backtest as get_backtest_db
 from services.backtest_store import get_backtest as get_backtest_mem
-from schemas import PaperSessionStatus
+from schemas import PaperDecisionStatus, PaperPolicyDecision, PaperPolicyMode, PaperSessionStatus
+from services.data_loader import normalise_interval
 from services.db import db_configured, get_next_ohlcv_bar, get_ohlcv
 from services.indicators import add_all_indicators
 from services.paper_session_service import (
@@ -26,6 +27,20 @@ from services.paper_session_service import (
     _sync_candidate_paper_session,
     advance_paper_session_bar,
     execute_paper_session_action,
+)
+from services.paper_policy_service import (
+    build_market_observation,
+    decide_with_deterministic_policy,
+    decision_requires_approval,
+    normalize_policy_mode,
+    plan_signal_actions,
+    signal_reason,
+    update_shadow_scorecard,
+)
+from services.paper_risk_service import assess_pretrade_risk
+from services.paper_runner_lease_repo import (
+    get_runner_lease,
+    revoke_runner_lease,
 )
 from services.strategy import generate_signals
 
@@ -54,13 +69,13 @@ def start_historical_runner(
     end_date: str | None = None,
     poll_interval_ms: int = DEFAULT_RUNNER_POLL_INTERVAL_MS,
     reset_cursor: bool = False,
+    policy_mode: str | PaperPolicyMode | None = None,
 ) -> dict:
-    """Start or resume the fake-live historical loop for one paper session.
+    """Queue or resume one fake-live historical session for the durable worker.
 
     This keeps time simulated, not wall-clock based, and advances one candle at
-    a time in the background. I persist cursor and runner settings on the
-    session itself so you can pause, resume, and inspect later without losing
-    where the run left off.
+    a time. The API persists intent and cursor state; a separate worker owns the
+    right to advance the session through an expiring PostgreSQL lease.
     """
     _require_db_runner_support()
     poll = _validate_poll_interval(poll_interval_ms)
@@ -75,6 +90,12 @@ def start_historical_runner(
 
         state = _ensure_runner_state(session.get("runner_state"))
         state = _apply_default_window(session, state)
+        if state.get("kill_switch_engaged"):
+            raise ValueError("Reset the emergency kill switch before starting the runner.")
+        if state.get("pending_decision"):
+            raise ValueError("Resolve the pending policy decision before restarting the runner.")
+        if policy_mode is not None:
+            state["policy_mode"] = normalize_policy_mode(policy_mode).value
         if start_ts is not None:
             state["start_date"] = start_ts
         if end_ts is not None:
@@ -90,11 +111,16 @@ def start_historical_runner(
             state["last_signal_action"] = None
             state["last_signal_reason"] = None
             state["parity_check"] = {}
+            state["last_decision"] = None
+            state["pending_decision"] = None
+            state["shadow_scorecard"] = {}
             _reset_signal_history(paper_session_id)
 
         state["mode"] = "running"
         state["poll_interval_ms"] = poll
         state["last_error"] = None
+        state["execution_backend"] = "durable_worker"
+        state["worker_requested_at"] = now
         state["updated_at"] = now
 
         session["runner_state"] = state
@@ -109,13 +135,14 @@ def start_historical_runner(
                 candidate_id=session["candidate_id"],
                 event_type="runner_started",
                 actor=actor,
-                summary="Started the historical paper runner loop.",
+                summary="Queued the historical paper runner for durable execution.",
                 created_at=now,
                 payload={
                     "start_date": state.get("start_date"),
                     "end_date": state.get("end_date"),
                     "poll_interval_ms": state.get("poll_interval_ms"),
                     "reset_cursor": reset_cursor,
+                    "policy_mode": state.get("policy_mode"),
                 },
             )
         )
@@ -130,11 +157,10 @@ def start_historical_runner(
         _append_candidate_session_audit(
             candidate,
             actor=actor,
-            summary="Started the historical paper runner.",
+            summary="Queued the historical paper runner for durable execution.",
             created_at=now,
         )
 
-    _spawn_runner_thread(paper_session_id)
     return _ensure_session_defaults(_require_paper_session(paper_session_id))
 
 
@@ -168,6 +194,7 @@ def pause_historical_runner(
         session["last_event_at"] = now
         session["updated_at"] = now
         _save_paper_session_any(session)
+        _revoke_durable_runner_lease(paper_session_id)
 
         note = summary or "Paused the historical paper runner."
         _append_paper_event_any(
@@ -218,8 +245,8 @@ def step_historical_runner(
     if steps < 1 or steps > 500:
         raise ValueError("Runner step count must stay between 1 and 500.")
 
-    if _runner_thread_alive(paper_session_id):
-        raise ValueError("Pause the running historical loop before manual stepping.")
+    if _runner_thread_alive(paper_session_id) or _runner_worker_active(paper_session_id):
+        raise ValueError("Pause the running historical worker before manual stepping.")
 
     with _session_lock(paper_session_id):
         session = _ensure_session_defaults(_require_paper_session(paper_session_id))
@@ -227,6 +254,10 @@ def step_historical_runner(
 
         state = _ensure_runner_state(session.get("runner_state"))
         state = _apply_default_window(session, state)
+        if state.get("kill_switch_engaged"):
+            raise ValueError("Reset the emergency kill switch before stepping the runner.")
+        if state.get("pending_decision"):
+            raise ValueError("Resolve the pending policy decision before stepping the runner.")
         state["mode"] = "paused"
         state["updated_at"] = _now()
         session["runner_state"] = state
@@ -292,6 +323,146 @@ def stop_all_historical_runners() -> None:
             handle.thread.join(timeout=2.0)
 
 
+def set_runner_kill_switch(
+    paper_session_id: str,
+    *,
+    engaged: bool,
+    actor: str = "local-user",
+    reason: str | None = None,
+) -> dict:
+    """Persist the emergency autonomous-execution stop for one session."""
+    if engaged:
+        _stop_runner_thread(paper_session_id)
+
+    with _session_lock(paper_session_id):
+        session = _ensure_session_defaults(_require_paper_session(paper_session_id))
+        state = _ensure_runner_state(session.get("runner_state"))
+        now = _now()
+        state["kill_switch_engaged"] = bool(engaged)
+        state["kill_switch_reason"] = reason.strip() if isinstance(reason, str) and reason.strip() else None
+        if engaged:
+            state["mode"] = "paused"
+            if session["status"] == PaperSessionStatus.RUNNING.value:
+                session["status"] = PaperSessionStatus.PAUSED.value
+        state["updated_at"] = now
+        session["runner_state"] = state
+        session["last_event_at"] = now
+        session["updated_at"] = now
+        _save_paper_session_any(session)
+        if engaged:
+            _revoke_durable_runner_lease(paper_session_id)
+
+        event_type = "kill_switch_engaged" if engaged else "kill_switch_reset"
+        summary = (
+            state["kill_switch_reason"] or "Emergency kill switch engaged."
+            if engaged
+            else "Emergency kill switch reset."
+        )
+        _append_paper_event_any(
+            _make_paper_event(
+                paper_session_id=paper_session_id,
+                candidate_id=session["candidate_id"],
+                event_type=event_type,
+                actor=actor,
+                summary=summary,
+                created_at=now,
+                payload={"engaged": bool(engaged), "reason": state["kill_switch_reason"]},
+            )
+        )
+
+        candidate = _require_candidate(session["candidate_id"])
+        _sync_candidate_paper_session(
+            candidate,
+            paper_session_id,
+            now,
+            session_status=session["status"],
+        )
+        _append_candidate_session_audit(candidate, actor=actor, summary=summary, created_at=now)
+        return _ensure_session_defaults(_require_paper_session(paper_session_id))
+
+
+def resolve_pending_policy_decision(
+    paper_session_id: str,
+    *,
+    approved: bool,
+    actor: str = "local-user",
+    note: str | None = None,
+) -> dict:
+    """Resolve the one durable approval proposal held by a paused runner."""
+    _stop_runner_thread(paper_session_id)
+
+    with _session_lock(paper_session_id):
+        session = _ensure_session_defaults(_require_paper_session(paper_session_id))
+        state = _ensure_runner_state(session.get("runner_state"))
+        pending = state.get("pending_decision")
+        if not pending:
+            raise ValueError("This paper session has no pending policy decision.")
+
+        decision = PaperPolicyDecision.model_validate(pending)
+        now = _now()
+        decision.resolved_at = now
+        decision.resolved_by = actor
+
+        if approved:
+            if _runner_guardrail_breached(session):
+                raise ValueError("The pending decision cannot execute while a hard guardrail is breached.")
+            for action in decision.actions:
+                execute_paper_session_action(
+                    paper_session_id,
+                    action=_runner_execution_action(action),
+                    price=None,
+                    filled_at=decision.observed_at,
+                    actor=actor,
+                    note=note or f"Approved policy decision {decision.decision_id}.",
+                    sync_candidate=False,
+                    approved_decision_id=decision.decision_id,
+                )
+            decision.status = PaperDecisionStatus.EXECUTED
+            summary = note or f"Approved and executed policy decision {decision.decision_id}."
+        else:
+            decision.status = PaperDecisionStatus.REJECTED
+            summary = note or f"Rejected policy decision {decision.decision_id}."
+
+        session = _ensure_session_defaults(_require_paper_session(paper_session_id))
+        state = _ensure_runner_state(session.get("runner_state"))
+        state["pending_decision"] = None
+        state["last_decision"] = decision.model_dump(mode="json")
+        state["mode"] = "paused"
+        state["updated_at"] = now
+        session["runner_state"] = state
+        session["status"] = PaperSessionStatus.PAUSED.value
+        session["last_event_at"] = now
+        session["updated_at"] = now
+        _save_paper_session_any(session)
+        _revoke_durable_runner_lease(paper_session_id)
+        _append_paper_event_any(
+            _make_paper_event(
+                paper_session_id=paper_session_id,
+                candidate_id=session["candidate_id"],
+                event_type="policy_decision_resolved",
+                actor=actor,
+                summary=summary,
+                created_at=now,
+                payload={"decision": decision.model_dump(mode="json"), "approved": approved},
+            )
+        )
+
+        candidate = _require_candidate(session["candidate_id"])
+        _sync_candidate_paper_session(
+            candidate,
+            paper_session_id,
+            now,
+            session_status=session["status"],
+        )
+        _append_candidate_session_audit(
+            candidate,
+            actor=actor,
+            summary=summary,
+            created_at=now,
+        )
+        return _ensure_session_defaults(_require_paper_session(paper_session_id))
+
+
 def _runner_loop(paper_session_id: str, stop_event: Event) -> None:
     try:
         while not stop_event.is_set():
@@ -316,6 +487,35 @@ def _runner_loop(paper_session_id: str, stop_event: Event) -> None:
         _clear_runner_handle(paper_session_id, stop_event)
 
 
+def advance_historical_runner_worker_once(
+    paper_session_id: str,
+    *,
+    owner_id: str,
+    lease_token: str,
+) -> tuple[dict, str]:
+    """Advance one bar only for the process holding the active durable lease."""
+    lease = get_runner_lease(paper_session_id)
+    if not lease or not lease.get("active"):
+        raise RuntimeError("The paper runner lease is missing or expired.")
+    if lease.get("owner_id") != owner_id or lease.get("lease_token") != lease_token:
+        raise RuntimeError("The paper runner lease is owned by another worker.")
+
+    with _session_lock(paper_session_id):
+        session = _ensure_session_defaults(_require_paper_session(paper_session_id))
+        state = _ensure_runner_state(session.get("runner_state"))
+        if session.get("status") != PaperSessionStatus.RUNNING.value or state.get("mode") != "running":
+            return session, "not_running"
+        try:
+            return _advance_one_bar_locked(
+                paper_session_id,
+                actor="paper-runner",
+                keep_running=True,
+            )
+        except Exception as exc:
+            _mark_runner_failed_locked(paper_session_id, str(exc))
+            return _ensure_session_defaults(_require_paper_session(paper_session_id)), "failed"
+
+
 def _advance_one_bar_locked(
     paper_session_id: str,
     *,
@@ -329,7 +529,7 @@ def _advance_one_bar_locked(
 
     next_bar = get_next_ohlcv_bar(
         symbol=session["symbol"],
-        interval=session["interval"],
+        interval=normalise_interval(session["interval"]),
         after_time=session.get("last_bar_time"),
         start_date=state.get("start_date"),
         end_date=state.get("end_date"),
@@ -414,9 +614,45 @@ def _advance_one_bar_locked(
     signal_history.append(_normalize_bar(next_bar))
     _set_signal_history(session["paper_session_id"], signal_history)
     signal = _compute_strategy_signal(session, signal_history)
-    actions, action_label = _plan_signal_actions(session, signal)
+    state = _ensure_runner_state(session.get("runner_state"))
+    policy_mode = normalize_policy_mode(state.get("policy_mode"))
+    observation = build_market_observation(
+        session,
+        _normalize_bar(next_bar),
+        signal=signal,
+        bar_index=int(state.get("bars_processed") or 0),
+    )
+    decision = decide_with_deterministic_policy(
+        observation,
+        policy_mode=policy_mode,
+        created_at=_now(),
+    )
+    actions = list(decision.actions)
+    action_label = decision.action_label
+    approval_pending = policy_mode == PaperPolicyMode.APPROVAL_REQUIRED and decision_requires_approval(decision)
+    actions_to_execute = actions
+    risk_blocked = False
 
-    for action in actions:
+    if policy_mode == PaperPolicyMode.SHADOW:
+        actions_to_execute = []
+        decision.status = PaperDecisionStatus.SHADOWED
+    elif approval_pending:
+        actions_to_execute = []
+        decision.status = PaperDecisionStatus.PENDING_APPROVAL
+    elif policy_mode == PaperPolicyMode.AUTONOMOUS_PAPER and actions:
+        decision.risk_assessment = assess_pretrade_risk(session, decision, checked_at=_now())
+        if decision.risk_assessment.status == "blocked":
+            actions_to_execute = []
+            decision.status = PaperDecisionStatus.BLOCKED
+            risk_blocked = True
+        else:
+            decision.status = PaperDecisionStatus.EXECUTED
+    elif actions:
+        decision.status = PaperDecisionStatus.EXECUTED
+    else:
+        decision.status = PaperDecisionStatus.NO_ACTION
+
+    for action in actions_to_execute:
         execute_paper_session_action(
             paper_session_id,
             action=_runner_execution_action(action),
@@ -428,7 +664,7 @@ def _advance_one_bar_locked(
         )
         session = _ensure_session_defaults(_require_paper_session(paper_session_id))
 
-    if not actions:
+    if not actions_to_execute:
         now = _now()
         session["last_bar_time"] = bar_time
         session["last_event_at"] = now
@@ -436,26 +672,77 @@ def _advance_one_bar_locked(
         _save_paper_session_any(session)
 
     state = _ensure_runner_state(session.get("runner_state"))
-    state["mode"] = "running" if keep_running else "paused"
+    if policy_mode == PaperPolicyMode.SHADOW:
+        state["shadow_scorecard"] = update_shadow_scorecard(
+            state.get("shadow_scorecard"),
+            decision,
+        ).model_dump(mode="json")
+    state["mode"] = "paused" if approval_pending or risk_blocked else ("running" if keep_running else "paused")
     state["bars_processed"] = int(state.get("bars_processed") or 0) + 1
     state["last_candle_time"] = bar_time
     state["last_price"] = close_price
     state["last_signal"] = signal
     state["last_signal_action"] = action_label
-    state["last_signal_reason"] = _signal_reason(signal)
+    state["last_signal_reason"] = signal_reason(signal)
+    state["policy_mode"] = policy_mode.value
+    state["last_decision"] = decision.model_dump(mode="json")
+    state["pending_decision"] = decision.model_dump(mode="json") if approval_pending else None
     state["last_error"] = None
     state["updated_at"] = _now()
 
     session["runner_state"] = state
-    if keep_running:
+    if approval_pending or risk_blocked:
+        session["status"] = PaperSessionStatus.PAUSED.value
+    elif keep_running:
         session["status"] = PaperSessionStatus.RUNNING.value
     session["last_event_at"] = state["updated_at"]
     session["updated_at"] = state["updated_at"]
     _save_paper_session_any(session)
+    _append_policy_decision_event(
+        session,
+        decision,
+        actor=actor,
+        created_at=state["updated_at"],
+    )
+    if risk_blocked:
+        _append_risk_blocked_event(session, decision, actor=actor, created_at=state["updated_at"])
 
     if _runner_guardrail_breached(session):
         _mark_runner_failed_locked(paper_session_id, _runner_guardrail_breach_reason(session))
         return _ensure_session_defaults(_require_paper_session(paper_session_id)), "guardrail_breached"
+
+    if approval_pending:
+        candidate = _require_candidate(session["candidate_id"])
+        _sync_candidate_paper_session(
+            candidate,
+            paper_session_id,
+            state["updated_at"],
+            session_status=session["status"],
+        )
+        _append_candidate_session_audit(
+            candidate,
+            actor=actor,
+            summary=f"Paused for approval of policy decision {decision.decision_id}.",
+            created_at=state["updated_at"],
+        )
+        return _ensure_session_defaults(_require_paper_session(paper_session_id)), "approval_required"
+
+    if risk_blocked:
+        candidate = _require_candidate(session["candidate_id"])
+        _sync_candidate_paper_session(
+            candidate,
+            paper_session_id,
+            state["updated_at"],
+            session_status=session["status"],
+        )
+        violations = decision.risk_assessment.violations if decision.risk_assessment else []
+        _append_candidate_session_audit(
+            candidate,
+            actor=actor,
+            summary=f"Risk blocked policy decision {decision.decision_id}: {'; '.join(violations)}",
+            created_at=state["updated_at"],
+        )
+        return _ensure_session_defaults(_require_paper_session(paper_session_id)), "risk_blocked"
 
     payload = {
         "bar_time": bar_time,
@@ -463,8 +750,11 @@ def _advance_one_bar_locked(
         "synthetic_quote": session.get("last_quote"),
         "signal": signal,
         "signal_action": action_label,
-        "executed_actions": actions,
-        "auto_marked": "mark" in actions,
+        "policy_mode": policy_mode.value,
+        "decision_id": decision.decision_id,
+        "proposed_actions": actions,
+        "executed_actions": actions_to_execute,
+        "auto_marked": "mark" in actions_to_execute,
         "bars_processed": state["bars_processed"],
     }
     if not keep_running:
@@ -480,6 +770,66 @@ def _advance_one_bar_locked(
             )
         )
     return _ensure_session_defaults(_require_paper_session(paper_session_id)), "stepped"
+
+
+def _append_policy_decision_event(
+    session: dict,
+    decision: PaperPolicyDecision,
+    *,
+    actor: str,
+    created_at: str,
+) -> None:
+    mode = decision.policy_mode.value
+    if decision.status == PaperDecisionStatus.PENDING_APPROVAL:
+        summary = f"Policy proposed {decision.action_label} and paused for approval."
+    elif decision.status == PaperDecisionStatus.SHADOWED:
+        summary = f"Shadow policy observed {decision.action_label} without execution."
+    elif decision.status == PaperDecisionStatus.EXECUTED:
+        summary = f"Policy executed {decision.action_label}."
+    elif decision.status == PaperDecisionStatus.BLOCKED:
+        summary = f"Risk blocked policy action {decision.action_label}."
+    else:
+        summary = f"Policy recorded {decision.action_label}."
+
+    _append_paper_event_any(
+        _make_paper_event(
+            paper_session_id=session["paper_session_id"],
+            candidate_id=session["candidate_id"],
+            event_type="policy_decision",
+            actor=actor,
+            summary=summary,
+            created_at=created_at,
+            payload={
+                "policy_mode": mode,
+                "decision": decision.model_dump(mode="json"),
+            },
+        )
+    )
+
+
+def _append_risk_blocked_event(
+    session: dict,
+    decision: PaperPolicyDecision,
+    *,
+    actor: str,
+    created_at: str,
+) -> None:
+    assessment = decision.risk_assessment
+    violations = assessment.violations if assessment else ["Pre-trade risk assessment blocked execution."]
+    _append_paper_event_any(
+        _make_paper_event(
+            paper_session_id=session["paper_session_id"],
+            candidate_id=session["candidate_id"],
+            event_type="policy_action_blocked",
+            actor=actor,
+            summary=f"Blocked {decision.action_label}: {'; '.join(violations)}",
+            created_at=created_at,
+            payload={
+                "decision_id": decision.decision_id,
+                "risk_assessment": assessment.model_dump(mode="json") if assessment else None,
+            },
+        )
+    )
 
 
 def _mark_runner_failed_locked(paper_session_id: str, message: str) -> None:
@@ -601,6 +951,18 @@ def _runner_thread_alive(paper_session_id: str) -> bool:
         return bool(handle and handle.thread.is_alive())
 
 
+def _runner_worker_active(paper_session_id: str) -> bool:
+    if not db_configured():
+        return False
+    lease = get_runner_lease(paper_session_id)
+    return bool(lease and lease.get("active"))
+
+
+def _revoke_durable_runner_lease(paper_session_id: str) -> None:
+    if db_configured():
+        revoke_runner_lease(paper_session_id)
+
+
 def _session_lock(paper_session_id: str) -> Lock:
     with _registry_lock:
         lock = _session_locks.get(paper_session_id)
@@ -632,7 +994,7 @@ def _get_signal_history(session: dict, state: dict) -> list[dict[str, Any]]:
 
     history_df = get_ohlcv(
         symbol=session["symbol"],
-        interval=session["interval"],
+        interval=normalise_interval(session["interval"]),
         start_date=state.get("start_date"),
         end_date=session["last_bar_time"],
     )
@@ -694,37 +1056,11 @@ def _compute_strategy_signal(session: dict, bars: list[dict[str, Any]]) -> int:
 
 
 def _plan_signal_actions(session: dict, signal: int) -> tuple[list[str], str]:
-    if signal not in {-1, 0, 1}:
-        signal = 0
-
-    position = session.get("current_position") or {}
-    side = position.get("side")
-
-    if signal == 1:
-        if side == "sell":
-            return ["exit", "buy"], "flip_to_buy"
-        if side == "buy":
-            return ["mark"], "hold_long"
-        return ["buy"], "open_long"
-
-    if signal == -1:
-        if side == "buy":
-            return ["exit", "sell"], "flip_to_sell"
-        if side == "sell":
-            return ["mark"], "hold_short"
-        return ["sell"], "open_short"
-
-    if side in {"buy", "sell"}:
-        return ["mark"], "mark_open_position"
-    return [], "flat_no_signal"
+    return plan_signal_actions(session.get("current_position") or {}, signal)
 
 
 def _signal_reason(signal: int) -> str:
-    if signal == 1:
-        return "Latest strategy signal crossed bullish (+1)."
-    if signal == -1:
-        return "Latest strategy signal crossed bearish (-1)."
-    return "Latest strategy signal is flat (0)."
+    return signal_reason(signal)
 
 
 def _runner_note_for_action(action: str, signal: int) -> str:
@@ -822,8 +1158,18 @@ def _ensure_runner_state(state: dict | None) -> dict:
     current.setdefault("last_signal_action", None)
     current.setdefault("last_signal_reason", None)
     current.setdefault("auto_trade_enabled", True)
+    current.setdefault("policy_mode", PaperPolicyMode.AUTONOMOUS_PAPER.value)
+    current.setdefault("last_decision", None)
+    current.setdefault("pending_decision", None)
+    current.setdefault("shadow_scorecard", {})
+    current.setdefault("kill_switch_engaged", False)
+    current.setdefault("kill_switch_reason", None)
     current.setdefault("parity_check", {})
     current.setdefault("last_error", None)
+    current.setdefault("execution_backend", "durable_worker")
+    current.setdefault("worker_requested_at", None)
+    current.setdefault("market_event_cursor", {})
+    current.setdefault("last_market_trade", None)
     current.setdefault("updated_at", None)
     return current
 

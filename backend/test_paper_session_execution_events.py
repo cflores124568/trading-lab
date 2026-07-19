@@ -35,6 +35,72 @@ import services.paper_session_service as paper_session_service
 
 
 class PaperSessionExecutionEventTests(unittest.TestCase):
+    def test_approved_policy_decision_can_open_from_the_paused_gate(self):
+        captured_event = {}
+        session = {
+            "paper_session_id": "paper-approval",
+            "candidate_id": "cand-1",
+            "status": "paused",
+            "symbol": "NQ",
+            "interval": "5m",
+            "prop_firm_rules": {"account_size": 100_000},
+            "guardrails": {},
+            "commission": 5.0,
+            "tick_value": 5.0,
+            "tick_size": 0.25,
+            "spread_ticks": 2,
+            "volatile_bar_threshold_ticks": 12,
+            "volatile_bar_extra_ticks": 1,
+            "resting_fill_mode": "touch",
+            "current_position": {},
+            "active_order": {},
+            "active_orders": [],
+            "last_quote": {"bid": 6199.5, "ask": 6200.25, "reference": 6199.75},
+            "trade_log": [],
+            "equity_curve": [100_000.0],
+            "runner_state": {"mode": "paused"},
+            "last_bar_time": "2019-01-02T06:20:00+00:00",
+            "last_event_at": "2026-07-19T04:54:54+00:00",
+            "created_by": "test",
+            "created_at": "2026-07-19T04:47:32+00:00",
+            "updated_at": "2026-07-19T04:54:54+00:00",
+        }
+
+        with patch.object(paper_session_service, "_require_paper_session", return_value=session), patch.object(
+            paper_session_service, "_save_paper_session_any", side_effect=lambda payload: payload
+        ), patch.object(
+            paper_session_service,
+            "_append_paper_event_any",
+            side_effect=lambda payload: captured_event.update(payload),
+        ), patch.object(paper_session_service, "_now", return_value="2026-07-19T04:55:00+00:00"):
+            updated = paper_session_service.execute_paper_session_action(
+                "paper-approval",
+                action="lift_ask",
+                actor="approver",
+                sync_candidate=False,
+                approved_decision_id="decision-1",
+            )
+
+        self.assertEqual(updated["status"], "paused")
+        self.assertEqual(updated["current_position"]["side"], "buy")
+        self.assertEqual(updated["current_position"]["entry_price"], 6200.25)
+        self.assertEqual(captured_event["payload"]["approved_decision_id"], "decision-1")
+
+    def test_manual_open_remains_blocked_while_paused(self):
+        session = {
+            "paper_session_id": "paper-paused",
+            "candidate_id": "cand-1",
+            "status": "paused",
+            "symbol": "NQ",
+            "interval": "5m",
+            "tick_size": 0.25,
+            "last_quote": {"bid": 6199.5, "ask": 6200.25, "reference": 6199.75},
+        }
+
+        with patch.object(paper_session_service, "_require_paper_session", return_value=session):
+            with self.assertRaisesRegex(ValueError, "ready or running"):
+                paper_session_service.execute_paper_session_action("paper-paused", action="lift_ask")
+
     def test_reversal_open_event_keeps_the_closed_trade_payload(self):
         """Opposite taker fills should log the trade they just closed.
 

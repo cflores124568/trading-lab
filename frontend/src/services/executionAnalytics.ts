@@ -672,7 +672,13 @@ function buildPaperTapeRows(args: {
 }): ExecutionTapeRow[] {
   const { events, tickSize, tradesById } = args;
 
-  return events.map((event) => {
+  return events
+    .filter(
+      (event) =>
+        !event.event_type.startsWith("policy_decision") &&
+        event.event_type !== "policy_action_blocked",
+    )
+    .map((event) => {
     const payload = paperPayloadRecord(event.payload);
     const closedTrade = paperPayloadRecord(payload.closed_trade);
     const liquidity = paperLiquidityFromEventType(event.event_type);
@@ -722,7 +728,7 @@ function buildPaperTapeRows(args: {
           : null,
       note,
     };
-  });
+    });
 }
 
 export function buildPaperExecutionAnalytics(args: {

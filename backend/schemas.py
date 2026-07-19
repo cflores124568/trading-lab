@@ -1,6 +1,6 @@
 #Pydantic schemas for my Trading Lab API
 from enum import Enum
-from typing import Any, List, Literal, Optional
+from typing import Annotated, Any, List, Literal, Optional, Union
 from pydantic import BaseModel, Field, model_validator
 
 # Health 
@@ -233,6 +233,22 @@ class PaperSessionStatus(str, Enum):
     FAILED = "failed"
 
 
+class PaperPolicyMode(str, Enum):
+    SHADOW = "shadow"
+    APPROVAL_REQUIRED = "approval_required"
+    AUTONOMOUS_PAPER = "autonomous_paper"
+
+
+class PaperDecisionStatus(str, Enum):
+    GENERATED = "generated"
+    NO_ACTION = "no_action"
+    SHADOWED = "shadowed"
+    PENDING_APPROVAL = "pending_approval"
+    EXECUTED = "executed"
+    REJECTED = "rejected"
+    BLOCKED = "blocked"
+
+
 class PaperSessionTradeAction(str, Enum):
     BUY = "buy"
     SELL = "sell"
@@ -247,6 +263,135 @@ class PaperSessionTradeAction(str, Enum):
     REPLACE = "replace"
     CANCEL = "cancel"
     FLATTEN = "flatten"
+
+
+class PaperMarketObservation(BaseModel):
+    paper_session_id: str
+    candidate_id: str
+    symbol: str
+    interval: str
+    observed_at: str
+    bar_index: int = Field(ge=0)
+    bar: dict[str, Any]
+    signal: int = Field(ge=-1, le=1)
+    current_position: dict[str, Any] = Field(default_factory=dict)
+    active_orders: List[dict[str, Any]] = Field(default_factory=list)
+    metrics_snapshot: dict[str, Any] = Field(default_factory=dict)
+    guardrail_state: dict[str, Any] = Field(default_factory=dict)
+
+
+class PaperMarketEventBase(BaseModel):
+    event_id: str = Field(min_length=1, max_length=200)
+    source: str = Field(min_length=1, max_length=80)
+    symbol: str = Field(min_length=1, max_length=80)
+    instrument_id: Optional[str] = Field(default=None, max_length=120)
+    publisher_id: Optional[str] = Field(default=None, max_length=120)
+    event_time: str
+    received_time: str
+    sequence: int = Field(ge=0)
+
+
+class PaperBBOEvent(PaperMarketEventBase):
+    event_type: Literal["bbo"] = "bbo"
+    bid_price: float = Field(gt=0)
+    ask_price: float = Field(gt=0)
+    bid_size: float = Field(ge=0)
+    ask_size: float = Field(ge=0)
+    bid_order_count: int = Field(default=0, ge=0)
+    ask_order_count: int = Field(default=0, ge=0)
+
+
+class PaperTradeEvent(PaperMarketEventBase):
+    event_type: Literal["trade"] = "trade"
+    price: float = Field(gt=0)
+    size: float = Field(gt=0)
+    aggressor_side: Literal["buy", "sell", "unknown"] = "unknown"
+
+
+PaperMarketEvent = Annotated[
+    Union[PaperBBOEvent, PaperTradeEvent],
+    Field(discriminator="event_type"),
+]
+
+
+class PaperMarketSequenceGap(BaseModel):
+    expected_sequence: int = Field(ge=0)
+    received_sequence: int = Field(ge=0)
+    missing_count: int = Field(ge=1)
+
+
+class PaperMarketEventDisposition(BaseModel):
+    status: Literal[
+        "accepted",
+        "accepted_with_gap",
+        "duplicate",
+        "stale",
+        "rejected_locked",
+        "rejected_crossed",
+    ]
+    reason: str
+    event: PaperMarketEvent
+    gap: Optional[PaperMarketSequenceGap] = None
+    normalized_quote: Optional[dict[str, Any]] = None
+    normalized_trade: Optional[dict[str, Any]] = None
+
+
+class PaperRiskCheck(BaseModel):
+    code: str
+    passed: bool
+    summary: str
+
+
+class PaperRiskAssessment(BaseModel):
+    assessment_id: str
+    decision_id: str
+    status: Literal["approved", "blocked"]
+    checks: List[PaperRiskCheck] = Field(default_factory=list)
+    violations: List[str] = Field(default_factory=list)
+    checked_at: str
+
+
+class PaperShadowScorecard(BaseModel):
+    policy_name: str
+    policy_version: str
+    total_decisions: int = Field(default=0, ge=0)
+    actionable_decisions: int = Field(default=0, ge=0)
+    no_action_decisions: int = Field(default=0, ge=0)
+    mark_decisions: int = Field(default=0, ge=0)
+    buy_proposals: int = Field(default=0, ge=0)
+    sell_proposals: int = Field(default=0, ge=0)
+    exit_proposals: int = Field(default=0, ge=0)
+    bullish_observations: int = Field(default=0, ge=0)
+    bearish_observations: int = Field(default=0, ge=0)
+    flat_observations: int = Field(default=0, ge=0)
+    first_observed_at: Optional[str] = None
+    last_observed_at: Optional[str] = None
+    last_decision_id: Optional[str] = None
+
+
+class PaperPolicyDecision(BaseModel):
+    decision_id: str
+    paper_session_id: str
+    policy_name: str
+    policy_version: str
+    policy_mode: PaperPolicyMode
+    status: PaperDecisionStatus = PaperDecisionStatus.GENERATED
+    observed_at: str
+    signal: int = Field(ge=-1, le=1)
+    actions: List[Literal["buy", "sell", "exit", "mark"]] = Field(default_factory=list)
+    action_label: str
+    rationale: str
+    observation: PaperMarketObservation
+    created_at: str
+    risk_assessment: Optional[PaperRiskAssessment] = None
+    resolved_at: Optional[str] = None
+    resolved_by: Optional[str] = None
+
+
+class PaperDecisionResolutionRequest(BaseModel):
+    approved: bool
+    actor: str = Field(default="local-user")
+    note: Optional[str] = None
 
 
 class ExperimentBase(BaseModel):
@@ -409,11 +554,18 @@ class PaperRunnerStartRequest(BaseModel):
     end_date: Optional[str] = None
     poll_interval_ms: int = Field(default=750, ge=100, le=60_000)
     reset_cursor: bool = False
+    policy_mode: Optional[PaperPolicyMode] = None
 
 
 class PaperRunnerPauseRequest(BaseModel):
     actor: str = Field(default="local-user")
     summary: Optional[str] = None
+
+
+class PaperKillSwitchRequest(BaseModel):
+    engaged: bool
+    actor: str = Field(default="local-user")
+    reason: Optional[str] = None
 
 
 class PaperRunnerStepRequest(BaseModel):

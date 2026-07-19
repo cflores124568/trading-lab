@@ -338,6 +338,18 @@ CREATE TABLE IF NOT EXISTS paper_events (
 CREATE INDEX IF NOT EXISTS paper_events_session_created_idx
     ON paper_events (paper_session_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS paper_runner_leases (
+    paper_session_id TEXT PRIMARY KEY,
+    owner_id          TEXT NOT NULL,
+    lease_token       TEXT NOT NULL UNIQUE,
+    acquired_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    heartbeat_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at        TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS paper_runner_leases_expires_idx
+    ON paper_runner_leases (expires_at);
+
 CREATE INDEX IF NOT EXISTS paper_events_candidate_created_idx
     ON paper_events (candidate_id, created_at DESC);
 
