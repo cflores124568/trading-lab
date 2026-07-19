@@ -3,6 +3,7 @@ import type { JSX } from "solid-js";
 import {
   BarChart3,
   Beaker,
+  FlaskConical,
   CandlestickChart,
   Gauge,
   History,
@@ -25,6 +26,7 @@ const navItems = [
   { href: "/replay-sessions", label: "Replay Sessions", icon: History },
   { href: "/backtests", label: "Backtests", icon: BarChart3 },
   { href: "/experiments", label: "Experiments", icon: Beaker },
+  { href: "/alpha-lab", label: "Alpha Lab", icon: FlaskConical },
   { href: "/candidates", label: "Candidates", icon: ListChecks },
   { href: "/paper-sessions", label: "Paper Sessions", icon: CandlestickChart },
   { href: "/backtests/new", label: "New Backtest", icon: Plus, intent: "action" },
@@ -103,7 +105,7 @@ export default function AppShell(props: AppShellProps) {
       </header>
 
       <main
-        class={`mx-auto flex min-h-0 flex-1 min-w-0 max-w-screen-2xl flex-col gap-6 overflow-x-hidden px-6 py-8 ${
+        class={`mx-auto flex min-h-0 w-full flex-1 min-w-0 max-w-screen-2xl flex-col gap-6 overflow-x-hidden px-6 py-8 ${
           props.mainClass ?? ""
         }`}
       >

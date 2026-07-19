@@ -9,6 +9,8 @@ import CandidateDetailPage from "./routes/candidates/[id]";
 import CandidateRegistryPage from "./routes/candidates/index";
 import ExperimentsIndexPage from "./routes/experiments/index";
 import ExperimentDetailPage from "./routes/experiments/[id]";
+import AlphaLabIndexPage from "./routes/alpha-lab/index";
+import AlphaLabCampaignPage from "./routes/alpha-lab/[id]";
 import PaperSessionDetailPage from "./routes/paper-sessions/[id]";
 import PaperTradingGuidePage from "./routes/paper-sessions/guide";
 import PaperSessionListPage from "./routes/paper-sessions/index";
@@ -35,6 +37,8 @@ export default function App() {
       <Route path="/paper-sessions/:id" component={PaperSessionDetailPage} />
       <Route path="/experiments" component={ExperimentsIndexPage} />
       <Route path="/experiments/:id" component={ExperimentDetailPage} />
+      <Route path="/alpha-lab" component={AlphaLabIndexPage} />
+      <Route path="/alpha-lab/:id" component={AlphaLabCampaignPage} />
     </Router>
   );
 }

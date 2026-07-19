@@ -21,6 +21,7 @@ const API_ROUTES = {
   loadSymbol: "/data/load-symbol",
   backtests: "/backtests",
   experiments: "/experiments",
+  researchCampaigns: "/research-campaigns",
   candidates: "/candidates",
   replaySessions: "/replay-sessions",
   paperSessions: "/paper-sessions",
@@ -397,6 +398,16 @@ export type ExperimentScoringRule =
 export type ExperimentStatus = "draft" | "running" | "completed" | "failed";
 
 export type ExperimentRunStatus = "completed" | "failed";
+export type ResearchCampaignStatus =
+  | "draft"
+  | "queued"
+  | "running"
+  | "paused"
+  | "completed"
+  | "failed";
+export type ResearchTrialStatus = "completed" | "failed";
+export type ResearchValidationOutcome = "research_finalist" | "rejected";
+export type ResearchHoldoutStatus = "sealed" | "evaluated";
 export type CandidateLifecycleStatus =
   | "candidate"
   | "approved"
@@ -573,6 +584,153 @@ export interface ExperimentRunResult {
 export interface ExperimentExecutionResult {
   experiment: ExperimentResult;
   results: ExperimentRunResult[];
+}
+
+export interface ResearchPartition {
+  partition_name: "development" | "validation" | "holdout";
+  start_time: string;
+  end_time: string;
+  bar_count: number;
+}
+
+export interface ResearchCampaignAuditEvent {
+  research_campaign_event_id: string;
+  campaign_id: string;
+  event_type: string;
+  actor: string;
+  summary: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface ResearchCampaignSummary {
+  campaign_id: string;
+  name: string;
+  symbol: string;
+  interval: string;
+  start_time: string;
+  end_time: string;
+  development_pct: number;
+  validation_pct: number;
+  holdout_pct: number;
+  status: ResearchCampaignStatus;
+  total_bar_count: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  search_config?: {
+    strategy_type?: StrategyValue;
+    parameter_space?: Record<string, unknown[]>;
+    execution_config?: Record<string, unknown>;
+  } | null;
+  trial_budget?: number | null;
+  wall_clock_budget_seconds?: number | null;
+  search_progress: Record<string, unknown>;
+  queued_at?: string | null;
+  started_at?: string | null;
+  deadline_at?: string | null;
+}
+
+export interface ResearchCampaignResult extends ResearchCampaignSummary {
+  partitions: ResearchPartition[];
+  audit_events: ResearchCampaignAuditEvent[];
+}
+
+export interface ResearchCampaignCreateRequest {
+  name: string;
+  symbol: string;
+  interval: string;
+  start_time: string;
+  end_time: string;
+  development_pct: number;
+  validation_pct: number;
+  holdout_pct: number;
+  created_by?: string;
+}
+
+export interface ResearchCampaignQueueRequest {
+  strategy_type: StrategyValue;
+  parameter_space: Record<string, unknown[]>;
+  execution_config: Record<string, unknown>;
+  trial_budget: number;
+  wall_clock_budget_seconds: number;
+  actor?: string;
+}
+
+export interface ResearchTrialResult {
+  trial_id: string;
+  campaign_id: string;
+  fingerprint: string;
+  strategy_type: StrategyValue;
+  strategy_params: Record<string, unknown>;
+  execution_config: Record<string, unknown>;
+  random_seed: number;
+  status: ResearchTrialStatus;
+  result?: Record<string, unknown> | null;
+  error?: string | null;
+  created_by: string;
+  created_at: string;
+  completed_at: string;
+  was_duplicate: boolean;
+}
+
+export interface ResearchCostStressResult {
+  cost_multiplier: 1 | 1.5 | 2;
+  metrics: {
+    total_pnl: number;
+    max_drawdown: number;
+    total_trades: number;
+    profit_factor: number;
+  };
+}
+
+export interface ResearchValidationResult {
+  evaluation_id: string;
+  campaign_id: string;
+  trial_id: string;
+  outcome: ResearchValidationOutcome;
+  robustness_score: number;
+  score_components: Record<string, number>;
+  gates: Record<string, boolean>;
+  rejection_reasons: string[];
+  warnings: string[];
+  diagnostics: Record<string, unknown>;
+  evidence: {
+    walk_forward_mode: "rolling" | "expanding";
+    folds: Array<{
+      fold_index: number;
+      train_start: string;
+      train_end: string;
+      test_start: string;
+      test_end: string;
+      regime: string;
+      cost_stresses: ResearchCostStressResult[];
+    }>;
+  } & Record<string, unknown>;
+  created_at: string;
+}
+
+export interface ResearchFinalistResult {
+  campaign_id: string;
+  trial_id: string;
+  evaluation_id: string;
+  frozen_validation_score: number;
+  holdout_status: ResearchHoldoutStatus;
+  holdout_result?: Record<string, unknown> | null;
+  frozen_by: string;
+  frozen_at: string;
+  holdout_evaluated_at?: string | null;
+}
+
+export interface ResearchCandidatePromotionResult {
+  research_candidate_id: string;
+  campaign_id: string;
+  trial_id: string;
+  evaluation_id: string;
+  validation_score: number;
+  promotion_reason: string;
+  promoted_by: string;
+  promoted_at: string;
 }
 
 export interface CandidateNote {
@@ -1264,4 +1422,98 @@ export const loadSymbolWithInterval = async (
     start_date,
     end_date,
   });
+};
+
+export const fetchResearchCampaigns = async (): Promise<ResearchCampaignSummary[]> => {
+  return api<ResearchCampaignSummary[]>(`${API_ROUTES.researchCampaigns}/?limit=100`);
+};
+
+export const fetchResearchCampaign = async (campaignId: string): Promise<ResearchCampaignResult> => {
+  return api<ResearchCampaignResult>(`${API_ROUTES.researchCampaigns}/${campaignId}`);
+};
+
+export const createResearchCampaign = async (
+  payload: ResearchCampaignCreateRequest,
+): Promise<ResearchCampaignResult> => {
+  return api<ResearchCampaignResult>(`${API_ROUTES.researchCampaigns}/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+};
+
+export const queueResearchCampaign = async (
+  campaignId: string,
+  payload: ResearchCampaignQueueRequest,
+): Promise<ResearchCampaignResult> => {
+  return api<ResearchCampaignResult>(`${API_ROUTES.researchCampaigns}/${campaignId}/queue`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+};
+
+export const pauseResearchCampaign = async (campaignId: string): Promise<ResearchCampaignResult> => {
+  return api<ResearchCampaignResult>(`${API_ROUTES.researchCampaigns}/${campaignId}/pause`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ actor: "local-user" }),
+  });
+};
+
+export const resumeResearchCampaign = async (campaignId: string): Promise<ResearchCampaignResult> => {
+  return api<ResearchCampaignResult>(`${API_ROUTES.researchCampaigns}/${campaignId}/resume`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ actor: "local-user" }),
+  });
+};
+
+export const fetchResearchTrials = async (campaignId: string): Promise<ResearchTrialResult[]> => {
+  return api<ResearchTrialResult[]>(`${API_ROUTES.researchCampaigns}/${campaignId}/trials?limit=100`);
+};
+
+export const fetchResearchValidation = async (
+  campaignId: string,
+  trialId: string,
+): Promise<ResearchValidationResult | null> => {
+  try {
+    return await api<ResearchValidationResult>(
+      `${API_ROUTES.researchCampaigns}/${campaignId}/trials/${trialId}/validation`,
+    );
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("Research validation not found")) {
+      return null;
+    }
+    throw error;
+  }
+};
+
+export const fetchResearchFinalists = async (campaignId: string): Promise<ResearchFinalistResult[]> => {
+  return api<ResearchFinalistResult[]>(
+    `${API_ROUTES.researchCampaigns}/${campaignId}/finalists?limit=100`,
+  );
+};
+
+export const fetchResearchCandidatePromotions = async (
+  campaignId: string,
+): Promise<ResearchCandidatePromotionResult[]> => {
+  return api<ResearchCandidatePromotionResult[]>(
+    `${API_ROUTES.researchCampaigns}/${campaignId}/candidate-promotions?limit=100`,
+  );
+};
+
+export const promoteResearchCandidate = async (
+  campaignId: string,
+  trialId: string,
+  promotionReason: string,
+): Promise<ResearchCandidatePromotionResult> => {
+  return api<ResearchCandidatePromotionResult>(
+    `${API_ROUTES.researchCampaigns}/${campaignId}/trials/${trialId}/promote`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ promotion_reason: promotionReason, actor: "local-user" }),
+    },
+  );
 };
