@@ -1,4 +1,6 @@
 #Pydantic schemas for my Trading Lab API
+from datetime import datetime
+from decimal import Decimal
 from enum import Enum
 from typing import Annotated, Any, List, Literal, Optional, Union
 from pydantic import BaseModel, Field, model_validator
@@ -206,6 +208,38 @@ class ExperimentStatus(str, Enum):
 class ExperimentRunStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class ResearchCampaignStatus(str, Enum):
+    DRAFT = "draft"
+    QUEUED = "queued"
+    RUNNING = "running"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class ResearchTrialStatus(str, Enum):
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class ResearchHypothesisAttemptStatus(str, Enum):
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    DUPLICATE = "duplicate"
+    NEAR_DUPLICATE = "near_duplicate"
+    BUDGET_REJECTED = "budget_rejected"
+
+
+class ResearchValidationOutcome(str, Enum):
+    RESEARCH_FINALIST = "research_finalist"
+    REJECTED = "rejected"
+
+
+class ResearchHoldoutStatus(str, Enum):
+    SEALED = "sealed"
+    EVALUATED = "evaluated"
 
 
 class CandidateLifecycleStatus(str, Enum):
@@ -461,6 +495,299 @@ class ExperimentRunResult(BaseModel):
 class ExperimentExecutionResult(BaseModel):
     experiment: ExperimentResult
     results: List[ExperimentRunResult]
+
+
+class ResearchSplitConfig(BaseModel):
+    development_pct: float = Field(default=60.0, gt=0, lt=100)
+    validation_pct: float = Field(default=20.0, gt=0, lt=100)
+    holdout_pct: float = Field(default=20.0, gt=0, lt=100)
+
+    @model_validator(mode="after")
+    def _require_complete_split(self) -> "ResearchSplitConfig":
+        percentages = [
+            Decimal(str(self.development_pct)),
+            Decimal(str(self.validation_pct)),
+            Decimal(str(self.holdout_pct)),
+        ]
+        if any(value.as_tuple().exponent < -4 for value in percentages):
+            raise ValueError("research split percentages support at most four decimal places.")
+        if sum(percentages) != Decimal("100"):
+            raise ValueError("development, validation, and holdout percentages must total exactly 100.")
+        return self
+
+
+class ResearchCampaignCreate(ResearchSplitConfig):
+    name: str = Field(min_length=1, max_length=160)
+    symbol: str = Field(min_length=1, max_length=32)
+    interval: str = Field(min_length=1, max_length=16)
+    start_time: datetime
+    end_time: datetime
+    created_by: str = Field(default="local-user", min_length=1, max_length=120)
+
+
+class ResearchPartition(BaseModel):
+    partition_name: Literal["development", "validation", "holdout"]
+    start_time: datetime
+    end_time: datetime
+    bar_count: int = Field(ge=1)
+
+
+class ResearchCampaignAuditEvent(BaseModel):
+    research_campaign_event_id: str
+    campaign_id: str
+    event_type: str
+    actor: str
+    summary: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+
+class ResearchCampaignSummary(ResearchSplitConfig):
+    campaign_id: str
+    name: str
+    symbol: str
+    interval: str
+    start_time: datetime
+    end_time: datetime
+    status: ResearchCampaignStatus
+    total_bar_count: int = Field(ge=3)
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
+    search_config: Optional[dict[str, Any]] = None
+    trial_budget: Optional[int] = None
+    wall_clock_budget_seconds: Optional[int] = None
+    search_progress: dict[str, Any] = Field(default_factory=dict)
+    queued_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    deadline_at: Optional[datetime] = None
+
+
+class ResearchCampaignResult(ResearchCampaignSummary):
+    partitions: List[ResearchPartition] = Field(min_length=3, max_length=3)
+    audit_events: List[ResearchCampaignAuditEvent] = Field(default_factory=list)
+
+
+class ResearchCampaignQueueRequest(BaseModel):
+    strategy_type: StrategyType
+    parameter_space: dict[str, List[Any]] = Field(default_factory=dict)
+    execution_config: dict[str, Any] = Field(default_factory=dict)
+    trial_budget: int = Field(ge=1, le=10_000)
+    wall_clock_budget_seconds: int = Field(ge=10, le=604_800)
+    actor: str = Field(default="local-user", min_length=1, max_length=120)
+
+    @model_validator(mode="after")
+    def _validate_parameter_space(self) -> "ResearchCampaignQueueRequest":
+        combinations = 1
+        for key, values in self.parameter_space.items():
+            if not key.strip() or not values:
+                raise ValueError("parameter_space requires non-empty keys and value lists.")
+            combinations *= len(values)
+            if combinations > 100_000:
+                raise ValueError("parameter_space expands beyond the 100,000-plan safety limit.")
+        return self
+
+
+class ResearchCampaignControlRequest(BaseModel):
+    actor: str = Field(default="local-user", min_length=1, max_length=120)
+
+
+class ResearchTrialCreate(BaseModel):
+    strategy_type: StrategyType
+    strategy_params: dict[str, Any] = Field(default_factory=dict)
+    execution_config: dict[str, Any] = Field(default_factory=dict)
+    random_seed: int = 0
+    status: ResearchTrialStatus
+    result: Optional[dict[str, Any]] = None
+    error: Optional[str] = Field(default=None, max_length=4000)
+    created_by: str = Field(default="local-user", min_length=1, max_length=120)
+
+    @model_validator(mode="after")
+    def _require_terminal_outcome(self) -> "ResearchTrialCreate":
+        if self.status == ResearchTrialStatus.COMPLETED and self.error is not None:
+            raise ValueError("completed trials cannot include an error.")
+        if self.status == ResearchTrialStatus.FAILED and not self.error:
+            raise ValueError("failed trials must include an error.")
+        return self
+
+
+class ResearchTrialResult(BaseModel):
+    trial_id: str
+    campaign_id: str
+    fingerprint: str
+    strategy_type: StrategyType
+    strategy_params: dict[str, Any] = Field(default_factory=dict)
+    execution_config: dict[str, Any] = Field(default_factory=dict)
+    random_seed: int
+    status: ResearchTrialStatus
+    result: Optional[dict[str, Any]] = None
+    error: Optional[str] = None
+    created_by: str
+    created_at: datetime
+    completed_at: datetime
+    was_duplicate: bool = False
+
+
+class ResearchHypothesisBudgetRequest(BaseModel):
+    hypothesis_budget: int = Field(ge=1, le=1_000)
+    trial_budget: int = Field(ge=1, le=1_000)
+    actor: str = Field(default="local-user", min_length=1, max_length=120)
+
+
+class ResearchHypothesisBudgetResult(BaseModel):
+    campaign_id: str
+    hypothesis_budget: int = Field(ge=1, le=1_000)
+    trial_budget: int = Field(ge=1, le=1_000)
+    attempted_hypotheses: int = Field(ge=0)
+    accepted_hypotheses: int = Field(ge=0)
+    executed_trials: int = Field(ge=0)
+
+
+class ResearchHypothesisProposal(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    rationale: str = Field(min_length=1, max_length=2_000)
+    expected_market_behavior: str = Field(min_length=1, max_length=2_000)
+    strategy_primitive: str = Field(min_length=1, max_length=80)
+    strategy_params: dict[str, Any] = Field(default_factory=dict)
+    proposed_by: str = Field(default="research-agent", min_length=1, max_length=120)
+
+
+class ResearchHypothesisTrialContract(BaseModel):
+    strategy_type: StrategyType
+    strategy_params: dict[str, Any]
+    execution_config: dict[str, Any]
+    random_seed: int
+
+
+class ResearchHypothesisAttemptResult(BaseModel):
+    hypothesis_attempt_id: str
+    campaign_id: str
+    fingerprint: str
+    near_duplicate_key: Optional[str] = None
+    status: ResearchHypothesisAttemptStatus
+    proposal: ResearchHypothesisProposal
+    compiled_trial: Optional[ResearchHypothesisTrialContract] = None
+    rejection_reasons: List[str] = Field(default_factory=list)
+    duplicate_of_attempt_id: Optional[str] = None
+    trial_id: Optional[str] = None
+    created_at: datetime
+
+
+class ResearchHypothesisExecuteRequest(BaseModel):
+    actor: str = Field(default="local-user", min_length=1, max_length=120)
+
+
+class ResearchMetricSnapshot(BaseModel):
+    total_pnl: float = Field(allow_inf_nan=False)
+    max_drawdown: float = Field(ge=0, allow_inf_nan=False)
+    total_trades: int = Field(ge=0)
+    profit_factor: float = Field(ge=0, allow_inf_nan=False)
+
+
+class ResearchCostStressResult(BaseModel):
+    cost_multiplier: Literal[1.0, 1.5, 2.0]
+    metrics: ResearchMetricSnapshot
+
+
+class ResearchWalkForwardFoldEvidence(BaseModel):
+    fold_index: int = Field(ge=1)
+    train_start: datetime
+    train_end: datetime
+    test_start: datetime
+    test_end: datetime
+    regime: str = Field(default="unspecified", min_length=1, max_length=80)
+    cost_stresses: List[ResearchCostStressResult] = Field(min_length=3, max_length=3)
+
+    @model_validator(mode="after")
+    def _require_all_cost_stresses(self) -> "ResearchWalkForwardFoldEvidence":
+        multipliers = sorted(item.cost_multiplier for item in self.cost_stresses)
+        if multipliers != [1.0, 1.5, 2.0]:
+            raise ValueError("each fold must include exactly one base, 1.5x, and 2x cost result.")
+        return self
+
+
+class ResearchNeighborEvidence(BaseModel):
+    strategy_params: dict[str, Any]
+    validation_total_pnl: float = Field(allow_inf_nan=False)
+
+
+class ResearchConcentrationEvidence(BaseModel):
+    symbol: str = Field(min_length=1, max_length=32)
+    interval: str = Field(min_length=1, max_length=16)
+    total_pnl: float = Field(allow_inf_nan=False)
+    total_trades: int = Field(ge=0)
+
+
+class ResearchValidationRequest(BaseModel):
+    walk_forward_mode: Literal["rolling", "expanding"] = "expanding"
+    folds: List[ResearchWalkForwardFoldEvidence] = Field(min_length=2, max_length=12)
+    neighbors: List[ResearchNeighborEvidence] = Field(default_factory=list, max_length=50)
+    concentration_slices: List[ResearchConcentrationEvidence] = Field(default_factory=list, max_length=50)
+    min_trades_per_fold: int = Field(default=5, ge=1, le=10_000)
+    min_fold_coverage: float = Field(default=0.67, gt=0, le=1, allow_inf_nan=False)
+    max_allowed_drawdown: float = Field(default=0.10, gt=0, le=1, allow_inf_nan=False)
+    parameter_cliff_threshold: float = Field(default=0.50, gt=0, le=1, allow_inf_nan=False)
+    campaign_trial_count: int = Field(default=1, ge=1)
+    actor: str = Field(default="local-user", min_length=1, max_length=120)
+
+
+class ResearchValidationResult(BaseModel):
+    evaluation_id: str
+    campaign_id: str
+    trial_id: str
+    outcome: ResearchValidationOutcome
+    robustness_score: float = Field(ge=0, le=100)
+    score_components: dict[str, float]
+    gates: dict[str, bool]
+    rejection_reasons: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    diagnostics: dict[str, Any]
+    evidence: ResearchValidationRequest
+    created_at: datetime
+
+
+class ResearchFinalistFreezeRequest(BaseModel):
+    actor: str = Field(default="local-user", min_length=1, max_length=120)
+
+
+class ResearchFinalistResult(BaseModel):
+    campaign_id: str
+    trial_id: str
+    evaluation_id: str
+    frozen_validation_score: float = Field(ge=0, le=100)
+    holdout_status: ResearchHoldoutStatus
+    holdout_result: Optional[dict[str, Any]] = None
+    frozen_by: str
+    frozen_at: datetime
+    holdout_evaluated_at: Optional[datetime] = None
+
+
+class ResearchCandidatePromotionRequest(BaseModel):
+    promotion_reason: str = Field(min_length=1, max_length=1000)
+    actor: str = Field(default="local-user", min_length=1, max_length=120)
+
+
+class ResearchCandidatePromotionResult(BaseModel):
+    research_candidate_id: str
+    campaign_id: str
+    trial_id: str
+    evaluation_id: str
+    validation_score: float = Field(ge=0, le=100)
+    promotion_reason: str
+    promoted_by: str
+    promoted_at: datetime
+
+
+class ResearchHoldoutEvaluationRequest(BaseModel):
+    cost_stresses: List[ResearchCostStressResult] = Field(min_length=3, max_length=3)
+    actor: str = Field(default="local-user", min_length=1, max_length=120)
+
+    @model_validator(mode="after")
+    def _require_all_cost_stresses(self) -> "ResearchHoldoutEvaluationRequest":
+        multipliers = sorted(item.cost_multiplier for item in self.cost_stresses)
+        if multipliers != [1.0, 1.5, 2.0]:
+            raise ValueError("holdout evaluation requires exactly one base, 1.5x, and 2x cost result.")
+        return self
 
 
 class CandidateNote(BaseModel):

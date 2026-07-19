@@ -392,3 +392,254 @@ CREATE INDEX IF NOT EXISTS datasets_source_kind_idx
 
 CREATE INDEX IF NOT EXISTS datasets_symbol_idx
     ON datasets (symbol);
+
+-- Phase 4A Alpha Lab research foundation
+CREATE TABLE IF NOT EXISTS research_campaigns (
+    campaign_id       TEXT PRIMARY KEY,
+    name              TEXT NOT NULL,
+    symbol            TEXT NOT NULL,
+    interval          TEXT NOT NULL,
+    start_time        TIMESTAMPTZ NOT NULL,
+    end_time          TIMESTAMPTZ NOT NULL,
+    development_pct   NUMERIC(7,4) NOT NULL,
+    validation_pct    NUMERIC(7,4) NOT NULL,
+    holdout_pct       NUMERIC(7,4) NOT NULL,
+    status            TEXT NOT NULL DEFAULT 'draft',
+    total_bar_count   INTEGER NOT NULL,
+    created_by        TEXT NOT NULL DEFAULT 'local-user',
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT research_campaign_time_order CHECK (start_time <= end_time),
+    CONSTRAINT research_campaign_split_total CHECK (
+        development_pct > 0 AND validation_pct > 0 AND holdout_pct > 0
+        AND development_pct + validation_pct + holdout_pct = 100
+    ),
+    CONSTRAINT research_campaign_status_check CHECK (
+        status IN ('draft', 'queued', 'running', 'paused', 'completed', 'failed')
+    ),
+    CONSTRAINT research_campaign_bar_count CHECK (total_bar_count >= 3)
+);
+
+ALTER TABLE research_campaigns ADD COLUMN IF NOT EXISTS search_config JSONB;
+ALTER TABLE research_campaigns ADD COLUMN IF NOT EXISTS trial_budget INTEGER;
+ALTER TABLE research_campaigns ADD COLUMN IF NOT EXISTS wall_clock_budget_seconds INTEGER;
+ALTER TABLE research_campaigns ADD COLUMN IF NOT EXISTS search_progress JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE research_campaigns ADD COLUMN IF NOT EXISTS queued_at TIMESTAMPTZ;
+ALTER TABLE research_campaigns ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
+ALTER TABLE research_campaigns ADD COLUMN IF NOT EXISTS deadline_at TIMESTAMPTZ;
+ALTER TABLE research_campaigns ADD COLUMN IF NOT EXISTS hypothesis_budget INTEGER;
+ALTER TABLE research_campaigns ADD COLUMN IF NOT EXISTS hypothesis_trial_budget INTEGER;
+
+CREATE TABLE IF NOT EXISTS research_campaign_partitions (
+    campaign_id       TEXT NOT NULL REFERENCES research_campaigns(campaign_id),
+    partition_name    TEXT NOT NULL,
+    start_time        TIMESTAMPTZ NOT NULL,
+    end_time          TIMESTAMPTZ NOT NULL,
+    bar_count         INTEGER NOT NULL,
+    PRIMARY KEY (campaign_id, partition_name),
+    CONSTRAINT research_partition_name_check CHECK (
+        partition_name IN ('development', 'validation', 'holdout')
+    ),
+    CONSTRAINT research_partition_time_order CHECK (start_time <= end_time),
+    CONSTRAINT research_partition_bar_count CHECK (bar_count > 0)
+);
+
+CREATE TABLE IF NOT EXISTS research_trials (
+    trial_id          TEXT PRIMARY KEY,
+    campaign_id       TEXT NOT NULL REFERENCES research_campaigns(campaign_id),
+    fingerprint       TEXT NOT NULL,
+    strategy_type     TEXT NOT NULL,
+    strategy_params   JSONB NOT NULL DEFAULT '{}'::jsonb,
+    execution_config  JSONB NOT NULL DEFAULT '{}'::jsonb,
+    random_seed       BIGINT NOT NULL DEFAULT 0,
+    status            TEXT NOT NULL,
+    result            JSONB,
+    error             TEXT,
+    created_by        TEXT NOT NULL DEFAULT 'local-user',
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at      TIMESTAMPTZ NOT NULL,
+    CONSTRAINT research_trial_status_check CHECK (status IN ('completed', 'failed')),
+    CONSTRAINT research_trial_outcome_check CHECK (
+        (status = 'completed' AND error IS NULL) OR
+        (status = 'failed' AND error IS NOT NULL)
+    ),
+    UNIQUE (campaign_id, fingerprint)
+);
+
+CREATE TABLE IF NOT EXISTS research_campaign_leases (
+    campaign_id TEXT PRIMARY KEY REFERENCES research_campaigns(campaign_id),
+    owner_id TEXT NOT NULL,
+    lease_token TEXT NOT NULL UNIQUE,
+    acquired_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    heartbeat_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS research_campaign_leases_expires_idx ON research_campaign_leases (expires_at);
+
+CREATE TABLE IF NOT EXISTS research_trial_evaluations (
+    evaluation_id TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL REFERENCES research_campaigns(campaign_id),
+    trial_id TEXT NOT NULL REFERENCES research_trials(trial_id),
+    evidence_fingerprint TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    robustness_score DOUBLE PRECISION NOT NULL,
+    score_components JSONB NOT NULL,
+    gates JSONB NOT NULL,
+    rejection_reasons JSONB NOT NULL DEFAULT '[]'::jsonb,
+    warnings JSONB NOT NULL DEFAULT '[]'::jsonb,
+    diagnostics JSONB NOT NULL,
+    evidence JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT research_evaluation_outcome_check CHECK (outcome IN ('research_finalist', 'rejected')),
+    CONSTRAINT research_evaluation_score_check CHECK (robustness_score >= 0 AND robustness_score <= 100),
+    UNIQUE (trial_id),
+    UNIQUE (trial_id, evidence_fingerprint)
+);
+
+CREATE TABLE IF NOT EXISTS research_campaign_finalists (
+    campaign_id TEXT NOT NULL REFERENCES research_campaigns(campaign_id),
+    trial_id TEXT NOT NULL REFERENCES research_trials(trial_id),
+    evaluation_id TEXT NOT NULL REFERENCES research_trial_evaluations(evaluation_id),
+    frozen_validation_score DOUBLE PRECISION NOT NULL,
+    holdout_status TEXT NOT NULL DEFAULT 'sealed',
+    holdout_result JSONB,
+    frozen_by TEXT NOT NULL,
+    frozen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    holdout_evaluated_at TIMESTAMPTZ,
+    PRIMARY KEY (campaign_id, trial_id),
+    CONSTRAINT research_finalist_holdout_status_check CHECK (holdout_status IN ('sealed', 'evaluated')),
+    CONSTRAINT research_finalist_score_check CHECK (
+        frozen_validation_score >= 0 AND frozen_validation_score <= 100
+    ),
+    CONSTRAINT research_finalist_holdout_state_check CHECK (
+        (holdout_status = 'sealed' AND holdout_result IS NULL AND holdout_evaluated_at IS NULL)
+        OR (holdout_status = 'evaluated' AND holdout_result IS NOT NULL AND holdout_evaluated_at IS NOT NULL)
+    )
+);
+
+CREATE TABLE IF NOT EXISTS research_candidate_promotions (
+    research_candidate_id TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL REFERENCES research_campaigns(campaign_id),
+    trial_id TEXT NOT NULL REFERENCES research_trials(trial_id),
+    evaluation_id TEXT NOT NULL REFERENCES research_trial_evaluations(evaluation_id),
+    validation_score DOUBLE PRECISION NOT NULL,
+    promotion_reason TEXT NOT NULL,
+    promoted_by TEXT NOT NULL,
+    promoted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT research_candidate_validation_score_check CHECK (
+        validation_score >= 0 AND validation_score <= 100
+    ),
+    UNIQUE (campaign_id, trial_id)
+);
+
+CREATE INDEX IF NOT EXISTS research_evaluations_campaign_score_idx
+    ON research_trial_evaluations (campaign_id, robustness_score DESC);
+CREATE INDEX IF NOT EXISTS research_finalists_campaign_frozen_idx
+    ON research_campaign_finalists (campaign_id, frozen_at DESC);
+CREATE INDEX IF NOT EXISTS research_candidate_promotions_campaign_idx
+    ON research_candidate_promotions (campaign_id, promoted_at DESC);
+
+CREATE TABLE IF NOT EXISTS research_campaign_events (
+    research_campaign_event_id TEXT PRIMARY KEY,
+    campaign_id       TEXT NOT NULL REFERENCES research_campaigns(campaign_id),
+    event_type        TEXT NOT NULL,
+    actor             TEXT NOT NULL DEFAULT 'local-user',
+    summary           TEXT NOT NULL,
+    payload           JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS research_campaigns_created_idx
+    ON research_campaigns (created_at DESC);
+CREATE INDEX IF NOT EXISTS research_campaigns_status_idx
+    ON research_campaigns (status, created_at DESC);
+CREATE INDEX IF NOT EXISTS research_trials_campaign_created_idx
+    ON research_trials (campaign_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS research_trials_campaign_status_idx
+    ON research_trials (campaign_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS research_campaign_events_created_idx
+    ON research_campaign_events (campaign_id, created_at DESC);
+
+-- Phase 4E keeps every agent proposal as an immutable attempt. Only accepted
+-- attempts contain a compiled trial contract, and execution remains a separate
+-- human-triggered research action.
+CREATE TABLE IF NOT EXISTS research_hypothesis_attempts (
+    hypothesis_attempt_id TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL REFERENCES research_campaigns(campaign_id),
+    fingerprint TEXT NOT NULL,
+    near_duplicate_key TEXT,
+    status TEXT NOT NULL,
+    proposal JSONB NOT NULL,
+    compiled_trial JSONB,
+    rejection_reasons JSONB NOT NULL DEFAULT '[]'::jsonb,
+    duplicate_of_attempt_id TEXT REFERENCES research_hypothesis_attempts(hypothesis_attempt_id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT research_hypothesis_status_check CHECK (
+        status IN ('accepted', 'rejected', 'duplicate', 'near_duplicate', 'budget_rejected')
+    ),
+    CONSTRAINT research_hypothesis_compilation_check CHECK (
+        (status = 'accepted' AND compiled_trial IS NOT NULL AND jsonb_array_length(rejection_reasons) = 0)
+        OR (status <> 'accepted' AND compiled_trial IS NULL AND jsonb_array_length(rejection_reasons) > 0)
+    )
+);
+
+CREATE TABLE IF NOT EXISTS research_hypothesis_trial_links (
+    hypothesis_attempt_id TEXT PRIMARY KEY REFERENCES research_hypothesis_attempts(hypothesis_attempt_id),
+    trial_id TEXT NOT NULL REFERENCES research_trials(trial_id),
+    executed_by TEXT NOT NULL,
+    executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS research_hypothesis_attempts_campaign_created_idx
+    ON research_hypothesis_attempts (campaign_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS research_hypothesis_attempts_fingerprint_idx
+    ON research_hypothesis_attempts (campaign_id, fingerprint);
+
+CREATE OR REPLACE FUNCTION reject_research_trial_evaluation_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'research trial evaluations are immutable';
+END;
+$$;
+
+DROP TRIGGER IF EXISTS research_trial_evaluations_immutable ON research_trial_evaluations;
+CREATE TRIGGER research_trial_evaluations_immutable
+BEFORE UPDATE OR DELETE ON research_trial_evaluations
+FOR EACH ROW EXECUTE FUNCTION reject_research_trial_evaluation_mutation();
+
+
+CREATE OR REPLACE FUNCTION reject_research_campaign_event_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'research campaign audit events are append-only';
+END;
+$$;
+
+DROP TRIGGER IF EXISTS research_campaign_events_append_only ON research_campaign_events;
+CREATE TRIGGER research_campaign_events_append_only
+BEFORE UPDATE OR DELETE ON research_campaign_events
+FOR EACH ROW EXECUTE FUNCTION reject_research_campaign_event_mutation();
+
+CREATE OR REPLACE FUNCTION reject_research_hypothesis_attempt_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'research hypothesis attempts are immutable';
+END;
+$$;
+
+DROP TRIGGER IF EXISTS research_hypothesis_attempts_immutable ON research_hypothesis_attempts;
+CREATE TRIGGER research_hypothesis_attempts_immutable
+BEFORE UPDATE OR DELETE ON research_hypothesis_attempts
+FOR EACH ROW EXECUTE FUNCTION reject_research_hypothesis_attempt_mutation();
+
+CREATE OR REPLACE FUNCTION reject_research_hypothesis_trial_link_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'research hypothesis trial links are immutable';
+END;
+$$;
+
+DROP TRIGGER IF EXISTS research_hypothesis_trial_links_immutable ON research_hypothesis_trial_links;
+CREATE TRIGGER research_hypothesis_trial_links_immutable
+BEFORE UPDATE OR DELETE ON research_hypothesis_trial_links
+FOR EACH ROW EXECUTE FUNCTION reject_research_hypothesis_trial_link_mutation();

@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from routers import backtests, candidates, data, experiments, paper_sessions, prop_firms, replay_sessions
+from routers import backtests, candidates, data, experiments, paper_sessions, prop_firms, replay_sessions, research_campaigns
 from services.backtest_store import list_backtests
 from services.candidate_store import list_candidates
 from services.paper_runner_service import stop_all_historical_runners
@@ -44,6 +44,11 @@ app.include_router(paper_sessions.router, prefix="/api/paper-sessions", tags=["P
 app.include_router(replay_sessions.router, prefix="/api/replay-sessions", tags=["Replay Sessions"])
 app.include_router(data.router, prefix="/api/data", tags=["Market Data"])
 app.include_router(prop_firms.router, prefix="/api/prop-firms", tags=["Prop Firms"])
+app.include_router(
+    research_campaigns.router,
+    prefix="/api/research-campaigns",
+    tags=["Alpha Lab Research"],
+)
 
 @app.get("/health") 
 async def health():

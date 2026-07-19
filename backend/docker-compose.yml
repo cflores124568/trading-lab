@@ -68,6 +68,27 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── Durable Alpha Lab search worker ────────────────────────────────────────
+  research_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trading_lab_research_worker
+    restart: unless-stopped
+    command: ["python", "research_search_worker.py"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-trading}:${POSTGRES_PASSWORD:-trading}@db:5432/${POSTGRES_DB:-trading_lab}
+    volumes:
+      - ./data:/app/data:ro
+    healthcheck:
+      test: ["CMD", "python", "research_search_worker.py", "--healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   pgdata:
     driver: local
