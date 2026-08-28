@@ -1,0 +1,99 @@
+name: trading-lab
+
+x-backend: &backend
+  build:
+    context: ./backend
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  depends_on:
+    db:
+      condition: service_healthy
+  environment:
+    DATABASE_URL: postgresql://${POSTGRES_USER:-trading}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-trading_lab}
+  volumes:
+    - ./backend/data:/app/data:ro
+  logging:
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  db:
+    image: timescale/timescaledb:latest-pg16@sha256:289d55704b1b3ee8263cd3805c6930f9cd54506835a8f19f9b85dad17d5c5a8a
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-trading}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-trading_lab}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trading} -d ${POSTGRES_DB:-trading_lab}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  api:
+    <<: *backend
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-trading}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-trading_lab}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost}
+      DATABENTO_API_KEY: ${DATABENTO_API_KEY:-}
+      DEBUG: "false"
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+
+  paper_runner:
+    <<: *backend
+    command: ["python", "paper_runner_worker.py"]
+    healthcheck:
+      test: ["CMD", "python", "paper_runner_worker.py", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  research_worker:
+    <<: *backend
+    command: ["python", "research_search_worker.py"]
+    healthcheck:
+      test: ["CMD", "python", "research_search_worker.py", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  pgdata:

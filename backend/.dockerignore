@@ -2,26 +2,22 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.Python
-*.so          
-*.so.bak
+*.so
+*.dylib
 
 venv/
 .venv/
 env/
 ENV/
-env.bak/
-venv.bak/
 
 .env
 *.env
 .env.*
 .envrc
 
-
 data/
+cpp/build/
 
-# Dev / Test artifacts
 tests/
 test_*.py
 *.log
@@ -30,7 +26,6 @@ test_*.py
 htmlcov/
 .mypy_cache/
 .ruff_cache/
-.pytest/
 
 .git/
 .gitignore
@@ -38,29 +33,20 @@ htmlcov/
 
 .vscode/
 .idea/
-*.swp
-*.swo
 .DS_Store
-Thumbs.db
 
-# Build / distro
 build/
 dist/
 *.egg-info/
 .eggs/
-*.whl
-*.tar.gz
 
-Dockerfile*
 docker-compose*.yml
-.dockerignore
 
 README.md
 LICENSE
 *.md
 docs/
 
-# Temporary / backup files
 *.tmp
 *.bak
 *.backup
