@@ -1,6 +1,8 @@
 import { A } from "@solidjs/router";
 import { createMemo, createResource, For, Show } from "solid-js";
+import { Beaker, ListChecks } from "lucide-solid";
 import AppShell from "../../components/AppShell";
+import EmptyState from "../../components/EmptyState";
 import { fetchCandidates, type CandidateLifecycleStatus } from "../../services/api";
 
 function formatCurrency(value?: number | null): string {
@@ -91,22 +93,38 @@ export default function CandidateRegistryPage() {
               <p class="mt-2 text-2xl font-semibold text-stone-100">{counts().total}</p>
               <p class="mt-1 text-xs text-stone-500">All promoted candidates</p>
             </div>
-            <div class="rounded-md border border-violet-800 bg-violet-950/30 px-4 py-3">
+            <div
+              class={`rounded-md border px-4 py-3 ${
+                counts().active > 0 ? "border-violet-800 bg-violet-950/30" : "border-white/10 bg-stone-950/60"
+              }`}
+            >
               <p class="app-kicker">Active</p>
               <p class="mt-2 text-2xl font-semibold text-stone-100">{counts().active}</p>
               <p class="mt-1 text-xs text-stone-500">Still in the decision pipeline</p>
             </div>
-            <div class="rounded-md border border-green-800 bg-green-950/30 px-4 py-3">
+            <div
+              class={`rounded-md border px-4 py-3 ${
+                counts().approved > 0 ? "border-green-800 bg-green-950/30" : "border-white/10 bg-stone-950/60"
+              }`}
+            >
               <p class="app-kicker">Approved</p>
               <p class="mt-2 text-2xl font-semibold text-stone-100">{counts().approved}</p>
               <p class="mt-1 text-xs text-stone-500">Ready for paper prep</p>
             </div>
-            <div class="rounded-md border border-green-800 bg-green-950/30 px-4 py-3">
+            <div
+              class={`rounded-md border px-4 py-3 ${
+                counts().paper > 0 ? "border-green-800 bg-green-950/30" : "border-white/10 bg-stone-950/60"
+              }`}
+            >
               <p class="app-kicker">Paper Stage</p>
               <p class="mt-2 text-2xl font-semibold text-stone-100">{counts().paper}</p>
               <p class="mt-1 text-xs text-stone-500">Drafted or wired for paper</p>
             </div>
-            <div class="rounded-md border border-red-800 bg-red-950/30 px-4 py-3">
+            <div
+              class={`rounded-md border px-4 py-3 ${
+                counts().rejected > 0 ? "border-red-800 bg-red-950/30" : "border-white/10 bg-stone-950/60"
+              }`}
+            >
               <p class="app-kicker">Rejected</p>
               <p class="mt-2 text-2xl font-semibold text-stone-100">{counts().rejected}</p>
               <p class="mt-1 text-xs text-stone-500">Kept for audit, not for action</p>
@@ -128,9 +146,18 @@ export default function CandidateRegistryPage() {
             <Show
               when={(candidates() ?? []).length > 0}
               fallback={
-                <div class="app-surface-muted mt-6 px-4 py-10 text-center text-sm text-stone-500">
-                  No candidates yet. Promote a run from an experiment to start the Phase 2 review flow.
-                </div>
+                <EmptyState
+                  class="app-surface-muted mt-6"
+                  icon={<ListChecks size={18} />}
+                  title="No candidates yet"
+                  description="Candidates are experiment runs you've promoted for a closer review. Open an experiment, find a run worth keeping, and promote it."
+                  actions={
+                    <A href="/experiments" class="app-button-primary gap-2">
+                      <Beaker size={16} />
+                      Open Experiments
+                    </A>
+                  }
+                />
               }
             >
               <div class="mt-6 overflow-x-auto">

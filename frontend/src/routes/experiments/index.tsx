@@ -1253,6 +1253,12 @@ export default function ExperimentsIndexPage() {
                   }}
                 </For>
               </div>
+              <Show when={!symbols.loading && (symbols() ?? []).length === 0}>
+                <p class="rounded-sm border border-yellow-700 bg-yellow-950 px-4 py-3 text-sm text-yellow-300">
+                  No market data is loaded yet, so there are no symbols to sweep. Import historical
+                  candles, then refresh this page.
+                </p>
+              </Show>
             </div>
 
             <div class="app-surface-muted p-4">
@@ -1663,6 +1669,17 @@ export default function ExperimentsIndexPage() {
                 {busyAction() === "launch" ? "Launching batch..." : "Launch Batch"}
               </button>
 
+              <Show when={validationError()}>
+                {(reason) => (
+                  <p class="text-xs text-stone-400" role="status">
+                    Can't validate yet: {reason()}
+                  </p>
+                )}
+              </Show>
+              <Show when={!validationError() && !isValidated() && busyAction() === null}>
+                <p class="text-xs text-stone-500">Validate the sweep to unlock Launch Batch.</p>
+              </Show>
+
               <div class="grid gap-3 sm:grid-cols-2">
                 <button
                   type="button"
@@ -1729,18 +1746,6 @@ export default function ExperimentsIndexPage() {
               </div>
             </Show>
 
-            <div class="rounded-md border border-stone-800 bg-stone-950/80 p-4">
-              <p class="text-sm font-semibold text-stone-100">Preview results view</p>
-
-              <div class="mt-4 grid gap-3">
-                <div class="app-skeleton h-28" />
-                <div class="grid gap-3 sm:grid-cols-3">
-                  <div class="app-skeleton h-16" />
-                  <div class="app-skeleton h-16" />
-                  <div class="app-skeleton h-16" />
-                </div>
-              </div>
-            </div>
           </section>
 
           <section class={section}>

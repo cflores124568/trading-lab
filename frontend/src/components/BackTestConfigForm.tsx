@@ -395,8 +395,9 @@ export default function BackTestConfigForm() {
               fallback={<div class="h-9 rounded-sm bg-stone-800 animate-pulse" />}
             >
               <div class="rounded-sm border border-yellow-700 bg-yellow-950 px-4 py-3 text-sm text-yellow-300">
-                No symbols found. Make sure your database is configured and data has been imported
-                via <code class="font-mono text-yellow-200">fetch_databento.py</code>.
+                No market data is loaded yet, so there's nothing to backtest. Import historical
+                candles with <code class="font-mono text-yellow-200">fetch_databento.py</code>, then
+                refresh this page.
               </div>
             </Show>
           }

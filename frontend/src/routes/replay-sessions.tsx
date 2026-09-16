@@ -1,6 +1,8 @@
 import { A } from "@solidjs/router";
 import { createMemo, createResource, For, Show } from "solid-js";
+import { History, PlayCircle } from "lucide-solid";
 import AppShell from "../components/AppShell";
+import EmptyState from "../components/EmptyState";
 import EquityCurve, { type EquityReferenceLine } from "../components/EquityCurve";
 import WorkspaceLaunchControl from "../components/workspace/WorkspaceLaunchControl";
 import WorkspaceContextBadge from "../components/workspace/WorkspaceContextBadge";
@@ -206,19 +208,24 @@ export default function ReplaySessionListPage() {
         </A>
       }
     >
-      <div class="mx-auto w-full max-w-6xl">
+      <div class="mx-auto w-full max-w-6xl space-y-4">
         <WorkspaceContextBadge />
 
         <Show when={!sessions.loading} fallback={<div class="app-panel h-40 animate-pulse" />}>
           <Show
             when={(sessions() ?? []).length > 0}
             fallback={
-              <div class="app-panel app-panel-section py-20 text-center text-sm text-stone-500">
-                No replay sessions yet.{" "}
-                <A href="/replay" class="text-stone-100 hover:underline">
-                  Launch your first saved session
-                </A>
-              </div>
+              <EmptyState
+                icon={<History size={18} />}
+                title="No replay sessions yet"
+                description="A replay walks through historical candles one bar at a time, so you can practice entries and exits without seeing what comes next. Replays you save land here so you can pick them back up."
+                actions={
+                  <A href="/replay" class="app-button-primary gap-2">
+                    <PlayCircle size={16} />
+                    Start a Replay
+                  </A>
+                }
+              />
             }
           >
             <div class="space-y-5">

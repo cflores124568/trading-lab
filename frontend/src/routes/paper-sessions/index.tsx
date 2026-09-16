@@ -1,6 +1,8 @@
 import { A } from "@solidjs/router";
 import { createResource, For, Show } from "solid-js";
+import { BookOpen, CandlestickChart, ListChecks } from "lucide-solid";
 import AppShell from "../../components/AppShell";
+import EmptyState from "../../components/EmptyState";
 import WorkspaceContextBadge from "../../components/workspace/WorkspaceContextBadge";
 import { fetchPaperSessions } from "../../services/api";
 
@@ -113,16 +115,30 @@ export default function PaperSessionListPage() {
         </>
       }
     >
-      <div class="mx-auto w-full max-w-5xl">
+      <div class="mx-auto w-full max-w-5xl space-y-4">
         <WorkspaceContextBadge />
 
         <Show when={!sessions.loading} fallback={<div class="app-panel h-40 animate-pulse" />}>
           <Show
             when={(sessions() ?? []).length > 0}
             fallback={
-              <div class="app-panel app-panel-section py-20 text-center text-sm text-stone-500">
-                No paper sessions yet. Start from a candidate.
-              </div>
+              <EmptyState
+                icon={<CandlestickChart size={18} />}
+                title="No paper sessions yet"
+                description="A paper session runs a promoted candidate forward with simulated orders and no real money. Promote a run from an experiment, then create its session from the candidate page."
+                actions={
+                  <>
+                    <A href="/paper-sessions/guide" class="app-button-primary gap-2">
+                      <BookOpen size={16} />
+                      Read the Guide
+                    </A>
+                    <A href="/candidates" class="app-button-secondary gap-2">
+                      <ListChecks size={16} />
+                      Candidate Registry
+                    </A>
+                  </>
+                }
+              />
             }
           >
             <div class="space-y-3">

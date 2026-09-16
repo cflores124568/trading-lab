@@ -1925,7 +1925,8 @@ export default function ReplayLabPage() {
                   fallback={<div class="h-9 animate-pulse rounded bg-stone-800" />}
                 >
                   <div class="rounded-lg border border-yellow-700 bg-yellow-950 px-4 py-3 text-sm text-yellow-300">
-                    No DB-backed symbols found. Import market data first.
+                    No market data is loaded yet, so there's nothing to replay. Import historical
+                    candles, then refresh this page.
                   </div>
                 </Show>
               }
@@ -2200,6 +2201,15 @@ export default function ReplayLabPage() {
                       : "Save Session"}
                 </button>
               </div>
+
+              <Show when={!symbols.loading && !symbol()}>
+                <p class="text-xs text-stone-400" role="status">
+                  Pick a symbol in Session Setup to launch a sim.
+                </p>
+              </Show>
+              <Show when={canLaunch() && canEditSetup() && !replaySession()}>
+                <p class="text-xs text-stone-500">Save Session unlocks once a sim is running.</p>
+              </Show>
             </div>
           </ReplayAccordionSection>
         </div>

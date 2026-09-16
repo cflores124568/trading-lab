@@ -1,10 +1,10 @@
-@import url("https://fonts.googleapis.com/css2?family=Goldman:wght@400;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Major+Mono+Display&family=Share+Tech+Mono&family=Tilt+Prism&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Goldman:wght@400;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Major Mono Display", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  --font-brand: "Goldman", "Tilt Prism", "Share Tech Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-brand: "Goldman", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 @layer base {
@@ -32,6 +32,27 @@
       radial-gradient(circle at top center, rgba(255, 255, 255, 0.06), transparent 30%),
       linear-gradient(180deg, var(--app-bg-top) 0%, var(--app-bg) 38%, #000000 100%);
     color: var(--app-text-strong);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Tailwind v4 dropped the pointer cursor on buttons; put it back so clickable things feel clickable. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  summary {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  button:not(:disabled):active {
+    transform: translateY(1px);
+  }
+
+  :where(a, button, select, summary, input[type="checkbox"], input[type="radio"], [role="button"], [tabindex]):focus-visible {
+    outline: 2px solid rgba(235, 227, 213, 0.72);
+    outline-offset: 2px;
   }
 
   h1,
@@ -257,7 +278,7 @@
 
   .app-table thead {
     @apply text-[11px] uppercase tracking-[0.16em];
-    background: rgba(8, 11, 17, 0.88);
+    background: rgba(12, 12, 12, 0.88);
     color: var(--app-text-faint);
   }
 
@@ -271,11 +292,11 @@
 
   .app-table tbody tr {
     @apply border-t transition-colors;
-    border-color: rgba(55, 58, 66, 0.72);
+    border-color: rgba(255, 255, 255, 0.08);
   }
 
   .app-table tbody tr:hover {
-    background: rgba(19, 22, 29, 0.92);
+    background: rgba(20, 20, 20, 0.92);
   }
 
   .app-kicker {
@@ -285,7 +306,7 @@
 
   .app-skeleton {
     @apply animate-pulse rounded-sm;
-    background: rgba(28, 36, 49, 0.86);
+    background: rgba(255, 255, 255, 0.06);
   }
 
   .app-hairline {

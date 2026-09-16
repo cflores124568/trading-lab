@@ -17,10 +17,12 @@ import PaperSessionListPage from "./routes/paper-sessions/index";
 import ReplayLabPage from "./routes/replay";
 import ReplayComparePage from "./routes/replay-compare";
 import ReplaySessionListPage from "./routes/replay-sessions";
+import NotFoundPage from "./routes/not-found";
+import RouteErrorBoundary from "./components/RouteErrorBoundary";
 
 export default function App() {
   return (
-    <Router>
+    <Router root={RouteErrorBoundary}>
       <Route path="/" component={Dashboard} />
       <Route path="/replay" component={ReplayLabPage} />
       <Route path="/replay/:id/compare" component={ReplayComparePage} />
@@ -39,6 +41,7 @@ export default function App() {
       <Route path="/experiments/:id" component={ExperimentDetailPage} />
       <Route path="/alpha-lab" component={AlphaLabIndexPage} />
       <Route path="/alpha-lab/:id" component={AlphaLabCampaignPage} />
+      <Route path="*" component={NotFoundPage} />
     </Router>
   );
 }

@@ -540,10 +540,10 @@ export default function ChartPanel(props: Props) {
 
       <Show when={!candles.loading && (candles()?.length ?? 0) === 0 && !candles.error}>
         <div class="min-h-0 flex-1 px-4 py-5">
-          <p class="text-sm font-semibold text-stone-100">No candles returned</p>
+          <p class="text-sm font-semibold text-stone-100">No candles for this range</p>
           <p class="mt-1 text-sm text-stone-400">
-            Try a wider date range or switch to another interval so the panel has something to
-            work with.
+            There's no stored market data for this symbol and window. Switch the panel to Live, widen
+            the date range, or pick another interval.
           </p>
         </div>
       </Show>

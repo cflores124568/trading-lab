@@ -1,7 +1,9 @@
 // frontend/src/routes/backtests/compare.tsx
 import { A, useSearchParams } from "@solidjs/router";
 import { createResource, Show, For } from "solid-js";
+import { BarChart3, GitCompareArrows } from "lucide-solid";
 import AppShell from "../../components/AppShell";
+import EmptyState from "../../components/EmptyState";
 import WorkspaceLaunchControl from "../../components/workspace/WorkspaceLaunchControl";
 import { compareBacktests, type BacktestCompare } from "../../services/api";
 
@@ -112,9 +114,17 @@ export default function BacktestComparePage() {
           <Show
             when={comparison()}
             fallback={
-              <div class="app-panel app-panel-section text-sm text-stone-400">
-                Missing compare params (a and b). Go back and select two backtests.
-              </div>
+              <EmptyState
+                icon={<GitCompareArrows size={18} />}
+                title="Pick two backtests to compare"
+                description="On the Backtests page, press Compare on any two saved runs, then choose Compare Selected. Their results show up here side by side."
+                actions={
+                  <A href="/backtests" class="app-button-primary gap-2">
+                    <BarChart3 size={16} />
+                    Choose Backtests
+                  </A>
+                }
+              />
             }
           >
             {(result) => {

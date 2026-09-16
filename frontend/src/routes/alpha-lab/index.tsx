@@ -2,6 +2,7 @@ import { A, useNavigate } from "@solidjs/router";
 import { createMemo, createResource, createSignal, For, Show } from "solid-js";
 import { CalendarRange, ChevronRight, FlaskConical, Plus, X } from "lucide-solid";
 import AppShell from "../../components/AppShell";
+import EmptyState from "../../components/EmptyState";
 import ResearchDisclosure from "../../components/research/ResearchDisclosure";
 import ResearchStatus from "../../components/research/ResearchStatus";
 import { BACKTEST_INTERVALS, getBackendInterval } from "../../constants";
@@ -238,7 +239,20 @@ export default function AlphaLabIndexPage() {
           <Show when={!campaigns.loading} fallback={<div class="app-skeleton h-52" />}>
             <Show
               when={(campaigns() ?? []).length > 0}
-              fallback={<div class="app-surface-muted px-5 py-12 text-center text-sm text-stone-500">No Alpha Lab campaigns yet.</div>}
+              fallback={
+                <EmptyState
+                  class="app-surface-muted"
+                  icon={<FlaskConical size={18} />}
+                  title="No research campaigns yet"
+                  description="A campaign searches strategy settings across a date range, then re-checks the best results on data it held back, so a lucky fit doesn't pass as an edge."
+                  actions={
+                    <button type="button" class="app-button-primary gap-2" onClick={() => setShowCreate(true)}>
+                      <Plus size={16} />
+                      New campaign
+                    </button>
+                  }
+                />
+              }
             >
               <div class="overflow-x-auto">
                 <table class="app-table min-w-[880px]">
