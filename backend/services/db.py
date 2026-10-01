@@ -393,22 +393,28 @@ def get_symbol_range(symbol: str) -> dict | None:
 
 
 def health_check() -> dict:
-    """Quick DB health check returns status and row count per symbol
+    """Quick DB health check returns status and latest bar per symbol
 
-    Used by the /health endpoint.
+    Used by the /health endpoint, which Docker polls every 15s. A per-symbol
+    count(*) scans the whole table (8s+ at 11M rows) and blows the healthcheck
+    timeout, so this sticks to max(ts), which is an index lookup.
     """
     try:
         sql = """
-            SELECT symbol, count(*) AS rows
-            FROM ohlcv_1m
-            GROUP BY symbol
-            ORDER BY symbol
+            SELECT s.symbol,
+                   (SELECT max(o.ts) FROM ohlcv_1m o WHERE o.symbol = s.symbol) AS last_bar
+            FROM symbols s
+            ORDER BY s.symbol
         """
         df = _read_sql(sql)
+        df = df.dropna(subset=["last_bar"])
 
         return {
             "db_status": "ok",
-            "symbols": df.set_index("symbol")["rows"].to_dict(),
+            "symbols": {
+                row.symbol: pd.Timestamp(row.last_bar).isoformat()
+                for row in df.itertuples(index=False)
+            },
         }
     except Exception as exc:
         return {"db_status": "error", "detail": str(exc)}
