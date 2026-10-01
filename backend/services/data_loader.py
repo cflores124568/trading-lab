@@ -1,4 +1,5 @@
 import io
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -590,6 +591,31 @@ def fetch_yfinance_intraday(
         ) from exc
     except Exception as e:
         raise HTTPException(503, f"yfinance fetch failed: {str(e)}")
+
+# Every dashboard load asks Yahoo for the same few symbol/interval/period combos
+# and each round trip costs ~2s. Holding the result for a minute keeps reloads
+# fast without making the live panels meaningfully stale.
+YFINANCE_CACHE_SECONDS = 60
+_yfinance_cache: dict[tuple[str, str, str], tuple[float, pd.DataFrame, dict]] = {}
+
+def fetch_yfinance_intraday_cached(
+        symbol_key: str,
+        interval: str = "5m",
+        period: str = "60d"
+    ) -> tuple[pd.DataFrame, dict]:
+    """Same as fetch_yfinance_intraday, but reuses a result fetched in the last minute.
+
+    Only meant for the live chart preview. Failures aren't cached, so a Yahoo
+    hiccup gets retried on the next request.
+    """
+    cache_key = (symbol_key, interval, period)
+    cached = _yfinance_cache.get(cache_key)
+    if cached and time.monotonic() - cached[0] < YFINANCE_CACHE_SECONDS:
+        return cached[1].copy(), dict(cached[2])
+
+    df, metadata = fetch_yfinance_intraday(symbol_key, interval, period)
+    _yfinance_cache[cache_key] = (time.monotonic(), df, metadata)
+    return df.copy(), dict(metadata)
 
 def load_csv(file_bytes: bytes, name: str) -> dict:
     """Parse raw CSV bytes into a validated OHLCV dataset and register it in the store.

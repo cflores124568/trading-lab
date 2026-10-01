@@ -16,6 +16,7 @@ const API_ROUTES = {
   dbSymbols: "/data/db/symbols", //TimescaleDB replacing parquet
   dbCandles: (symbol: string) => `/data/db/${symbol}/candles`,
   dbInfo: (symbol: string) => `/data/db/${symbol}/info`,
+  dbRange: (symbol: string) => `/data/db/${symbol}/range`,
   yfinanceCandles: "/data/yfinance/candles",
   symbols: "/data/symbols",
   loadSymbol: "/data/load-symbol",
@@ -91,6 +92,12 @@ export interface DbSymbolInfo {
   start_date: string;
   end_date: string;
   rows: number;
+}
+
+export interface DbSymbolRange {
+  symbol: string;
+  start_date: string;
+  end_date: string;
 }
 
 //Metadata for a single symbol available for loading from external sources (yfinance, Databento parquet)
@@ -1059,6 +1066,12 @@ export const fetchBacktestCandles = async (
 // GET /api/data/db/{symbol}/info
 export const fetchDbSymbolInfo = async (symbol: string): Promise<DbSymbolInfo> => {
   return api<DbSymbolInfo>(API_ROUTES.dbInfo(symbol));
+}
+
+// First and last stored bar for a DB symbol, via GET /api/data/db/{symbol}/range.
+// Much cheaper than /info because it skips the row count.
+export const fetchDbSymbolRange = async (symbol: string): Promise<DbSymbolRange> => {
+  return api<DbSymbolRange>(API_ROUTES.dbRange(symbol));
 }
 //Fetch list of previous backtests
 export const fetchBacktests = async (): Promise<BacktestSummary[]> => {

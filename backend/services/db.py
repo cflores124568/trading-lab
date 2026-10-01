@@ -367,6 +367,31 @@ def get_symbol_info(symbol: str) -> dict | None:
     }
 
 
+def get_symbol_range(symbol: str) -> dict | None:
+    """Return just the first and last bar time for a symbol.
+
+    Unlike get_symbol_info this skips count(*), so it stays an index lookup on
+    (symbol, ts) instead of scanning millions of rows.
+    """
+    sql = """
+        SELECT min(ts) AS start_date, max(ts) AS end_date
+        FROM ohlcv_1m
+        WHERE symbol = %s
+    """
+
+    df = _read_sql(sql, params=[symbol.upper()])
+
+    if df.empty or pd.isna(df.iloc[0]["end_date"]):
+        return None
+
+    row = df.iloc[0]
+    return {
+        "symbol": symbol.upper(),
+        "start_date": pd.Timestamp(row["start_date"]).isoformat(),
+        "end_date": pd.Timestamp(row["end_date"]).isoformat(),
+    }
+
+
 def health_check() -> dict:
     """Quick DB health check returns status and row count per symbol
 

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Query
 from schemas import DatasetInfo, LoadSymbolRequest, SymbolInfo, ParquetLoadRequest
 from services.data_loader import(load_csv, generate_sample_data, get_dataset, get_dataset_info as load_dataset_info,
-list_datasets, fetch_yfinance_intraday, load_parquet, list_parquet_symbols, get_candles, load_from_db)
+list_datasets, fetch_yfinance_intraday, fetch_yfinance_intraday_cached, load_parquet, list_parquet_symbols, get_candles, load_from_db)
 from services.dataset_store import add_dataset
 from datetime import datetime
 import pandas as pd
@@ -55,7 +55,7 @@ async def get_yfinance_candles(
 ):
     """Fetch recent Yahoo Finance candles for the live dashboard without storing them."""
     try:
-        df, _ = fetch_yfinance_intraday(symbol, interval, period)
+        df, _ = fetch_yfinance_intraday_cached(symbol, interval, period)
     except HTTPException as exc:
         raise exc
 
@@ -279,6 +279,19 @@ async def get_db_candles(
         for row in df.itertuples(index=False)
     ]
  
+@router.get("/db/{symbol}/range")
+async def get_db_symbol_range(symbol: str):
+    """Return the first and last stored bar time for a symbol, without row counts."""
+    try:
+        from services.db import get_symbol_range
+        data_range = get_symbol_range(symbol.upper())
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    if data_range is None:
+        raise HTTPException(status_code=404, detail=f"Symbol '{symbol}' not found in database.")
+    return data_range
+
 @router.get("/db/{symbol}/info")
 async def get_db_symbol_info(symbol: str):
     """Return metadata for a single symbol from TimescaleDB."""

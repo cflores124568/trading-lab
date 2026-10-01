@@ -26,7 +26,12 @@ import {
   PERIODS,
   YFINANCE_SYMBOLS,
 } from "../../constants";
-import { fetchCandles, fetchYfinanceCandles, type Candle } from "../../services/api";
+import {
+  fetchCandles,
+  fetchDbSymbolRange,
+  fetchYfinanceCandles,
+  type Candle,
+} from "../../services/api";
 import {
   MAX_PANEL_TITLE_LENGTH,
   normalizePanelTitle,
@@ -91,6 +96,35 @@ function toHistoricalQuery(query: ChartPanelQuery): ChartPanelQuery {
   };
 }
 
+function shiftDays(date: string, days: number): string {
+  const next = new Date(`${date}T00:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next.toISOString().slice(0, 10);
+}
+
+// Stored futures data stops at the last Databento pull, so ranges built from
+// "today" can start after the final bar and come back empty. Slide that kind of
+// window back so it ends on the last bar, keeping its length.
+function anchorToLatestBar(
+  query: HistoricalChartPanelQuery,
+  latestBarDate: string,
+): HistoricalChartPanelQuery | null {
+  if (!query.startDate || query.startDate <= latestBarDate) {
+    return null;
+  }
+
+  const spanDays =
+    query.endDate && query.endDate > query.startDate
+      ? Math.round((Date.parse(query.endDate) - Date.parse(query.startDate)) / 86_400_000)
+      : 30;
+
+  return {
+    ...query,
+    startDate: shiftDays(latestBarDate, -spanDays),
+    endDate: latestBarDate,
+  };
+}
+
 export default function ChartPanel(props: Props) {
   const query = createMemo(() => props.panel.query);
   const [titleDraft, setTitleDraft] = createSignal(props.panel.title);
@@ -141,13 +175,26 @@ export default function ChartPanel(props: Props) {
       BACKTEST_INTERVALS.find((interval) => interval.value === nextQuery.interval) ??
       DEFAULT_INTERVAL;
 
-    return fetchCandles({
+    const bars = await fetchCandles({
       symbol: nextQuery.symbol,
       interval: getBackendInterval(selectedInterval),
       startDate: nextQuery.startDate || undefined,
       endDate: nextQuery.endDate || undefined,
       limit: 50_000,
     });
+
+    if (bars.length === 0 && nextQuery.startDate) {
+      const latestBarDate = await fetchDbSymbolRange(nextQuery.symbol)
+        .then((range) => range.end_date.slice(0, 10))
+        .catch(() => null);
+      const anchored = latestBarDate ? anchorToLatestBar(nextQuery, latestBarDate) : null;
+      if (anchored) {
+        // Saving the shifted dates re-runs this resource against them.
+        props.onQueryChange(anchored);
+      }
+    }
+
+    return bars;
   });
 
   const panelSummary = createMemo(() => summarizeQuery(query()));
