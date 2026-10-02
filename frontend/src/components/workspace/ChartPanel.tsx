@@ -125,8 +125,20 @@ function anchorToLatestBar(
   };
 }
 
+function fetchKey(query: ChartPanelQuery): string {
+  return query.mode === "live"
+    ? `live|${query.symbol}|${query.interval}|${query.period}`
+    : `historical|${query.symbol}|${query.interval}|${query.startDate ?? ""}|${query.endDate ?? ""}`;
+}
+
 export default function ChartPanel(props: Props) {
   const query = createMemo(() => props.panel.query);
+  // The store merges query updates into the same object, so `query` keeps its
+  // identity and never refetches on its own. Snapshot it whenever a field the
+  // fetch depends on changes; indicator toggles don't reload the bars.
+  const fetchQuery = createMemo((): ChartPanelQuery => ({ ...props.panel.query }), undefined, {
+    equals: (prev, next) => fetchKey(prev) === fetchKey(next),
+  });
   const [titleDraft, setTitleDraft] = createSignal(props.panel.title);
   const [showControls, setShowControls] = createSignal(false);
   const [showMenu, setShowMenu] = createSignal(false);
@@ -151,7 +163,7 @@ export default function ChartPanel(props: Props) {
     onCleanup(() => window.removeEventListener("pointerdown", closeMenu));
   });
 
-  const [candles] = createResource<Candle[], ChartPanelQuery>(query, async (nextQuery) => {
+  const [candles] = createResource<Candle[], ChartPanelQuery>(fetchQuery, async (nextQuery) => {
     if (nextQuery.mode === "live") {
       const selectedInterval =
         LIVE_CHART_INTERVALS.find((interval) => interval.value === nextQuery.interval) ??
