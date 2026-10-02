@@ -14,6 +14,7 @@ import {
   type MouseEventParams,
   type Time,
 } from "lightweight-charts";
+import { createSeriesSynchronizer, visiblePointCount } from "../services/chartSeriesSync";
 import { X } from "lucide-solid";
 import type { Candle } from "../services/api";
 import {
@@ -56,6 +57,8 @@ export interface PriceChartRestingOrder {
 
 interface Props {
   candles: Candle[];
+  datasetKey?: string;
+  initialVisibleBars?: number;
   markers?: PriceChartMarker[];
   visibleIndex?: number;
   followLatest?: boolean;
@@ -194,6 +197,7 @@ export default function PriceChart(props: Props) {
   let container!: HTMLDivElement;
   let chart: IChartApi | undefined;
   let candleSeries: ISeriesApi<"Candlestick"> | undefined;
+  let syncCandles: ReturnType<typeof createSeriesSynchronizer<Candle>> | undefined;
   let markersPlugin: ISeriesMarkersPluginApi<Time> | null = null;
   const [hoveredTime, setHoveredTime] = createSignal<Time | undefined>();
   const [isFollowingLatest, setIsFollowingLatest] = createSignal(true);
@@ -201,6 +205,7 @@ export default function PriceChart(props: Props) {
     normalizePriceChartIndicatorSettings(props.indicators),
   );
   const sanitizedCandles = createMemo(() => sanitizeCandles(props.candles));
+  const candleByTime = createMemo(() => new Map(sanitizedCandles().map((candle) => [Number(candle.time), candle])));
   const indicatorSeries = createMemo(() => buildPriceChartIndicatorSeries(sanitizedCandles()));
   const indicatorLegendMode = createMemo(() => props.indicatorLegend ?? "compact");
   const visibleCandles = createMemo(() => {
@@ -226,7 +231,7 @@ export default function PriceChart(props: Props) {
     const time = hoveredTime();
     if (time !== undefined) {
       const targetTime = Number(time);
-      const hoveredCandle = candles.find((candle) => Number(candle.time) === targetTime);
+      const hoveredCandle = candleByTime().get(targetTime);
       if (hoveredCandle) {
         return hoveredCandle;
       }
@@ -395,37 +400,18 @@ export default function PriceChart(props: Props) {
     }
   };
 
-  const filterVisibleLinePoints = (
-    points: IndicatorLinePoint[],
-    lastVisibleTime: Time | undefined,
-  ) =>
-    lastVisibleTime === undefined
-      ? points
-      : points.filter((point) => Number(point.time) <= Number(lastVisibleTime));
-
-  const filterVisibleVolumePoints = (
-    points: VolumeHistogramPoint[],
-    lastVisibleTime: Time | undefined,
-  ) =>
-    lastVisibleTime === undefined
-      ? points
-      : points.filter((point) => Number(point.time) <= Number(lastVisibleTime));
-
-  const latestVisibleValue = (
-    points: IndicatorLinePoint[],
-    lastVisibleTime: Time | undefined,
-  ): number | undefined => {
-    const cutoff = lastVisibleTime === undefined ? Number.POSITIVE_INFINITY : Number(lastVisibleTime);
-
-    for (let index = points.length - 1; index >= 0; index -= 1) {
-      const point = points[index];
-      if (Number(point.time) <= cutoff && Number.isFinite(point.value)) {
-        return point.value;
-      }
-    }
-
-    return undefined;
+  const emptyLine: IndicatorLinePoint[] = [];
+  const emptyVolume: VolumeHistogramPoint[] = [];
+  const lineWriters = new Map<ISeriesApi<"Line">, ReturnType<typeof createSeriesSynchronizer<IndicatorLinePoint>>>();
+  let volumeWriter: ReturnType<typeof createSeriesSynchronizer<VolumeHistogramPoint>> | undefined;
+  const syncLine = (target: ISeriesApi<"Line"> | undefined, points: IndicatorLinePoint[], cutoff: number) => {
+    if (!target) return;
+    let writer = lineWriters.get(target);
+    if (!writer) { writer = createSeriesSynchronizer<IndicatorLinePoint>(target); lineWriters.set(target, writer); }
+    writer(points, visiblePointCount(points, cutoff));
   };
+  const latestVisibleValue = (points: IndicatorLinePoint[], lastVisibleTime: Time | undefined) =>
+    points[visiblePointCount(points, lastVisibleTime === undefined ? Infinity : Number(lastVisibleTime)) - 1]?.value;
 
   const buildFlatLevelLine = (
     candles: Candle[],
@@ -456,12 +442,14 @@ export default function PriceChart(props: Props) {
 
     const nextVisibleCandles = visibleCandles();
     if (nextVisibleCandles.length === 0) {
-      candleSeries.setData([]);
+      syncCandles?.(sanitizedCandles(), 0);
       markersPlugin?.setMarkers([]);
+      for (const writer of lineWriters.values()) writer(emptyLine);
+      volumeWriter?.(emptyVolume);
       return;
     }
 
-    candleSeries.setData(nextVisibleCandles);
+    syncCandles?.(sanitizedCandles(), nextVisibleCandles.length);
 
     if (props.followLatest && isFollowingLatest()) {
       // Keep live replay pinned only while the user is already following.
@@ -484,70 +472,25 @@ export default function PriceChart(props: Props) {
     const settings = indicatorSettings();
     const series = indicatorSeries();
 
-    ema9Series?.setData(
-      settings.ema9 ? filterVisibleLinePoints(series.ema9, lastVisibleTime) : [],
-    );
-    ema20Series?.setData(
-      settings.ema20 ? filterVisibleLinePoints(series.ema20, lastVisibleTime) : [],
-    );
-    ema50Series?.setData(
-      settings.ema50 ? filterVisibleLinePoints(series.ema50, lastVisibleTime) : [],
-    );
-    vwapSeries?.setData(
-      settings.vwap ? filterVisibleLinePoints(series.vwap, lastVisibleTime) : [],
-    );
-    const sessionHighData = settings.sessionHighLow
-      ? settings.levelTrail
-        ? filterVisibleLinePoints(series.sessionHigh, lastVisibleTime)
-        : buildFlatLevelLine(
-            nextVisibleCandles,
-            latestVisibleValue(series.sessionHigh, lastVisibleTime),
-          )
-      : [];
-    const sessionLowData = settings.sessionHighLow
-      ? settings.levelTrail
-        ? filterVisibleLinePoints(series.sessionLow, lastVisibleTime)
-        : buildFlatLevelLine(
-            nextVisibleCandles,
-            latestVisibleValue(series.sessionLow, lastVisibleTime),
-          )
-      : [];
-    const previousDayHighData = settings.previousDayHighLow
-      ? settings.levelTrail
-        ? filterVisibleLinePoints(series.previousDayHigh, lastVisibleTime)
-        : buildFlatLevelLine(
-            nextVisibleCandles,
-            latestVisibleValue(series.previousDayHigh, lastVisibleTime),
-          )
-      : [];
-    const previousDayLowData = settings.previousDayHighLow
-      ? settings.levelTrail
-        ? filterVisibleLinePoints(series.previousDayLow, lastVisibleTime)
-        : buildFlatLevelLine(
-            nextVisibleCandles,
-            latestVisibleValue(series.previousDayLow, lastVisibleTime),
-          )
-      : [];
-
-    sessionHighSeries?.setData(
-      sessionHighData,
-    );
-    sessionLowSeries?.setData(
-      sessionLowData,
-    );
-    previousDayHighSeries?.setData(
-      previousDayHighData,
-    );
-    previousDayLowSeries?.setData(
-      previousDayLowData,
-    );
-    volumeSeries?.setData(
-      settings.volume ? filterVisibleVolumePoints(series.volume, lastVisibleTime) : [],
-    );
+    const cutoff = Number(lastVisibleTime);
+    syncLine(ema9Series, settings.ema9 ? series.ema9 : emptyLine, cutoff);
+    syncLine(ema20Series, settings.ema20 ? series.ema20 : emptyLine, cutoff);
+    syncLine(ema50Series, settings.ema50 ? series.ema50 : emptyLine, cutoff);
+    syncLine(vwapSeries, settings.vwap ? series.vwap : emptyLine, cutoff);
+    const levelData = (enabled: boolean, points: IndicatorLinePoint[]) => !enabled ? emptyLine
+      : settings.levelTrail ? points : buildFlatLevelLine(nextVisibleCandles, latestVisibleValue(points, lastVisibleTime));
+    syncLine(sessionHighSeries, levelData(settings.sessionHighLow, series.sessionHigh), cutoff);
+    syncLine(sessionLowSeries, levelData(settings.sessionHighLow, series.sessionLow), cutoff);
+    syncLine(previousDayHighSeries, levelData(settings.previousDayHighLow, series.previousDayHigh), cutoff);
+    syncLine(previousDayLowSeries, levelData(settings.previousDayHighLow, series.previousDayLow), cutoff);
+    const volume = settings.volume ? series.volume : emptyVolume;
+    volumeWriter?.(volume, visiblePointCount(volume, cutoff));
 
     if (!didInitialFit) {
       // Fit once on first render, then leave the user's manual zoom/scroll alone.
-      chart.timeScale().fitContent();
+      if (props.initialVisibleBars) {
+        chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, nextVisibleCandles.length - props.initialVisibleBars), to: nextVisibleCandles.length + 3 });
+      } else chart.timeScale().fitContent();
       didInitialFit = true;
     }
   };
@@ -990,6 +933,7 @@ export default function PriceChart(props: Props) {
     chart = createChart(container, {
       autoSize: true,
       height: props.height ?? 500,
+      kineticScroll: { mouse: true, touch: true },
       layout: {
         background: { color: "#0a0a0c" },
         textColor: "#9f9fa9",
@@ -1009,6 +953,7 @@ export default function PriceChart(props: Props) {
       },
       rightPriceScale: {
         borderColor: "#313138",
+        minimumWidth: 72,
       },
     });
 
@@ -1020,6 +965,7 @@ export default function PriceChart(props: Props) {
       wickUpColor: "#22c55e",
       wickDownColor: "#ef4444",
     });
+    syncCandles = createSeriesSynchronizer<Candle>(candleSeries);
     candleSeries.priceScale().applyOptions({
       scaleMargins: {
         top: 0.08,
@@ -1088,6 +1034,7 @@ export default function PriceChart(props: Props) {
       priceLineVisible: false,
       lastValueVisible: false,
     });
+    volumeWriter = createSeriesSynchronizer<VolumeHistogramPoint>(volumeSeries);
     volumeSeries.priceScale().applyOptions({
       scaleMargins: {
         top: 0.78,
@@ -1119,6 +1066,8 @@ export default function PriceChart(props: Props) {
       window.removeEventListener("keydown", handleKeyDown);
       container.removeEventListener("contextmenu", handleChartContextMenu);
       resizeObserver.disconnect();
+      lineWriters.clear();
+      volumeWriter = undefined;
       chart?.remove();
       chart = undefined;
       candleSeries = undefined;
@@ -1148,6 +1097,11 @@ export default function PriceChart(props: Props) {
       setIsFollowingLatest(false);
     }
     lastFollowLatestProp = followLatest;
+  });
+
+  createEffect(() => {
+    void props.datasetKey;
+    didInitialFit = false;
   });
 
   createEffect(() => {
@@ -1194,19 +1148,24 @@ export default function PriceChart(props: Props) {
       class={`relative w-full overflow-hidden border border-stone-700/80 bg-stone-950 ${props.class ?? ""}`}
       style={{
         "border-radius": "0",
-        ...(props.height ? { height: `${props.height}px` } : {}),
+        ...(props.height ? { height: `${props.height}px` } : !props.class ? { height: "500px" } : {}),
       }}
     >
       <div ref={container} class="h-full w-full" />
+      {props.initialVisibleBars && <div class="absolute right-20 top-2 z-10 flex gap-1">
+        <button type="button" class="rounded border border-stone-700 bg-stone-950/90 px-2 py-1 text-[11px] text-stone-300" title="Fit all loaded candles" onClick={() => chart?.timeScale().fitContent()}>Fit</button>
+        <button type="button" class="rounded border border-stone-700 bg-stone-950/90 px-2 py-1 text-[11px] text-stone-300" title="Show recent candles" onClick={() => chart?.timeScale().setVisibleLogicalRange({ from: Math.max(0, visibleCandles().length - props.initialVisibleBars!), to: visibleCandles().length + 3 })}>Recent</button>
+      </div>}
+
 
       {indicatorLegendMode() !== "hidden" && activeCandle() ? (
         <div
-          class={`pointer-events-none absolute left-3 top-3 z-10 max-w-[min(320px,calc(100%-1.5rem))] border border-stone-800/90 bg-stone-950/82 shadow-xl shadow-black/25 backdrop-blur ${
+          class={`pointer-events-none absolute left-3 top-3 z-10 ${props.initialVisibleBars ? "max-w-[min(320px,calc(100%-11rem))]" : "max-w-[min(320px,calc(100%-1.5rem))]"} border border-stone-800/90 bg-stone-950/82 shadow-xl shadow-black/25 backdrop-blur ${
             indicatorLegendMode() === "full" ? "px-3 py-2.5" : "px-2.5 py-2"
           }`}
           style={{ "border-radius": "0" }}
         >
-          <div class="flex items-center justify-between gap-4">
+          <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
             <span class="text-[10px] font-medium uppercase tracking-[0.18em] text-stone-500">
               {hoveredTime() ? "Hover" : "Latest"}
             </span>
@@ -1236,9 +1195,9 @@ export default function PriceChart(props: Props) {
             </div>
           ) : null}
 
-          <div class={indicatorLegendMode() === "full" ? "mt-2 space-y-1" : "mt-1.5 space-y-1"}>
+          <div class={indicatorLegendMode() === "full" ? "mt-2 space-y-1" : "mt-1 flex max-w-80 flex-wrap gap-x-3 gap-y-1"}>
             {indicatorLegendRows().map((row) => (
-              <div class="grid grid-cols-[auto_minmax(5.5rem,1fr)_auto] items-center gap-2 text-[11px]">
+              <div class="flex items-center gap-1.5 text-[11px]">
                 <span
                   class="h-2 w-2 rounded-full"
                   style={{ "background-color": row.color }}

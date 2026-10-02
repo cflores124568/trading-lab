@@ -35,6 +35,7 @@ export default function EquityCurve(props: Props) {
   let container!: HTMLDivElement;
   let chart: IChartApi | null = null;
   let series: ISeriesApi<"Line"> | null = null;
+  let didFit = false;
   let priceLines: IPriceLine[] = [];
   let overlaySeries: ISeriesApi<"Line">[] = [];
 
@@ -42,30 +43,29 @@ export default function EquityCurve(props: Props) {
     if (!series) return;
 
     series.setData(points.map((value, i) => ({ time: i as UTCTimestamp, value })));
-    chart?.timeScale().fitContent();
+    if (!didFit && points.length > 0) {
+      chart?.timeScale().fitContent();
+      didFit = true;
+    }
   };
 
   const setOverlays = (overlays: EquityOverlaySeries[]) => {
     if (!chart) return;
 
-    for (const s of overlaySeries) {
-      chart.removeSeries(s);
-    }
-    overlaySeries = [];
-
-    for (const overlay of overlays) {
-      const s = chart.addSeries(LineSeries, {
+    while (overlaySeries.length > overlays.length) chart.removeSeries(overlaySeries.pop()!);
+    overlays.forEach((overlay, index) => {
+      const options = {
         color: overlay.color,
         lineWidth: overlay.lineWidth ?? 1,
         lineStyle: overlay.lineStyle ?? LineStyle.Dotted,
         priceLineVisible: false,
         lastValueVisible: false,
-      });
-      s.setData(
-        overlay.data.map((value, i) => ({ time: i as UTCTimestamp, value })),
-      );
-      overlaySeries.push(s);
-    }
+      } as const;
+      const target = overlaySeries[index] ?? chart!.addSeries(LineSeries, options);
+      overlaySeries[index] = target;
+      target.applyOptions(options);
+      target.setData(overlay.data.map((value, i) => ({ time: i as UTCTimestamp, value })));
+    });
   };
 
   const setReferenceLines = (lines: EquityReferenceLine[]) => {
@@ -95,7 +95,8 @@ export default function EquityCurve(props: Props) {
 
   onMount(() => {
     chart = createChart(container, {
-      height: props.height ?? 200,
+      autoSize: true,
+      kineticScroll: { mouse: true, touch: true },
       layout: {
         background: { color: "#09090b" },
         textColor: "#a1a1aa",
@@ -109,7 +110,7 @@ export default function EquityCurve(props: Props) {
     });
 
     series = chart.addSeries(LineSeries, {
-      color: props.lineColor ?? "#3b82f6",
+      color: props.lineColor ?? "#a7c4bc",
       lineWidth: 2,
     });
 
@@ -143,5 +144,9 @@ export default function EquityCurve(props: Props) {
     setOverlays(overlays);
   });
 
-  return <div ref={container} class="w-full overflow-hidden" style={{ "border-radius": "0" }} />;
+  createEffect(() => {
+    series?.applyOptions({ color: props.lineColor ?? "#a7c4bc" });
+  });
+
+  return <div ref={container} class="min-w-0 w-full overflow-hidden" style={{ height: `${props.height ?? 200}px` }} />;
 }

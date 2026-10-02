@@ -76,7 +76,7 @@ export default function AppShell(props: AppShellProps) {
   });
 
   return (
-    <div class="flex min-h-screen flex-col bg-stone-950 text-stone-100">
+    <div class="flex min-h-[100dvh] flex-col bg-stone-950 text-stone-100">
       <a
         href="#main-content"
         class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-stone-100 focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-stone-950"
@@ -112,6 +112,7 @@ export default function AppShell(props: AppShellProps) {
                   <A
                     href={item.href}
                     data-active={active ? "" : undefined}
+                    aria-current={active ? "page" : undefined}
                     class={`group relative inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-sm px-2.5 py-2 text-sm font-medium transition-colors duration-150 ${
                       active
                         ? "bg-stone-900 text-stone-100 shadow-sm shadow-black/25"

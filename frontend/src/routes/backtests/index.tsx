@@ -1,3 +1,5 @@
+import ResearchWorkflow from "../../components/ResearchWorkflow";
+import DataLoadError from "../../components/DataLoadError";
 import { A, useNavigate } from "@solidjs/router";
 import { createMemo, createResource, createSignal, For, Show } from "solid-js";
 import {
@@ -76,28 +78,6 @@ function BacktestLoadingState() {
   );
 }
 
-function BacktestErrorState(props: { message: string }) {
-  return (
-    <div class="app-panel overflow-hidden">
-      <div class="app-panel-section flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <div class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-red-900/70 bg-red-950/40 text-red-300">
-            <BarChart3 size={18} />
-          </div>
-          <p class="mt-5 text-lg font-semibold text-stone-100">Backtests could not load</p>
-          <p class="mt-2 max-w-2xl text-sm leading-6 text-stone-400">
-            Start the backend and refresh this view.
-          </p>
-        </div>
-
-        <p class="rounded-xl border border-stone-800 bg-stone-950 px-3 py-2 font-mono text-xs text-red-200">
-          {props.message}
-        </p>
-      </div>
-    </div>
-  );
-}
-
 function BacktestEmptyState() {
   return (
     <div class="app-panel overflow-hidden">
@@ -128,10 +108,17 @@ function BacktestEmptyState() {
 }
 
 export default function BacktestList() {
-  const [backtests] = createResource<BacktestSummary[]>(fetchBacktests);
+  const [backtests, { refetch }] = createResource<BacktestSummary[]>(fetchBacktests);
   const [selected, setSelected] = createSignal<string[]>([]);
   const navigate = useNavigate();
-  const backtestList = createMemo(() => backtests() ?? []);
+  const [search, setSearch] = createSignal("");
+  const [sort, setSort] = createSignal("newest");
+  const backtestList = createMemo(() => (backtests.error ? undefined : backtests()) ?? []);
+  const filteredBacktests = createMemo(() => {
+    const query = search().trim().toLowerCase();
+    return backtestList().filter((item) => `${item.symbol} ${item.strategy_type.replace(/_/g, " ")} ${item.backtest_id}`.toLowerCase().includes(query))
+      .sort((a, b) => sort() === "pnl" ? b.total_pnl - a.total_pnl : sort() === "win-rate" ? b.win_rate - a.win_rate : Date.parse(b.created_at) - Date.parse(a.created_at));
+  });
   const summary = createMemo(() => {
     const list = backtestList();
     const totalPnl = list.reduce((sum, backtest) => sum + backtest.total_pnl, 0);
@@ -188,12 +175,13 @@ export default function BacktestList() {
       }
     >
       <div class="mx-auto w-full max-w-6xl space-y-4">
+        <ResearchWorkflow active="/backtests" />
         <WorkspaceContextBadge />
 
         <Show when={!backtests.loading} fallback={<BacktestLoadingState />}>
           <Show
             when={!backtests.error}
-            fallback={<BacktestErrorState message={backtests.error?.message ?? "Unknown error"} />}
+            fallback={<DataLoadError title="Backtests could not load" error={backtests.error} onRetry={refetch} />}
           >
             <Show when={backtestList().length > 0} fallback={<BacktestEmptyState />}>
               <div class="app-panel overflow-hidden">
@@ -203,7 +191,7 @@ export default function BacktestList() {
                     <p class="mt-3 text-2xl font-semibold text-stone-100">{backtestList().length}</p>
                   </div>
                   <div class="p-4">
-                    <p class="app-kicker">Net PnL</p>
+                    <p class="app-kicker">Sum of run P&amp;L</p>
                     <p
                       class={`mt-3 font-mono text-2xl font-semibold ${
                         summary().totalPnl >= 0 ? "text-green-300" : "text-red-300"
@@ -213,7 +201,7 @@ export default function BacktestList() {
                     </p>
                   </div>
                   <div class="p-4">
-                    <p class="app-kicker">Avg Win Rate</p>
+                    <p class="app-kicker">Mean run win rate</p>
                     <p class="mt-3 font-mono text-2xl font-semibold text-stone-100">
                       {formatPercent(summary().averageWinRate)}
                     </p>
@@ -226,8 +214,16 @@ export default function BacktestList() {
                 </div>
               </div>
 
+              <div class="flex flex-wrap items-end gap-3">
+                <label class="min-w-48 flex-1 text-xs text-stone-400">Find a run<input type="search" class="app-input mt-1 block w-full" placeholder="Symbol, strategy, or run ID" value={search()} onInput={(event) => setSearch(event.currentTarget.value)} /></label>
+                <label class="text-xs text-stone-400">Sort by<select class="app-input mt-1 block" value={sort()} onChange={(event) => setSort(event.currentTarget.value)}><option value="newest">Newest first</option><option value="pnl">Highest P&amp;L</option><option value="win-rate">Highest win rate</option></select></label>
+                <span class="py-2 text-xs text-stone-400" role="status">{filteredBacktests().length} runs · {selected().length}/2 selected</span>
+                <Show when={selected().length}><button class="app-button-compact-secondary" onClick={() => setSelected([])}>Clear selection</button></Show>
+              </div>
+              <p class="text-xs text-stone-400">Run summaries may overlap in market and date range. Their sum is not portfolio performance. Select two runs to compare.</p>
+              <Show when={filteredBacktests().length === 0}><div class="app-panel p-8 text-center text-sm text-stone-400">No runs match this search. Try another symbol or strategy.</div></Show>
               <div class="space-y-3">
-                <For each={backtestList()}>
+                <For each={filteredBacktests()}>
                   {(bt) => {
                     const isSelected = () => selected().includes(bt.backtest_id);
                     const detailHref = `/backtests/${bt.backtest_id}`;
@@ -270,9 +266,9 @@ export default function BacktestList() {
 
                             <div class="mt-3 flex min-w-0 items-start justify-between gap-4">
                               <div class="min-w-0">
-                                <p class="truncate text-base font-semibold text-stone-100">
+                                <A href={detailHref} class="block truncate text-base font-semibold text-stone-100" onClick={(event) => event.stopPropagation()}>
                                   {formatStrategy(bt.strategy_type)}
-                                </p>
+                                </A>
                                 <p class="mt-1 font-mono text-xs text-stone-500">
                                   {bt.backtest_id.slice(0, 8)} · {bt.dataset_id}
                                 </p>
@@ -280,6 +276,9 @@ export default function BacktestList() {
 
                               <button
                                 type="button"
+                                aria-pressed={isSelected()}
+                                disabled={!isSelected() && selected().length === 2}
+                                aria-label={`Compare ${bt.symbol} ${formatStrategy(bt.strategy_type)} ${bt.backtest_id.slice(0, 8)}`}
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   toggleSelected(bt.backtest_id);

@@ -1,5 +1,5 @@
 import { createEffect, createSignal } from "solid-js";
-import { Check, CopyPlus, Plus, Star, Trash2 } from "lucide-solid";
+import { CopyPlus, Plus, Star, Trash2, SlidersHorizontal } from "lucide-solid";
 import {
   MAX_WORKSPACE_NAME_LENGTH,
   normalizeWorkspaceName,
@@ -39,7 +39,7 @@ const field =
 function LayoutPreview(props: { preset: WorkspacePreset }) {
   if (props.preset === "focus") {
     return (
-      <div class="grid h-9 w-12 grid-cols-1 gap-1">
+      <div class="grid h-4 w-5 grid-cols-1 gap-0.5">
         <span class="rounded bg-current" />
       </div>
     );
@@ -47,7 +47,7 @@ function LayoutPreview(props: { preset: WorkspacePreset }) {
 
   if (props.preset === "split") {
     return (
-      <div class="grid h-9 w-12 grid-cols-2 gap-1">
+      <div class="grid h-4 w-5 grid-cols-2 gap-0.5">
         <span class="rounded bg-current" />
         <span class="rounded bg-current" />
       </div>
@@ -55,7 +55,7 @@ function LayoutPreview(props: { preset: WorkspacePreset }) {
   }
 
   return (
-    <div class="grid h-9 w-12 grid-cols-2 gap-1">
+    <div class="grid h-4 w-5 grid-cols-2 gap-0.5">
       <span class="rounded bg-current" />
       <span class="rounded bg-current" />
       <span class="rounded bg-current" />
@@ -78,157 +78,52 @@ export default function WorkspaceToolbar(props: Props) {
   };
 
   return (
-    <div class="border-b border-white/8 bg-black/18 px-4 py-4 lg:px-5">
-      <div class="flex flex-col gap-2.5">
-        <div class="app-panel app-panel-selected flex flex-col gap-3 rounded-2xl p-4 xl:flex-row xl:items-center xl:justify-between">
-          <div class="flex flex-wrap items-center gap-3">
-            <div class="min-w-0">
-              <p class="app-kicker text-stone-200">Current Workspace</p>
-              <p class="truncate text-sm font-semibold text-stone-50">{props.workspaceName}</p>
-            </div>
-            <div class="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-stone-400">
-              {props.workspaceCount} {props.workspaceCount === 1 ? "Workspace" : "Workspaces"}
-            </div>
-            <div class="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-stone-400">
-              {props.panelCount} {props.panelCount === 1 ? "Panel" : "Panels"}
-            </div>
-            <div
-              class={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] ${
-                props.workspaceId === props.defaultWorkspaceId
-                  ? "border-[rgba(232,223,209,0.82)] bg-[rgba(235,227,213,0.1)] text-stone-50"
-                  : "border-white/8 bg-white/[0.03] text-stone-500"
-              }`}
-            >
-              {props.workspaceId === props.defaultWorkspaceId ? (
-                <Check size={13} />
-              ) : (
-                <Star size={13} />
-              )}
-              {props.workspaceId === props.defaultWorkspaceId ? "Default" : "Not Default"}
-            </div>
-            <p class="app-meta-text">Auto-saves changes to this workspace.</p>
-          </div>
-
-          <div class="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              class="app-button-primary gap-2 rounded-xl px-3 disabled:cursor-not-allowed disabled:bg-stone-800 disabled:text-stone-600"
-              onClick={props.onAddChart}
-              disabled={!props.canAddChart}
-            >
-              <Plus size={15} />
-              Add Chart
-            </button>
-            <button
-              type="button"
-              class="app-button-secondary gap-2 rounded-xl px-3"
-              onClick={props.onCreateWorkspace}
-            >
-              <CopyPlus size={15} />
-              Save as New
-            </button>
-            {props.canDeleteWorkspace ? (
-              <button
-                type="button"
-                class="inline-flex items-center gap-2 rounded-xl border border-stone-800 px-3 py-2 text-sm font-medium text-stone-400 transition-colors hover:border-red-800 hover:bg-red-950/40 hover:text-red-200"
-                onClick={props.onDeleteWorkspace}
-              >
-                <Trash2 size={15} />
-                Delete
-              </button>
-            ) : null}
-          </div>
-        </div>
-
-        <div class="grid gap-2.5 xl:grid-cols-[minmax(220px,0.85fr)_minmax(220px,0.85fr)_auto]">
-          <label class="space-y-1">
-            <span class="block text-xs text-stone-500">Switch workspace</span>
-            <select
-              class={field}
-              value={props.workspaceId}
-              onChange={(event) => props.onWorkspaceChange(event.currentTarget.value)}
-            >
-              {props.workspaces.map((workspace) => (
-                <option value={workspace.id}>{workspace.name}</option>
-              ))}
+    <div class="workspace-toolbar">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="flex min-w-0 flex-wrap items-center gap-3">
+          <label class="flex items-center gap-2 text-xs text-stone-400">
+            <span>Workspace</span>
+            <select class="app-input max-w-48 text-sm" value={props.workspaceId}
+              onChange={(event) => props.onWorkspaceChange(event.currentTarget.value)}>
+              {props.workspaces.map((workspace) => <option value={workspace.id}>{workspace.name}</option>)}
             </select>
           </label>
-
-          <label class="space-y-1">
-            <span class="block text-xs text-stone-500">Rename current</span>
-            <input
-              type="text"
-              class={field}
-              value={nameDraft()}
-              maxLength={MAX_WORKSPACE_NAME_LENGTH}
-              placeholder="Replay review workspace"
-              onInput={(event) => setNameDraft(event.currentTarget.value)}
-              onBlur={commitWorkspaceName}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  commitWorkspaceName();
-                  event.currentTarget.blur();
-                }
-
-                if (event.key === "Escape") {
-                  setNameDraft(props.workspaceName);
-                  event.currentTarget.blur();
-                }
-              }}
-            />
-          </label>
-
-          <div class="space-y-1">
-            <span class="block text-xs text-stone-500">Layout</span>
-            <div class="grid gap-2 rounded-xl border border-stone-700/80 bg-stone-950/78 p-2 sm:grid-cols-3">
-              {props.options.map((option) => {
-                const active = props.preset === option.value;
-                return (
-                  <button
-                    type="button"
-                    class={`flex min-w-[124px] items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors ${
-                      active
-                        ? "app-card-selected border-stone-200/75 text-stone-50"
-                        : "border-stone-800 bg-stone-900 text-stone-400 hover:border-stone-700 hover:bg-stone-800 hover:text-stone-100"
-                    }`}
-                    title={option.description}
-                    onClick={() => props.onPresetChange(option.value)}
-                  >
-                    <span class={active ? "text-stone-200" : "text-stone-500"}>
-                      <LayoutPreview preset={option.value} />
-                    </span>
-                    <span>
-                      <span class="block text-xs font-semibold uppercase tracking-[0.14em]">
-                        {option.label}
-                      </span>
-                      <span class={active ? "block text-[11px] text-stone-200" : "block text-[11px] text-stone-500"}>
-                        {active ? "Active" : "Switch"}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+          <div class="flex gap-1" role="group" aria-label="Chart layout">
+            {props.options.map((option) => (
+              <button type="button" aria-pressed={props.preset === option.value}
+                class={`workspace-layout-button ${props.preset === option.value ? "is-active" : ""}`}
+                title={option.description} onClick={() => props.onPresetChange(option.value)}>
+                <LayoutPreview preset={option.value} /><span>{option.label}</span>
+              </button>
+            ))}
           </div>
         </div>
-
-        <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-stone-800 bg-stone-950/55 px-3 py-2 text-xs text-stone-500">
-          <span>
-            This workspace auto-saves. Use Save as New when you want a separate version.
-          </span>
-          <button
-            type="button"
-            class="inline-flex items-center gap-1.5 rounded-lg border border-stone-700 px-2.5 py-1.5 text-xs font-medium text-stone-300 transition-colors hover:border-stone-500 hover:bg-stone-900 hover:text-stone-100 disabled:cursor-default disabled:border-stone-800 disabled:text-stone-600"
-            onClick={() => props.onDefaultWorkspaceChange(props.workspaceId)}
-            disabled={props.workspaceId === props.defaultWorkspaceId}
-          >
-            <Star size={13} />
-            {props.workspaceId === props.defaultWorkspaceId
-              ? "Opens by default"
-              : "Open this by default"}
+        <div class="flex items-center gap-2">
+          <span class="hidden text-xs text-stone-400 sm:block">{props.panelCount} charts · Auto-saved</span>
+          <button type="button" class="app-button-compact-secondary gap-1.5" onClick={props.onAddChart} disabled={!props.canAddChart}>
+            <Plus size={14} /> Add chart
           </button>
         </div>
       </div>
+      <details class="workspace-settings">
+        <summary class="inline-flex items-center gap-1.5 py-2 text-xs text-stone-400"><SlidersHorizontal size={13} /> Manage workspace</summary>
+        <div class="flex flex-wrap items-end gap-3 border-t border-white/10 pt-3 pb-2">
+          <label class="min-w-0 flex-1 text-xs text-stone-400">Workspace name
+            <input class={field} value={nameDraft()} maxLength={MAX_WORKSPACE_NAME_LENGTH}
+              onInput={(event) => setNameDraft(event.currentTarget.value)} onBlur={commitWorkspaceName}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") { commitWorkspaceName(); event.currentTarget.blur(); }
+                if (event.key === "Escape") { setNameDraft(props.workspaceName); event.currentTarget.blur(); }
+              }} />
+          </label>
+          <button class="app-button-secondary gap-2" onClick={props.onCreateWorkspace}><CopyPlus size={15} /> Save as new</button>
+          <button class="app-button-secondary gap-2" disabled={props.workspaceId === props.defaultWorkspaceId}
+            onClick={() => props.onDefaultWorkspaceChange(props.workspaceId)}><Star size={15} />
+            {props.workspaceId === props.defaultWorkspaceId ? "Default workspace" : "Set as default"}
+          </button>
+          {props.canDeleteWorkspace && <button class="app-button-secondary gap-2" onClick={props.onDeleteWorkspace}><Trash2 size={15} /> Delete workspace</button>}
+        </div>
+      </details>
     </div>
   );
 }

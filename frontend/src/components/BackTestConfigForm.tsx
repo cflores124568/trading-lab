@@ -1,3 +1,4 @@
+import DataLoadError from "./DataLoadError";
 import { createSignal, createResource, Show, For, batch, createEffect, createMemo } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { ChevronDown, ChevronRight } from "lucide-solid";
@@ -207,7 +208,7 @@ export default function BackTestConfigForm() {
   // Seed market defaults from the active workspace, then fall back to first symbol.
   let seededMarketDefaults = false;
   createEffect(() => {
-    const loadedSymbols = symbols();
+    const loadedSymbols = (symbols.error ? undefined : symbols());
     if (!loadedSymbols || loadedSymbols.length === 0 || seededMarketDefaults) {
       return;
     }
@@ -240,7 +241,7 @@ export default function BackTestConfigForm() {
   // Seed prop firm defaults from workspace account profile when available.
   let seededPresetDefaults = false;
   createEffect(() => {
-    const loadedPresets = presets();
+    const loadedPresets = (presets.error ? undefined : presets());
     if (!loadedPresets || loadedPresets.length === 0 || preset() || seededPresetDefaults) {
       return;
     }
@@ -356,6 +357,7 @@ export default function BackTestConfigForm() {
   // ── Render
   return (
     <div class="space-y-4">
+      <Show when={symbols.error || presets.error}><DataLoadError title="Configuration data could not load" error={symbols.error || presets.error} onRetry={() => window.location.reload()} /></Show>
       <Show when={error()}>
         <div class="rounded-sm border border-red-700 bg-red-950 px-4 py-3 text-sm text-red-300">
           {error()}
@@ -388,7 +390,7 @@ export default function BackTestConfigForm() {
         </div>
 
         <Show
-          when={!symbols.loading && symbols() && symbols()!.length > 0}
+          when={!symbols.loading && (symbols.error ? undefined : symbols()) && (symbols.error ? undefined : symbols())!.length > 0}
           fallback={
             <Show
               when={!symbols.loading}
@@ -408,14 +410,14 @@ export default function BackTestConfigForm() {
               class={field}
               value={symbol()?.symbol ?? ""}
               onChange={(e) => {
-                const found = symbols()!.find((s) => s.symbol === e.currentTarget.value);
+                const found = (symbols.error ? undefined : symbols())!.find((s) => s.symbol === e.currentTarget.value);
                 setSymbol(found ?? null);
               }}
             >
               <option value="" disabled>
                 Select a symbol…
               </option>
-              <For each={symbols()}>
+              <For each={(symbols.error ? undefined : symbols())}>
                 {(s) => (
                   <option value={s.symbol}>
                     {s.symbol} — {s.full_name} ({s.rows.toLocaleString()} bars)
@@ -671,7 +673,7 @@ export default function BackTestConfigForm() {
 
         <Show when={showPropFirm()}>
           <Show
-            when={presets() && presets()!.length > 0}
+            when={(presets.error ? undefined : presets()) && (presets.error ? undefined : presets())!.length > 0}
             fallback={<div class="h-9 rounded-sm bg-stone-800 animate-pulse" />}
           >
             <div class="space-y-4">
@@ -681,14 +683,14 @@ export default function BackTestConfigForm() {
                   class={field}
                   value={preset()?.name ?? ""}
                   onChange={(e) => {
-                    const found = presets()?.find((p) => p.name === e.currentTarget.value);
+                    const found = (presets.error ? undefined : presets())?.find((p) => p.name === e.currentTarget.value);
                     setPreset(found ?? null);
                   }}
                 >
                   <option value="" disabled>
                     Select a preset…
                   </option>
-                  <For each={Object.entries(groupPresets(presets() ?? []))}>
+                  <For each={Object.entries(groupPresets((presets.error ? undefined : presets()) ?? []))}>
                     {([firm, firmPresets]) => (
                       <optgroup label={firm}>
                         <For each={firmPresets}>
@@ -741,7 +743,7 @@ export default function BackTestConfigForm() {
         </Show>
       </section>
 
-      <section class={`${sectionBase} border-l-4 border-stone-700/80`}>
+      <section class={`${sectionBase} sticky bottom-3 z-20 border-stone-600 bg-stone-950 shadow-xl`}>
         <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div class="space-y-1">
             <p class="text-sm font-medium text-stone-100">5. Launch</p>

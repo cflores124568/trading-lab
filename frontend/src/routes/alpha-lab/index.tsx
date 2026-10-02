@@ -1,3 +1,5 @@
+import ResearchWorkflow from "../../components/ResearchWorkflow";
+import DataLoadError from "../../components/DataLoadError";
 import { A, useNavigate } from "@solidjs/router";
 import { createMemo, createResource, createSignal, For, Show } from "solid-js";
 import { CalendarRange, ChevronRight, FlaskConical, Plus, X } from "lucide-solid";
@@ -47,8 +49,13 @@ export default function AlphaLabIndexPage() {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
 
+  const [search, setSearch] = createSignal("");
+  const [statusFilter, setStatusFilter] = createSignal("all");
+  const filteredCampaigns = createMemo(() => ((campaigns.error ? [] : campaigns()) ?? []).filter((item) =>
+    (statusFilter() === "all" || item.status === statusFilter()) && `${item.name} ${item.symbol}`.toLowerCase().includes(search().toLowerCase().trim())));
+
   const counts = createMemo(() => {
-    const values = campaigns() ?? [];
+    const values = (campaigns.error ? undefined : campaigns()) ?? [];
     return {
       total: values.length,
       active: values.filter((item) => item.status === "queued" || item.status === "running").length,
@@ -58,7 +65,7 @@ export default function AlphaLabIndexPage() {
     };
   });
 
-  const selectedSymbol = createMemo(() => symbols()?.find((item) => item.symbol === symbol()));
+  const selectedSymbol = createMemo(() => (symbols.error ? undefined : symbols())?.find((item) => item.symbol === symbol()));
   const splitTotal = createMemo(
     () => Number(developmentPct()) + Number(validationPct()) + Number(holdoutPct()),
   );
@@ -79,6 +86,10 @@ export default function AlphaLabIndexPage() {
     }
     if (!startTime() || !endTime()) {
       setError("Choose an exact chronological research window.");
+      return;
+    }
+    if (new Date(startTime()) >= new Date(endTime())) {
+      setError("End timestamp must be after the start timestamp.");
       return;
     }
     setBusy(true);
@@ -115,13 +126,10 @@ export default function AlphaLabIndexPage() {
       }
     >
       <div class="space-y-6">
+        <ResearchWorkflow active="/alpha-lab" />
         <ResearchDisclosure />
 
-        <Show when={campaigns.error}>
-          <p class="rounded-sm border border-red-800 bg-red-950/35 px-4 py-3 text-sm text-red-200">
-            {campaigns.error instanceof Error ? campaigns.error.message : "Campaign data could not be loaded."}
-          </p>
-        </Show>
+        <Show when={campaigns.error}><DataLoadError title="Campaigns could not load" error={campaigns.error} onRetry={refetch} /></Show>
 
         <section class="app-panel overflow-hidden">
           <div class="grid grid-cols-2 divide-x divide-stone-800 md:grid-cols-5">
@@ -134,7 +142,7 @@ export default function AlphaLabIndexPage() {
             ].map(([label, value]) => (
               <div class="px-4 py-4 md:px-5">
                 <p class="app-metric-label">{label}</p>
-                <p class="app-metric-value">{value}</p>
+                <p class="app-metric-value">{campaigns.loading || campaigns.error ? "—" : value}</p>
               </div>
             ))}
           </div>
@@ -166,7 +174,7 @@ export default function AlphaLabIndexPage() {
                 <label>
                   <span class={labelClass}>Symbol</span>
                   <select class={inputClass} value={symbol()} onChange={(event) => setSymbol(event.currentTarget.value)}>
-                    <For each={symbols() ?? []}>{(item) => <option value={item.symbol}>{item.symbol}</option>}</For>
+                    <For each={(symbols.error ? undefined : symbols()) ?? []}>{(item) => <option value={item.symbol}>{item.symbol}</option>}</For>
                   </select>
                 </label>
                 <label>
@@ -181,14 +189,14 @@ export default function AlphaLabIndexPage() {
 
               <div class="grid gap-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
                 <label>
-                  <span class={labelClass}>Start timestamp</span>
+                  <span class={labelClass}>Start timestamp (local time)</span>
                   <input type="datetime-local" class={inputClass} value={startTime()} onInput={(event) => setStartTime(event.currentTarget.value)} required />
                 </label>
                 <label>
-                  <span class={labelClass}>End timestamp</span>
+                  <span class={labelClass}>End timestamp (local time)</span>
                   <input type="datetime-local" class={inputClass} value={endTime()} onInput={(event) => setEndTime(event.currentTarget.value)} required />
                 </label>
-                <button type="button" class="app-button-secondary gap-2 whitespace-nowrap" onClick={applyAvailableRange}>
+                <button type="button" class="app-button-secondary gap-2 whitespace-nowrap" onClick={applyAvailableRange} disabled={!selectedSymbol()}>
                   <CalendarRange size={15} /> Use available range
                 </button>
               </div>
@@ -199,6 +207,11 @@ export default function AlphaLabIndexPage() {
                   <span class={`app-data text-xs ${splitTotal() === 100 ? "text-emerald-300" : "text-red-300"}`}>
                     {splitTotal()}% total
                   </span>
+                </div>
+                <div class="mb-4 flex h-8 overflow-hidden rounded border border-stone-700" aria-label="Planned chronological data split">
+                  <div class="flex items-center justify-center bg-stone-700 text-xs" style={{ width: `${Math.max(0, Number(developmentPct())) / (splitTotal() || 1) * 100}%` }}>Development</div>
+                  <div class="flex items-center justify-center bg-teal-950 text-xs text-teal-200" style={{ width: `${Math.max(0, Number(validationPct())) / (splitTotal() || 1) * 100}%` }}>Validation</div>
+                  <div class="flex items-center justify-center bg-amber-950 text-xs text-amber-200" style={{ width: `${Math.max(0, Number(holdoutPct())) / (splitTotal() || 1) * 100}%` }}>Sealed</div>
                 </div>
                 <div class="grid gap-4 md:grid-cols-3">
                   <label>
@@ -220,7 +233,7 @@ export default function AlphaLabIndexPage() {
                 <p class="rounded-sm border border-red-800 bg-red-950/35 px-4 py-3 text-sm text-red-200">{error()}</p>
               </Show>
               <div class="flex justify-end">
-                <button type="submit" disabled={busy()} class="app-button-primary min-w-40 disabled:cursor-not-allowed disabled:opacity-50">
+                <button type="submit" disabled={busy() || symbols.loading || !!symbols.error || !selectedSymbol() || splitTotal() !== 100} class="app-button-primary min-w-40 disabled:cursor-not-allowed disabled:opacity-50">
                   {busy() ? "Calculating partitions..." : "Create draft"}
                 </button>
               </div>
@@ -236,9 +249,14 @@ export default function AlphaLabIndexPage() {
             </div>
           </div>
 
-          <Show when={!campaigns.loading} fallback={<div class="app-skeleton h-52" />}>
+          <div class="mb-5 flex flex-wrap gap-3">
+            <label class="min-w-48 flex-1 text-xs text-stone-400">Find a campaign<input type="search" class="app-input mt-1 block w-full" placeholder="Campaign name or symbol" value={search()} onInput={(event) => setSearch(event.currentTarget.value)} /></label>
+            <label class="text-xs text-stone-400">Status<select class="app-input mt-1 block" value={statusFilter()} onChange={(event) => setStatusFilter(event.currentTarget.value)}><option value="all">All statuses</option>{["draft", "queued", "running", "paused", "completed", "failed"].map((status) => <option value={status}>{status}</option>)}</select></label>
+          </div>
+          <Show when={!campaigns.loading && !campaigns.error && ((campaigns() ?? []).length > 0) && filteredCampaigns().length === 0}><p class="py-6 text-sm text-stone-400">No campaigns match these filters.</p></Show>
+          <Show when={!campaigns.loading && !campaigns.error} fallback={<Show when={campaigns.loading}><div class="app-skeleton h-52" /></Show>}>
             <Show
-              when={(campaigns() ?? []).length > 0}
+              when={((campaigns.error ? undefined : campaigns()) ?? []).length > 0}
               fallback={
                 <EmptyState
                   class="app-surface-muted"
@@ -260,7 +278,7 @@ export default function AlphaLabIndexPage() {
                     <tr><th>Campaign</th><th>Window</th><th>Partitions</th><th>Progress</th><th>Budget</th><th /></tr>
                   </thead>
                   <tbody>
-                    <For each={campaigns()}>
+                    <For each={filteredCampaigns()}>
                       {(campaign) => {
                         const attempted = progressValue(campaign.search_progress, "attempted_trials");
                         const planned = progressValue(campaign.search_progress, "planned_trials");

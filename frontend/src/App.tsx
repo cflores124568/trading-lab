@@ -1,23 +1,24 @@
+import { lazy } from "solid-js";
 import { Router, Route } from "@solidjs/router";
 
-import Dashboard from "./routes/index";
-import BacktestList from "./routes/backtests/index";
-import NewBacktest from "./routes/backtests/new";
-import BacktestDetail from "./routes/backtests/[id]";
-import BacktestComparePage from "./routes/backtests/compare";
-import CandidateDetailPage from "./routes/candidates/[id]";
-import CandidateRegistryPage from "./routes/candidates/index";
-import ExperimentsIndexPage from "./routes/experiments/index";
-import ExperimentDetailPage from "./routes/experiments/[id]";
-import AlphaLabIndexPage from "./routes/alpha-lab/index";
-import AlphaLabCampaignPage from "./routes/alpha-lab/[id]";
-import PaperSessionDetailPage from "./routes/paper-sessions/[id]";
-import PaperTradingGuidePage from "./routes/paper-sessions/guide";
-import PaperSessionListPage from "./routes/paper-sessions/index";
-import ReplayLabPage from "./routes/replay";
-import ReplayComparePage from "./routes/replay-compare";
-import ReplaySessionListPage from "./routes/replay-sessions";
-import NotFoundPage from "./routes/not-found";
+const Dashboard = lazy(() => import("./routes/index"));
+const BacktestList = lazy(() => import("./routes/backtests/index"));
+const NewBacktest = lazy(() => import("./routes/backtests/new"));
+const BacktestDetail = lazy(() => import("./routes/backtests/[id]"));
+const BacktestComparePage = lazy(() => import("./routes/backtests/compare"));
+const CandidateDetailPage = lazy(() => import("./routes/candidates/[id]"));
+const CandidateRegistryPage = lazy(() => import("./routes/candidates/index"));
+const ExperimentsIndexPage = lazy(() => import("./routes/experiments/index"));
+const ExperimentDetailPage = lazy(() => import("./routes/experiments/[id]"));
+const AlphaLabIndexPage = lazy(() => import("./routes/alpha-lab/index"));
+const AlphaLabCampaignPage = lazy(() => import("./routes/alpha-lab/[id]"));
+const PaperSessionDetailPage = lazy(() => import("./routes/paper-sessions/[id]"));
+const PaperTradingGuidePage = lazy(() => import("./routes/paper-sessions/guide"));
+const PaperSessionListPage = lazy(() => import("./routes/paper-sessions/index"));
+const ReplayLabPage = lazy(() => import("./routes/replay"));
+const ReplayComparePage = lazy(() => import("./routes/replay-compare"));
+const ReplaySessionListPage = lazy(() => import("./routes/replay-sessions"));
+const NotFoundPage = lazy(() => import("./routes/not-found"));
 import RouteErrorBoundary from "./components/RouteErrorBoundary";
 
 export default function App() {

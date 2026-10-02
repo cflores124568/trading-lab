@@ -1,3 +1,5 @@
+import ResearchWorkflow from "../../components/ResearchWorkflow";
+import DataLoadError from "../../components/DataLoadError";
 import { A, useLocation, useNavigate } from "@solidjs/router";
 import {
   batch,
@@ -482,12 +484,12 @@ export default function ExperimentsIndexPage() {
   const [copiedTemplate, setCopiedTemplate] = createSignal(false);
 
   const selectedPreset = createMemo(
-    () => presets()?.find((preset) => preset.name === selectedPresetName()) ?? null,
+    () => (presets.error ? undefined : presets())?.find((preset) => preset.name === selectedPresetName()) ?? null,
   );
   const selectedStrategyProfile = createMemo(() => strategyProfiles[strategy()]);
   const selectedSymbolRecords = createMemo(() => {
     const lookup = new Set(selectedSymbols());
-    return (symbols() ?? []).filter((symbol) => lookup.has(symbol.symbol));
+    return ((symbols.error ? undefined : symbols()) ?? []).filter((symbol) => lookup.has(symbol.symbol));
   });
   const coverageStats = createMemo(() => {
     const records = selectedSymbolRecords();
@@ -527,7 +529,7 @@ export default function ExperimentsIndexPage() {
       return {
         grid: null as Record<string, number[]> | null,
         error:
-          errorValue instanceof Error ? errorValue.message : "Parameter grid looks busted.",
+          errorValue instanceof Error ? errorValue.message : "Check the parameter grid values.",
       };
     }
   });
@@ -565,7 +567,7 @@ export default function ExperimentsIndexPage() {
   });
   const complexity = createMemo(() => describeComplexity(estimatedRunCount()));
   const queueDepth = createMemo(
-    () => (experiments() ?? []).filter((experiment) => experiment.status === "running").length,
+    () => ((experiments.error ? undefined : experiments()) ?? []).filter((experiment) => experiment.status === "running").length,
   );
   const builderSignature = createMemo(() =>
     JSON.stringify({
@@ -629,17 +631,10 @@ export default function ExperimentsIndexPage() {
     const maxInterval = Math.max(...selectedIntervals().map((interval) => intervalMinutes(interval)));
 
     if ((maxInterval >= 240 && minPeriod < 6) || (maxInterval >= 1440 && minPeriod < 12)) {
-      return "Sampling is getting coarse for the smallest lookback in this grid. You may be inviting aliasing noise.";
+      return "The shortest lookback uses very few bars at this interval. Review signal stability before comparing results.";
     }
 
     return null;
-  });
-  const sharpeVarianceBand = createMemo(() => {
-    const band =
-      0.18 +
-      0.22 * Number(correlationRisk()) +
-      0.35 / Math.sqrt(Math.max(selectedSymbols().length * selectedIntervals().length, 1));
-    return Number(band.toFixed(2));
   });
   const previewRuns = createMemo(() => {
     const grid = parsedGrid().grid;
@@ -691,19 +686,19 @@ export default function ExperimentsIndexPage() {
           tone: correlationRisk() ? "warn" : "pass",
           detail: correlationRisk()
             ? "Nearby intervals with the same trend family will likely tell a very similar story."
-            : "This mix has enough separation that the sweep should stay informative.",
+            : "No adjacent-interval flag for this configuration. Return correlations have not been measured.",
         },
         {
-          label: "Look-ahead / sampling bias watch",
+          label: "Lookback / interval check",
           tone: nyquistWarning() ? "warn" : "pass",
           detail:
             nyquistWarning() ??
-            "No obvious sampling mismatch jumped out from the interval and lookback pairing.",
+            "No coarse-interval flag for these lookbacks. This check does not test data leakage.",
         },
         {
-          label: "Estimated Sharpe variance band",
-          tone: sharpeVarianceBand() > 0.4 ? "warn" : "pass",
-          detail: `About +/-${sharpeVarianceBand().toFixed(2)}. Bigger means the ranking may still be pretty squishy.`,
+          label: "Out-of-sample evidence",
+          tone: "warn",
+          detail: "A parameter sweep does not establish robustness. Review walk-forward and holdout evidence in Alpha Lab.",
         },
       ] as { label: string; tone: PreflightTone; detail: string }[],
   );
@@ -718,11 +713,11 @@ export default function ExperimentsIndexPage() {
     return "#a1a1aa";
   });
   const recentWinner = createMemo(
-    () => (experiments() ?? []).find((experiment) => experiment.status === "completed") ?? null,
+    () => ((experiments.error ? undefined : experiments()) ?? []).find((experiment) => experiment.status === "completed") ?? null,
   );
   const sortedExperiments = createMemo(() => {
     const direction = sortDirection() === "asc" ? 1 : -1;
-    const list = [...(experiments() ?? [])];
+    const list = [...((experiments.error ? undefined : experiments()) ?? [])];
 
     list.sort((left, right) => {
       if (sortKey() === "name") {
@@ -958,7 +953,7 @@ export default function ExperimentsIndexPage() {
   };
 
   createEffect(() => {
-    const availableSymbols = symbols();
+    const availableSymbols = (symbols.error ? undefined : symbols());
     if (!availableSymbols || availableSymbols.length === 0 || selectedSymbols().length > 0) {
       return;
     }
@@ -976,7 +971,7 @@ export default function ExperimentsIndexPage() {
   });
 
   createEffect(() => {
-    const seed = seedBacktest();
+    const seed = (seedBacktest.error ? undefined : seedBacktest());
     const seedId = fromBacktestId();
     if (!seed || !seedId || appliedSeedId() === seedId || templateSeed()) {
       return;
@@ -1052,6 +1047,7 @@ export default function ExperimentsIndexPage() {
   return (
     <AppShell
       title="Experiments"
+      subtitle="Compare strategy settings, review the trade-offs, then validate promising results in Alpha Lab."
       actions={
         <>
           <A href="/backtests" class="app-button-secondary">
@@ -1063,7 +1059,10 @@ export default function ExperimentsIndexPage() {
         </>
       }
     >
-      <div class="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
+      <ResearchWorkflow active="/experiments" />
+      <nav class="research-section-nav" aria-label="Experiment sections"><a href="#sweep-builder">Build a sweep</a><a href="#sweep-review">Review & launch</a><a href="#saved-experiments">Saved experiments</a></nav>
+      <Show when={experiments.error || symbols.error || presets.error}><DataLoadError title="Research data could not load" error={experiments.error || symbols.error || presets.error} onRetry={() => window.location.reload()} /></Show>
+      <div id="sweep-builder" class="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
         <div class="space-y-6">
           <Show when={error()}>
             <div class="rounded-md border border-red-800/80 bg-red-950/40 px-4 py-3 text-sm text-red-200">
@@ -1071,7 +1070,7 @@ export default function ExperimentsIndexPage() {
             </div>
           </Show>
 
-          <Show when={seedBacktest()}>
+          <Show when={(seedBacktest.error ? undefined : seedBacktest())}>
             {(seed) => (
               <section class={section}>
                 <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -1096,7 +1095,7 @@ export default function ExperimentsIndexPage() {
             <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div class="space-y-2">
                 <p class="app-kicker">Batch Builder</p>
-                <h2 class="text-xl font-semibold text-stone-100">Build the next sweep</h2>
+                <h2 class="text-xl font-semibold text-stone-100">Configure a parameter sweep</h2>
               </div>
               <div class="flex flex-wrap gap-2">
                 <Show when={recentWinner()}>
@@ -1106,7 +1105,7 @@ export default function ExperimentsIndexPage() {
                       onClick={() => hydrateFromExperiment(winner())}
                       class="app-button-secondary"
                     >
-                      Load Last Winner
+                      Use latest completed sweep
                     </button>
                   )}
                 </Show>
@@ -1170,8 +1169,8 @@ export default function ExperimentsIndexPage() {
 
             <div class="grid gap-3 md:grid-cols-2">
               <div>
-                <label class={label}>Experiment name</label>
-                <input
+                <label for="experiment-field-1" class={label}>Experiment name</label>
+                <input id="experiment-field-1"
                   class={field}
                   value={name()}
                   onInput={(event) => setName(event.currentTarget.value)}
@@ -1180,8 +1179,8 @@ export default function ExperimentsIndexPage() {
               </div>
 
               <div>
-                <label class={label}>Scoring rule</label>
-                <select
+                <label for="experiment-field-2" class={label}>Scoring rule</label>
+                <select id="experiment-field-2"
                   class={field}
                   value={scoringRule()}
                   onChange={(event) =>
@@ -1197,8 +1196,8 @@ export default function ExperimentsIndexPage() {
 
             <div class="grid gap-3 md:grid-cols-2">
               <div>
-                <label class={label}>Start date</label>
-                <input
+                <label for="experiment-field-3" class={label}>Start date</label>
+                <input id="experiment-field-3"
                   type="date"
                   class={field}
                   value={startDate()}
@@ -1206,8 +1205,8 @@ export default function ExperimentsIndexPage() {
                 />
               </div>
               <div>
-                <label class={label}>End date</label>
-                <input
+                <label for="experiment-field-4" class={label}>End date</label>
+                <input id="experiment-field-4"
                   type="date"
                   class={field}
                   value={endDate()}
@@ -1226,7 +1225,7 @@ export default function ExperimentsIndexPage() {
             <div>
               <label class={label}>Symbols</label>
               <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                <For each={symbols() ?? []}>
+                <For each={(symbols.error ? undefined : symbols()) ?? []}>
                   {(symbol) => {
                     const checked = () => selectedSymbols().includes(symbol.symbol);
                     return (
@@ -1253,7 +1252,7 @@ export default function ExperimentsIndexPage() {
                   }}
                 </For>
               </div>
-              <Show when={!symbols.loading && (symbols() ?? []).length === 0}>
+              <Show when={!symbols.loading && ((symbols.error ? undefined : symbols()) ?? []).length === 0}>
                 <p class="rounded-sm border border-yellow-700 bg-yellow-950 px-4 py-3 text-sm text-yellow-300">
                   No market data is loaded yet, so there are no symbols to sweep. Import historical
                   candles, then refresh this page.
@@ -1406,8 +1405,8 @@ export default function ExperimentsIndexPage() {
               <For each={STRATEGY_PARAMS[strategy()]}>
                 {(param) => (
                   <div>
-                    <label class={label}>{param.label}</label>
-                    <input
+                    <label for={`experiment-param-${param.key}`} class={label}>{param.label}</label>
+                    <input id={`experiment-param-${param.key}`}
                       class={`${field} app-data`}
                       value={paramInputs()[param.key] ?? ""}
                       onInput={(event) =>
@@ -1444,7 +1443,7 @@ export default function ExperimentsIndexPage() {
             <div>
               <label class={label}>Prop preset</label>
               <PropPresetSelect
-                presets={presets() ?? []}
+                presets={(presets.error ? undefined : presets()) ?? []}
                 value={selectedPresetName()}
                 onChange={setSelectedPresetName}
               />
@@ -1452,8 +1451,8 @@ export default function ExperimentsIndexPage() {
 
             <div class="grid gap-3 md:grid-cols-3">
               <div>
-                <label class={label}>Initial balance</label>
-                <input
+                <label for="experiment-field-5" class={label}>Initial balance</label>
+                <input id="experiment-field-5"
                   type="number"
                   min="1"
                   class={`${field} app-data`}
@@ -1462,8 +1461,8 @@ export default function ExperimentsIndexPage() {
                 />
               </div>
               <div>
-                <label class={label}>Position size</label>
-                <input
+                <label for="experiment-field-6" class={label}>Position size</label>
+                <input id="experiment-field-6"
                   type="number"
                   min="0.01"
                   step="0.01"
@@ -1473,8 +1472,8 @@ export default function ExperimentsIndexPage() {
                 />
               </div>
               <div>
-                <label class={label}>Commission</label>
-                <input
+                <label for="experiment-field-7" class={label}>Commission</label>
+                <input id="experiment-field-7"
                   type="number"
                   min="0"
                   step="0.01"
@@ -1487,8 +1486,8 @@ export default function ExperimentsIndexPage() {
 
             <div class="grid gap-3 md:grid-cols-2">
               <div>
-                <label class={label}>Execution mode</label>
-                <select
+                <label for="experiment-field-8" class={label}>Execution mode</label>
+                <select id="experiment-field-8"
                   class={field}
                   value={executionMode()}
                   onChange={(event) =>
@@ -1500,8 +1499,8 @@ export default function ExperimentsIndexPage() {
                 </select>
               </div>
               <div>
-                <label class={label}>Slippage ticks per fill</label>
-                <input
+                <label for="experiment-field-9" class={label}>Slippage ticks per fill</label>
+                <input id="experiment-field-9"
                   type="number"
                   min="0"
                   step="0.25"
@@ -1515,8 +1514,8 @@ export default function ExperimentsIndexPage() {
             <Show when={executionMode() === "synthetic_quotes"}>
               <div class="grid gap-3 md:grid-cols-3">
                 <div>
-                  <label class={label}>Base spread (ticks)</label>
-                  <input
+                  <label for="experiment-field-10" class={label}>Base spread (ticks)</label>
+                  <input id="experiment-field-10"
                     type="number"
                     min="1"
                     step="1"
@@ -1526,8 +1525,8 @@ export default function ExperimentsIndexPage() {
                   />
                 </div>
                 <div>
-                  <label class={label}>Volatile threshold (ticks)</label>
-                  <input
+                  <label for="experiment-field-11" class={label}>Volatile threshold (ticks)</label>
+                  <input id="experiment-field-11"
                     type="number"
                     min="0"
                     step="1"
@@ -1539,8 +1538,8 @@ export default function ExperimentsIndexPage() {
                   />
                 </div>
                 <div>
-                  <label class={label}>Volatile extra spread (ticks)</label>
-                  <input
+                  <label for="experiment-field-12" class={label}>Volatile extra spread (ticks)</label>
+                  <input id="experiment-field-12"
                     type="number"
                     min="0"
                     step="1"
@@ -1557,8 +1556,8 @@ export default function ExperimentsIndexPage() {
         </div>
 
         <div class="space-y-6">
-          <section class={section}>
-            <p class="app-kicker">Launch Control</p>
+          <section id="sweep-review" class={section}>
+            <h2 class="text-lg font-semibold">Review &amp; launch</h2>
 
             <div class="rounded-lg border border-stone-800 bg-stone-950/80 p-4 lg:p-5">
               <div class="mb-1">
@@ -1578,24 +1577,24 @@ export default function ExperimentsIndexPage() {
                     }}
                   />
                 </div>
-                <p class="mt-2 text-[11px] text-stone-600">Queue slot {queueDepth() + 1} if launched now</p>
+                <p class="mt-2 text-[11px] text-stone-600">{queueDepth()} batches currently running · Timing is a heuristic, not a queue reservation</p>
               </div>
 
               <div class="mt-4 space-y-2">
                 <div class="flex items-center justify-between gap-4 rounded-md border border-stone-800 bg-stone-950/75 px-4 py-3">
                   <div class="min-w-0">
-                    <p class="text-[11px] uppercase tracking-[0.18em] text-stone-500">ETA</p>
+                    <p class="text-[11px] uppercase tracking-[0.18em] text-stone-500">Rough runtime estimate</p>
                   </div>
                   <p class="app-data shrink-0 text-xl font-semibold text-stone-100">
-                    {formatDuration(runtimeEstimateMinutes() + queueDepth() * 4)}
+                    {formatDuration(runtimeEstimateMinutes())}
                   </p>
                 </div>
                 <div class="flex items-center justify-between gap-4 rounded-md border border-stone-800 bg-stone-950/75 px-4 py-3">
                   <div class="min-w-0">
-                    <p class="text-[11px] uppercase tracking-[0.18em] text-stone-500">Confidence Band</p>
+                    <p class="text-[11px] uppercase tracking-[0.18em] text-stone-500">Validation</p>
                   </div>
                   <p class="app-data shrink-0 text-xl font-semibold text-stone-100">
-                    +/-{sharpeVarianceBand().toFixed(2)}
+                    Not yet assessed
                   </p>
                 </div>
               </div>
@@ -1748,10 +1747,12 @@ export default function ExperimentsIndexPage() {
 
           </section>
 
+        </div>
+      </div>
           <section class={section}>
             <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <p class="app-kicker">Saved Batches</p>
+                <h2 id="saved-experiments" class="text-lg font-semibold">Saved experiments</h2>
               </div>
               <div class="flex flex-wrap gap-2">
                 <button
@@ -1790,12 +1791,12 @@ export default function ExperimentsIndexPage() {
               </div>
             </div>
 
-            <Show when={!experiments.loading} fallback={<div class="app-skeleton h-56" />}>
+            <Show when={!experiments.loading && !experiments.error} fallback={<Show when={experiments.loading}><div class="app-skeleton h-56" /></Show>}>
               <Show
                 when={sortedExperiments().length > 0}
                 fallback={
                   <div class="rounded-md border border-stone-800 bg-stone-950/60 px-4 py-10 text-center text-sm text-stone-500">
-                    No experiments yet. Build one on the left.
+                    No experiments yet. Configure your first sweep above.
                   </div>
                 }
               >
@@ -1914,8 +1915,6 @@ export default function ExperimentsIndexPage() {
               </Show>
             </Show>
           </section>
-        </div>
-      </div>
 
       <Show when={showShortcuts()}>
         <div class="fixed inset-0 z-40 flex items-center justify-center bg-stone-950/80 px-4 backdrop-blur-sm">

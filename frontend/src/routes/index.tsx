@@ -1,7 +1,6 @@
 import { A, useLocation, useNavigate } from "@solidjs/router";
 import { batch, createEffect, createMemo, createSignal } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
-import { SquareChartGantt } from "lucide-solid";
 import AppShell from "../components/AppShell";
 import WorkspaceGrid from "../components/workspace/WorkspaceGrid";
 import WorkspaceToolbar from "../components/workspace/WorkspaceToolbar";
@@ -48,25 +47,6 @@ export default function Dashboard() {
   });
   const canAddChart = createMemo(() => activePresetState().panels.length < MAX_WORKSPACE_PANELS);
   const canDeleteWorkspace = createMemo(() => workspace.workspaces.length > 1);
-  const activePanels = createMemo(() => activePresetState().panels);
-  const symbolMix = createMemo(() => {
-    const counts = new Map<string, number>();
-
-    for (const panel of activePanels()) {
-      counts.set(panel.query.symbol, (counts.get(panel.query.symbol) ?? 0) + 1);
-    }
-
-    return Array.from(counts.entries()).sort((left, right) => right[1] - left[1]);
-  });
-  const intervalMix = createMemo(() => {
-    const counts = new Map<string, number>();
-
-    for (const panel of activePanels()) {
-      counts.set(panel.query.interval, (counts.get(panel.query.interval) ?? 0) + 1);
-    }
-
-    return Array.from(counts.entries()).sort((left, right) => right[1] - left[1]);
-  });
   const handleWorkspaceChange = (workspaceId: string) => {
     setWorkspace("selectedWorkspaceId", workspaceId);
   };
@@ -320,8 +300,8 @@ export default function Dashboard() {
   return (
     <AppShell
       title="Dashboard"
-      subtitle="Live and historical chart workspaces tuned for fast setup, replay, and screenshot-worthy analysis."
-      mainClass="max-w-none"
+      subtitle="Compare markets and timeframes. Save your layout, then move into replay or research."
+      mainClass="workspace-page max-w-none"
       actions={
         <>
           <A
@@ -345,43 +325,6 @@ export default function Dashboard() {
         </>
       }
     >
-      <div class="app-surface-muted rounded-2xl px-4 py-3">
-        <div class="flex items-center justify-between gap-3">
-          <div class="flex items-center gap-2 text-stone-100">
-            <SquareChartGantt size={16} class="text-stone-200" />
-            <p class="text-sm font-semibold">Panel stack</p>
-          </div>
-          <p class="text-xs text-stone-500">
-            {activePanels().length} panels · {activeWorkspace().selectedPreset}
-          </p>
-        </div>
-        <div class="mt-3 flex flex-wrap gap-2">
-          {activePanels().map((panel, index) => (
-            <div class="rounded-full border border-white/8 bg-white/[0.04] px-3 py-2 text-xs text-stone-300">
-              <span class="font-semibold text-stone-100">Panel {index + 1}</span>
-              <span class="mx-2 text-stone-600">·</span>
-              <span>{panel.title}</span>
-              <span class="mx-2 text-stone-600">·</span>
-              <span class="uppercase tracking-[0.16em] text-stone-500">
-                {panel.query.symbol} {panel.query.interval}
-              </span>
-            </div>
-          ))}
-        </div>
-        <div class="mt-4 flex flex-wrap gap-2">
-          {symbolMix().map(([symbol, count]) => (
-            <span class="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-stone-200">
-              {symbol} x{count}
-            </span>
-          ))}
-          {intervalMix().map(([interval, count]) => (
-            <span class="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-stone-200">
-              {interval} x{count}
-            </span>
-          ))}
-        </div>
-      </div>
-
       {launchNotice() ? (
         <div class="rounded-2xl border border-green-700/70 bg-green-950/70 px-4 py-3 text-sm text-green-200 shadow-[0_12px_30px_rgba(0,0,0,0.2)]">
           {launchNotice()}

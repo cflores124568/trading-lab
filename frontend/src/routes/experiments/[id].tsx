@@ -1,3 +1,4 @@
+import DataLoadError from "../../components/DataLoadError";
 import { A, useParams } from "@solidjs/router";
 import { batch, createMemo, createResource, createSignal, For, Show } from "solid-js";
 import AppShell from "../../components/AppShell";
@@ -117,9 +118,9 @@ export default function ExperimentDetailPage() {
     fetchExperimentResults,
   );
   const completedRuns = createMemo(
-    () => (results() ?? []).filter((run) => run.status === "completed"),
+    () => ((results.error ? undefined : results()) ?? []).filter((run) => run.status === "completed"),
   );
-  const failedRuns = createMemo(() => (results() ?? []).filter((run) => run.status === "failed"));
+  const failedRuns = createMemo(() => ((results.error ? undefined : results()) ?? []).filter((run) => run.status === "failed"));
   const candidateRuns = createMemo(() =>
     completedRuns().filter((run) => run.is_candidate),
   );
@@ -172,15 +173,15 @@ export default function ExperimentDetailPage() {
 
   return (
     <AppShell
-      title={experiment()?.name ?? "Experiment"}
+      title={(experiment.error ? undefined : experiment())?.name ?? "Experiment"}
       subtitle={
-        experiment()
-          ? `${experiment()!.symbols.join(", ")} | ${experiment()!.intervals.join(", ")} | ${experiment()!.strategy_type.replace(/_/g, " ")}`
+        (experiment.error ? undefined : experiment())
+          ? `${(experiment.error ? undefined : experiment())!.symbols.join(", ")} | ${(experiment.error ? undefined : experiment())!.intervals.join(", ")} | ${(experiment.error ? undefined : experiment())!.strategy_type.replace(/_/g, " ")}`
           : "Ranked sweep detail."
       }
       actions={
         <>
-          <Show when={experiment()?.best_backtest_id}>
+          <Show when={(experiment.error ? undefined : experiment())?.best_backtest_id}>
             {(bestBacktestId) => (
               <A
                 href={`/backtests/${bestBacktestId()}`}
@@ -192,7 +193,7 @@ export default function ExperimentDetailPage() {
           </Show>
           <button
             type="button"
-            disabled={busy()}
+            disabled={busy() || experiment.loading || !!experiment.error || (experiment()?.status === "running")}
             onClick={handleRun}
             class={`rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
               busy()
@@ -211,12 +212,11 @@ export default function ExperimentDetailPage() {
         </>
       }
     >
+      <Show when={experiment.error}><DataLoadError title="Experiment could not load" error={experiment.error} onRetry={refetchExperiment} /></Show>
       <Show
-        when={experiment()}
+        when={(experiment.error ? undefined : experiment())}
         fallback={
-          <section class="app-panel app-panel-section flex min-h-60 items-center justify-center">
-            <p class="text-stone-400">Loading experiment...</p>
-          </section>
+          <Show when={!experiment.error}><div role="status" aria-label="Loading experiment" class="app-skeleton h-60" /></Show>
         }
       >
         {(batchResult) => (
@@ -349,7 +349,8 @@ export default function ExperimentDetailPage() {
             <section class="app-panel app-panel-section">
               <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                 <div class="space-y-2">
-                  <p class="app-kicker">Ranked Results</p>
+                  <h2 class="text-lg font-semibold">Ranked results</h2>
+                  <p class="text-xs text-stone-400">Rankings describe this sweep. Validate finalists on unseen data before drawing conclusions.</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-2 text-xs text-stone-500">
                   <span>{completedRuns().length} completed</span>
@@ -358,12 +359,13 @@ export default function ExperimentDetailPage() {
                 </div>
               </div>
 
-              <Show when={!results.loading} fallback={<div class="app-skeleton mt-6 h-56" />}>
+              <Show when={results.error}><DataLoadError title="Results could not load" error={results.error} onRetry={refetchResults} /></Show>
+              <Show when={!results.loading && !results.error} fallback={<div class="app-skeleton mt-6 h-56" />}>
                 <Show
-                  when={(results() ?? []).length > 0}
+                  when={((results.error ? undefined : results()) ?? []).length > 0}
                   fallback={
                     <div class="mt-6 rounded-2xl border border-stone-800 bg-stone-950/60 px-4 py-10 text-center text-sm text-stone-500">
-                      No ranked runs yet. Hit `Run Batch` when you're ready.
+                      No ranked runs yet. Run the batch to generate results.
                     </div>
                   }
                 >
@@ -384,7 +386,7 @@ export default function ExperimentDetailPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        <For each={results()}>
+                        <For each={(results.error ? undefined : results())}>
                           {(run) => (
                             <tr class="rounded-2xl border border-stone-800 bg-stone-950/70 text-stone-200">
                               <td class="rounded-l-2xl px-3 py-3 font-mono text-xs text-stone-400">

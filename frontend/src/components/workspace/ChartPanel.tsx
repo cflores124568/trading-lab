@@ -4,9 +4,8 @@ import {
   Ellipsis,
   Expand,
   GripVertical,
-  History,
   Minimize2,
-  Radio,
+  RefreshCw,
   SlidersHorizontal,
   Trash2,
 } from "lucide-solid";
@@ -163,7 +162,7 @@ export default function ChartPanel(props: Props) {
     onCleanup(() => window.removeEventListener("pointerdown", closeMenu));
   });
 
-  const [candles] = createResource<Candle[], ChartPanelQuery>(fetchQuery, async (nextQuery) => {
+  const [candles, { refetch }] = createResource<Candle[], ChartPanelQuery>(fetchQuery, async (nextQuery) => {
     if (nextQuery.mode === "live") {
       const selectedInterval =
         LIVE_CHART_INTERVALS.find((interval) => interval.value === nextQuery.interval) ??
@@ -221,10 +220,6 @@ export default function ChartPanel(props: Props) {
   const indicatorSettings = createMemo(() =>
     normalizePriceChartIndicatorSettings(query().indicators),
   );
-  const modeLabel = createMemo(() => (query().mode === "live" ? "Live" : "History"));
-  const enabledStudyCount = createMemo(
-    () => Object.values(indicatorSettings()).filter(Boolean).length,
-  );
   const panelStateLabel = createMemo(() => {
     if (candles.loading) {
       return "Loading";
@@ -278,13 +273,13 @@ export default function ChartPanel(props: Props) {
 
   return (
     <section
-      class={`app-panel app-panel-interactive flex h-full min-h-0 flex-col overflow-hidden ${
+      class={`workspace-panel app-panel flex h-full min-h-0 flex-col overflow-hidden ${
         props.expanded ? "app-panel-selected" : ""
       }`}
       style={{ "border-radius": "0" }}
     >
-      <div class="border-b border-stone-700/80 bg-stone-950/92 px-4 py-3">
-        <div class="flex flex-col gap-2.5 xl:flex-row xl:items-center xl:justify-between">
+      <div class="workspace-panel-header shrink-0">
+        <div class="flex flex-wrap items-center justify-between gap-2">
           <div class="min-w-0 flex-1">
             <div class="flex min-w-0 flex-wrap items-center gap-1.5">
               <Show when={props.canReorder}>
@@ -305,48 +300,26 @@ export default function ChartPanel(props: Props) {
                 {query().symbol}
               </span>
               <span class="rounded-sm border border-stone-700/80 bg-stone-950 px-2 py-1 text-[11px] text-stone-400">
-                <span class="app-data">{query().interval}</span> · {modeLabel()}
+                <span class="app-data">{query().interval}</span>
               </span>
               <span class={`rounded-sm border px-2 py-1 text-[11px] font-medium ${panelStateTone()}`}>
                 {panelStateLabel()}
               </span>
-              <span class="text-xs text-stone-500">
-                {enabledStudyCount()} {enabledStudyCount() === 1 ? "indicator" : "indicators"}
-              </span>
+
             </div>
             <p class="mt-1 truncate text-xs text-stone-500">{panelSummary()}</p>
           </div>
 
           <div class="flex flex-wrap items-center gap-1.5">
-            <button
-              type="button"
-              title="Switch to live mode"
-              class={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                query().mode === "live"
-                  ? "app-card-selected border-stone-200/80 text-stone-50"
-                  : "border-stone-700 bg-stone-900 text-stone-400 hover:border-stone-600 hover:bg-stone-800 hover:text-stone-100"
-              }`}
-              onClick={() => setMode("live")}
-            >
-              <Radio size={14} />
-              Live
-            </button>
-            <button
-              type="button"
-              title="Switch to historical mode"
-              class={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-xs font-medium transition-colors ${
-              query().mode === "historical"
-                ? "app-card-selected text-stone-50"
-                : "border-white/10 bg-white/[0.04] text-stone-400 hover:border-white/18 hover:bg-white/[0.06] hover:text-stone-100"
-              }`}
-              onClick={() => setMode("historical")}
-            >
-              <History size={14} />
-              Historical
-            </button>
+            <select class="app-input px-2 py-1.5 text-xs" aria-label={`Data source for ${props.panel.title}`} value={query().mode}
+              title="Snapshot fetches recent market data. Historical uses stored bars."
+              onChange={(event) => setMode(event.currentTarget.value as "live" | "historical")}>
+              <option value="live">Snapshot</option><option value="historical">Historical</option>
+            </select>
             <button
               type="button"
               title={showControls() ? "Hide panel controls" : "Show panel controls"}
+              aria-expanded={showControls()}
               class={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-xs font-medium transition-colors ${
                 showControls()
                   ? "border-[rgba(232,223,209,0.78)] bg-[rgba(235,227,213,0.1)] text-stone-50"
@@ -363,6 +336,7 @@ export default function ChartPanel(props: Props) {
                 type="button"
                 title="Panel actions"
                 aria-label="Panel actions"
+                aria-expanded={showMenu()}
                 class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-xs font-medium text-stone-400 transition-colors hover:border-white/18 hover:text-stone-200"
                 onClick={() => setShowMenu((current) => !current)}
               >
@@ -371,6 +345,7 @@ export default function ChartPanel(props: Props) {
 
               <Show when={showMenu()}>
                 <div class="absolute right-0 top-[calc(100%+0.5rem)] z-30 w-48 rounded-sm border border-white/10 bg-[#0b0b0b]/98 p-2 shadow-2xl shadow-black/40">
+                  <button type="button" class="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm text-stone-200 hover:bg-white/[0.05]" disabled={candles.loading} onClick={() => { setShowMenu(false); refetch(); }}><RefreshCw size={15} /> Refresh candles</button>
                   <button
                     type="button"
                     class="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm text-stone-200 transition-colors hover:bg-white/[0.05]"
@@ -415,7 +390,7 @@ export default function ChartPanel(props: Props) {
       </div>
 
       <Show when={showControls()}>
-        <div class="border-b border-stone-700/80 bg-stone-950/78 px-4 py-3">
+        <div class="workspace-panel-controls border-b border-stone-700/80 bg-stone-950/78 px-4 py-3">
           <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <label class="space-y-1 xl:col-span-2">
               <span class="block text-xs text-stone-500">Panel title</span>
@@ -575,15 +550,19 @@ export default function ChartPanel(props: Props) {
       <Show
         when={candles.error}
         fallback={
-          <Show when={!candles.loading} fallback={<div class="app-skeleton min-h-0 flex-1 rounded-none" />}>
-            <div class="min-h-0 flex-1">
+          <Show when={!candles.loading || (!candles.error && (candles.latest?.length ?? 0) > 0)} fallback={<div role="status" aria-label="Loading candles" class="app-skeleton min-h-0 flex-1 rounded-none" />}>
+            <Show when={!candles.error && (candles()?.length ?? 0) > 0}>
+            <div class="min-h-0 flex-1" aria-busy={candles.loading}>
               <PriceChart
-                candles={candles() ?? []}
+                candles={candles.error ? [] : candles() ?? []}
+                datasetKey={fetchKey(query())}
+                initialVisibleBars={150}
                 indicators={indicatorSettings()}
                 indicatorLegend="compact"
                 class="h-full"
               />
             </div>
+            </Show>
           </Show>
         }
       >
@@ -591,17 +570,18 @@ export default function ChartPanel(props: Props) {
           <div class="flex min-h-0 flex-1 items-center justify-center px-6 text-center">
             <div class="space-y-2">
               <p class="text-sm font-semibold text-red-300">Chart request failed</p>
-              <p class="text-sm text-red-400">{error().message}</p>
+              <p class="max-w-sm break-words text-xs text-stone-400">{error().message}</p>
+              <button class="app-button-compact-secondary" onClick={() => refetch()}>Retry chart</button>
             </div>
           </div>
         )}
       </Show>
 
-      <Show when={!candles.loading && (candles()?.length ?? 0) === 0 && !candles.error}>
+      <Show when={!candles.loading && !candles.error && (candles()?.length ?? 0) === 0}>
         <div class="min-h-0 flex-1 px-4 py-5">
           <p class="text-sm font-semibold text-stone-100">No candles for this range</p>
           <p class="mt-1 text-sm text-stone-400">
-            There's no stored market data for this symbol and window. Switch the panel to Live, widen
+            There's no stored market data for this symbol and window. Switch the panel to Snapshot, widen
             the date range, or pick another interval.
           </p>
         </div>

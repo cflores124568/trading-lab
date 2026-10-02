@@ -52,5 +52,5 @@ test("normalizeWorkspaceState trims legacy workspace panel counts", () => {
   assert.equal(legacyState.presets.grid.panels.length, 4);
   assert.equal(legacyState.presets.split.layout.rowWeights.length, 1);
   assert.equal(legacyState.presets.grid.layout.rowWeights.length, 2);
-  assert.equal(legacyState.presets.grid.panels.at(-1)?.title, "ES Higher Timeframe");
+  assert.equal(legacyState.presets.grid.panels.at(-1)?.title, "ES 4h");
 });

@@ -1,3 +1,4 @@
+import DataLoadError from "../../components/DataLoadError";
 import { A, useParams } from "@solidjs/router";
 import {
   batch,
@@ -383,6 +384,7 @@ function TabButton(props: {
     <button
       type="button"
       onClick={props.onClick}
+      aria-pressed={props.active}
       class={`rounded-sm px-4 py-2 text-sm font-medium transition-colors ${
         props.active
           ? "bg-green-400 text-stone-950"
@@ -892,10 +894,10 @@ export default function BacktestDetail() {
   const [selectedPresetKey, setSelectedPresetKey] = createSignal<string | null>(null);
   const [showTrailingDD, setShowTrailingDD] = createSignal(true);
   const [showProfitTarget, setShowProfitTarget] = createSignal(true);
-  const [result] = createResource(() => params.id, fetchBacktest);
+  const [result, { refetch }] = createResource(() => params.id, fetchBacktest);
   const [presets] = createResource(fetchPropPresets);
   const [candles] = createResource(
-    () => result()?.backtest_id,
+    () => (result.error ? undefined : result())?.backtest_id,
     (backtestId) => fetchBacktestCandles(backtestId),
   );
   const [robustness] = createResource(
@@ -914,8 +916,8 @@ export default function BacktestDetail() {
   let lastResetKey: string | null = null;
 
   createEffect(() => {
-    const backtestId = result()?.backtest_id;
-    const totalBars = candles()?.length ?? 0;
+    const backtestId = (result.error ? undefined : result())?.backtest_id;
+    const totalBars = (candles.error ? undefined : candles())?.length ?? 0;
     const resetKey = backtestId ? `${backtestId}:${totalBars}` : null;
 
     if (!resetKey || resetKey === lastResetKey || totalBars === 0) {
@@ -933,8 +935,8 @@ export default function BacktestDetail() {
   });
 
   createEffect(() => {
-    const loadedPresets = presets();
-    const backtest = result();
+    const loadedPresets = (presets.error ? undefined : presets());
+    const backtest = (result.error ? undefined : result());
     if (!loadedPresets || loadedPresets.length === 0 || !backtest) {
       return;
     }
@@ -953,7 +955,7 @@ export default function BacktestDetail() {
   });
 
   createEffect(() => {
-    const candleList = candles();
+    const candleList = (candles.error ? undefined : candles());
     if (!isReplayActive() || !candleList || candleList.length === 0) {
       return;
     }
@@ -973,18 +975,18 @@ export default function BacktestDetail() {
     onCleanup(() => clearInterval(timer));
   });
 
-  const totalBars = createMemo(() => candles()?.length ?? 0);
+  const totalBars = createMemo(() => (candles.error ? undefined : candles())?.length ?? 0);
   const replayIndex = createMemo(() => clampReplayIndex(currentIndex(), totalBars()));
   const replayProgress = createMemo(() => getReplayProgress(replayIndex(), totalBars()));
-  const currentCandle = createMemo<Candle | undefined>(() => candles()?.[replayIndex()]);
-  const commission = createMemo(() => result()?.run_config.commission ?? result()?.trades[0]?.commission ?? 5);
-  const tickValue = createMemo(() => result()?.run_config.tick_value ?? tickValueBySymbol[result()?.symbol ?? ""] ?? 1);
-  const tickSize = createMemo(() => result()?.run_config.tick_size ?? 0.25);
+  const currentCandle = createMemo<Candle | undefined>(() => (candles.error ? undefined : candles())?.[replayIndex()]);
+  const commission = createMemo(() => (result.error ? undefined : result())?.run_config.commission ?? (result.error ? undefined : result())?.trades[0]?.commission ?? 5);
+  const tickValue = createMemo(() => (result.error ? undefined : result())?.run_config.tick_value ?? tickValueBySymbol[(result.error ? undefined : result())?.symbol ?? ""] ?? 1);
+  const tickSize = createMemo(() => (result.error ? undefined : result())?.run_config.tick_size ?? 0.25);
   const tradeEntryIndices = createMemo(() =>
-    candles() && result() ? getTradeEntryIndices(candles() ?? [], result()?.trades ?? []) : [],
+    (candles.error ? undefined : candles()) && (result.error ? undefined : result()) ? getTradeEntryIndices((candles.error ? undefined : candles()) ?? [], (result.error ? undefined : result())?.trades ?? []) : [],
   );
   const workspaceIntent = createMemo(() => {
-    const backtest = result();
+    const backtest = (result.error ? undefined : result());
     const replayContext = backtest?.replay_context;
 
     if (!backtest?.symbol || !replayContext?.interval) {
@@ -1000,10 +1002,10 @@ export default function BacktestDetail() {
     };
   });
 
-  const groupedPresets = createMemo(() => groupPropPresets(presets() ?? []));
+  const groupedPresets = createMemo(() => groupPropPresets((presets.error ? undefined : presets()) ?? []));
   const savedPresetKey = createMemo(() => {
-    const backtest = result();
-    const loadedPresets = presets();
+    const backtest = (result.error ? undefined : result());
+    const loadedPresets = (presets.error ? undefined : presets());
     if (!backtest || !loadedPresets) {
       return null;
     }
@@ -1012,14 +1014,14 @@ export default function BacktestDetail() {
   });
   const selectedPreset = createMemo<PropFirmPreset | null>(() => {
     const key = selectedPresetKey();
-    return presets()?.find((preset) => preset.key === key) ?? null;
+    return (presets.error ? undefined : presets())?.find((preset) => preset.key === key) ?? null;
   });
   const selectedPropRules = createMemo<PropFirmRules | null>(() => {
-    const backtest = result();
+    const backtest = (result.error ? undefined : result());
     return selectedPreset() ?? backtest?.prop_firm_rules ?? null;
   });
   const rebasedSelectedEquityCurve = createMemo(() => {
-    const backtest = result();
+    const backtest = (result.error ? undefined : result());
     const rules = selectedPropRules();
     if (!backtest || !rules) {
       return [];
@@ -1029,7 +1031,7 @@ export default function BacktestDetail() {
     return backtest.equity_curve.map((value) => Number((value + balanceOffset).toFixed(2)));
   });
   const selectedPropEvaluation = createMemo<PropFirmEvaluation | null>(() => {
-    const backtest = result();
+    const backtest = (result.error ? undefined : result());
     const rules = selectedPropRules();
     if (!backtest || !rules) {
       return null;
@@ -1048,11 +1050,11 @@ export default function BacktestDetail() {
       backtest.trades,
       rebasedSelectedEquityCurve(),
       rules.account_size,
-      (candles() ?? []).map((candle) => Number(candle.time)),
+      ((candles.error ? undefined : candles()) ?? []).map((candle) => Number(candle.time)),
     );
   });
   const strategySummary = createMemo(() => {
-    const backtest = result();
+    const backtest = (result.error ? undefined : result());
     if (!backtest) {
       return [];
     }
@@ -1067,7 +1069,7 @@ export default function BacktestDetail() {
     ] as [string, string][];
   });
   const systemTradeSummary = createMemo(() => {
-    const backtest = result();
+    const backtest = (result.error ? undefined : result());
     if (!backtest) {
       return null;
     }
@@ -1079,7 +1081,7 @@ export default function BacktestDetail() {
     );
   });
   const selectedTradeSummary = createMemo(() => {
-    const backtest = result();
+    const backtest = (result.error ? undefined : result());
     const rules = selectedPropRules();
     if (!backtest || !rules) {
       return null;
@@ -1088,7 +1090,7 @@ export default function BacktestDetail() {
     return summarizeTrades(backtest.trades, rebasedSelectedEquityCurve(), rules.account_size);
   });
   const savedPayoutEstimate = createMemo(() => {
-    const backtest = result();
+    const backtest = (result.error ? undefined : result());
     const summary = systemTradeSummary();
     if (!backtest || !summary) {
       return null;
@@ -1102,7 +1104,7 @@ export default function BacktestDetail() {
     });
   });
   const selectedPayoutEstimate = createMemo(() => {
-    const backtest = result();
+    const backtest = (result.error ? undefined : result());
     const rules = selectedPropRules();
     const summary = selectedTradeSummary();
     if (!backtest || !rules || !summary) {
@@ -1118,8 +1120,8 @@ export default function BacktestDetail() {
   });
 
   const replaySession = createMemo(() => {
-    const backtest = result();
-    const candleList = candles();
+    const backtest = (result.error ? undefined : result());
+    const candleList = (candles.error ? undefined : candles());
     if (!backtest || !candleList || candleList.length === 0) {
       return null;
     }
@@ -1143,7 +1145,7 @@ export default function BacktestDetail() {
   });
   const replayTradeSummary = createMemo(() => {
     const session = replaySession();
-    const backtest = result();
+    const backtest = (result.error ? undefined : result());
     if (!session || !backtest) {
       return null;
     }
@@ -1155,7 +1157,7 @@ export default function BacktestDetail() {
     );
   });
   const replayPayoutEstimate = createMemo(() => {
-    const backtest = result();
+    const backtest = (result.error ? undefined : result());
     const summary = replayTradeSummary();
     const session = replaySession();
     if (!backtest || !summary || !session) {
@@ -1171,7 +1173,7 @@ export default function BacktestDetail() {
   });
 
   const chartMarkers = createMemo<PriceChartMarker[]>(() => {
-    const backtest = result();
+    const backtest = (result.error ? undefined : result());
     const session = replaySession();
     if (!backtest) {
       return [];
@@ -1274,7 +1276,7 @@ export default function BacktestDetail() {
   });
 
   const overviewCards = createMemo(() => {
-    const backtest = result();
+    const backtest = (result.error ? undefined : result());
     const summary = systemTradeSummary();
     if (!backtest || !summary) {
       return [];
@@ -1317,7 +1319,7 @@ export default function BacktestDetail() {
     ] as DashboardCard[];
   });
   const robustnessHighlights = createMemo(() => {
-    const analysis = robustness() as BacktestRobustnessResult | null;
+    const analysis = (robustness.error ? undefined : robustness()) as BacktestRobustnessResult | null;
     if (!analysis) {
       return [];
     }
@@ -1351,7 +1353,7 @@ export default function BacktestDetail() {
   });
 
   const statsCards = createMemo(() => {
-    const backtest = result();
+    const backtest = (result.error ? undefined : result());
     const summary = systemTradeSummary();
     if (!backtest || !summary) {
       return [];
@@ -1386,7 +1388,7 @@ export default function BacktestDetail() {
   });
 
   const tradesSummaryCards = createMemo(() => {
-    const backtest = result();
+    const backtest = (result.error ? undefined : result());
     if (!backtest) {
       return [];
     }
@@ -1407,7 +1409,7 @@ export default function BacktestDetail() {
   };
 
   const recordReplayAction = (type: ReplayAction["type"]) => {
-    if (!candles() || totalBars() === 0) {
+    if (!(candles.error ? undefined : candles()) || totalBars() === 0) {
       return;
     }
 
@@ -1445,9 +1447,9 @@ export default function BacktestDetail() {
 
   return (
     <AppShell
-      title={result() ? `${result()!.symbol} • ${result()!.strategy.type}` : "Backtest"}
+      title={(result.error ? undefined : result()) ? `${(result.error ? undefined : result())!.symbol} • ${(result.error ? undefined : result())!.strategy.type}` : "Backtest"}
       subtitle={
-        result()?.backtest_id ??
+        (result.error ? undefined : result())?.backtest_id ??
         "Saved run detail."
       }
       actions={
@@ -1480,12 +1482,11 @@ export default function BacktestDetail() {
         </>
       }
     >
+      <Show when={result.error}><DataLoadError title="Backtest could not load" error={result.error} onRetry={refetch} /></Show>
       <Show
-        when={result()}
+        when={(result.error ? undefined : result())}
         fallback={
-          <section class="app-panel app-panel-section flex min-h-60 items-center justify-center">
-            <p class="text-stone-400">Loading backtest…</p>
-          </section>
+          <Show when={!result.error}><div class="app-skeleton h-60" role="status" aria-label="Loading backtest" /></Show>
         }
       >
         {(bt) => (
@@ -1575,7 +1576,7 @@ export default function BacktestDetail() {
                   <section class="app-panel app-panel-section">
                     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                       <div class="space-y-2">
-                        <p class="app-kicker">Replay First</p>
+                        <h2 class="text-lg font-semibold">Inspect the execution</h2>
                       </div>
 
                       <div class="flex flex-wrap items-center gap-3">
@@ -1608,7 +1609,7 @@ export default function BacktestDetail() {
                         </A>
                       </div>
                     </div>
-                    <Show when={!workspaceIntent() && result()?.symbol}>
+                    <Show when={!workspaceIntent() && (result.error ? undefined : result())?.symbol}>
                       <p class="text-xs text-stone-500">
                         `Open in Workspace` needs durable replay context, so older saved backtests
                         still fall back to the replay section below.
@@ -1619,7 +1620,7 @@ export default function BacktestDetail() {
                   <section id="replay" class="app-panel app-panel-section space-y-6 scroll-mt-24">
                     <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
                       <div class="space-y-2">
-                        <p class="text-xs uppercase tracking-[0.18em] text-green-300">Interactive Replay Simulator</p>
+                        <h2 class="text-lg font-semibold">Trade replay</h2>
                       </div>
                       <div class="grid gap-3 sm:grid-cols-2">
                         <div class="rounded-md border border-stone-800 bg-stone-950/60 px-4 py-3">
@@ -1649,7 +1650,7 @@ export default function BacktestDetail() {
                             when={candles.error}
                             fallback={
                               <Show
-                                when={!candles.loading && candles() && candles()!.length > 0}
+                                when={!candles.loading && (candles.error ? undefined : candles()) && (candles.error ? undefined : candles())!.length > 0}
                                 fallback={
                                   <div class="flex h-[520px] items-center justify-center rounded-md bg-stone-800/70">
                                     <p class="text-sm text-stone-500">
@@ -1661,7 +1662,7 @@ export default function BacktestDetail() {
                                 }
                               >
                                 <PriceChart
-                                  candles={candles() as Candle[]}
+                                  candles={(candles.error ? undefined : candles()) as Candle[]}
                                   markers={chartMarkers()}
                                   visibleIndex={replayIndex()}
                                   followLatest={isReplayActive()}
@@ -1683,7 +1684,7 @@ export default function BacktestDetail() {
                           </Show>
                         </div>
 
-                        <Show when={candles() && candles()!.length > 0}>
+                        <Show when={(candles.error ? undefined : candles()) && (candles.error ? undefined : candles())!.length > 0}>
                           <ReplayControls
                             isPlaying={isReplayActive()}
                             speed={speed()}
@@ -2035,7 +2036,7 @@ export default function BacktestDetail() {
                     when={robustness.error}
                     fallback={
                       <Show
-                        when={!robustness.loading && robustness()}
+                        when={!robustness.loading && (robustness.error ? undefined : robustness())}
                         fallback={
                           <section class="app-panel app-panel-section flex min-h-52 items-center justify-center">
                             <p class="text-stone-400">

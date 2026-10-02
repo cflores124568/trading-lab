@@ -127,7 +127,7 @@ export default function AlphaLabCampaignPage() {
   const [qualificationApproved, setQualificationApproved] = createSignal(false);
 
   createEffect(() => {
-    const first = finalists()?.[0];
+    const first = (finalists.error ? undefined : finalists())?.[0];
     if (first && !selectedTrialId()) setSelectedTrialId(first.trial_id);
   });
 
@@ -146,14 +146,14 @@ export default function AlphaLabCampaignPage() {
     return Object.values(grid).reduce((total, values) => total * values.length, 1);
   });
   const plannedTrials = createMemo(() => Math.min(searchSpace(), Math.max(0, Number(trialBudget()) || 0)));
-  const selectedTrial = createMemo(() => trials()?.find((item) => item.trial_id === selectedTrialId()));
-  const selectedFinalist = createMemo(() => finalists()?.find((item) => item.trial_id === selectedTrialId()));
-  const selectedPromotion = createMemo(() => promotions()?.find((item) => item.trial_id === selectedTrialId()));
+  const selectedTrial = createMemo(() => (trials.error ? undefined : trials())?.find((item) => item.trial_id === selectedTrialId()));
+  const selectedFinalist = createMemo(() => (finalists.error ? undefined : finalists())?.find((item) => item.trial_id === selectedTrialId()));
+  const selectedPromotion = createMemo(() => (promotions.error ? undefined : promotions())?.find((item) => item.trial_id === selectedTrialId()));
   const [forwardQualification, { refetch: refetchForwardQualification }] = createResource(
     () => selectedPromotion()?.research_candidate_id ?? false,
     async (researchCandidateId) => fetchResearchForwardQualification(params.id, researchCandidateId),
   );
-  const progress = createMemo(() => campaign()?.search_progress ?? {});
+  const progress = createMemo(() => (campaign.error ? undefined : campaign())?.search_progress ?? {});
 
   const selectStrategy = (value: StrategyValue) => {
     setStrategy(value);
@@ -203,7 +203,7 @@ export default function AlphaLabCampaignPage() {
   };
 
   const changeRunState = async () => {
-    const current = campaign();
+    const current = (campaign.error ? undefined : campaign());
     if (!current) return;
     setBusy(true);
     setError(null);
@@ -286,7 +286,7 @@ export default function AlphaLabCampaignPage() {
   };
 
   const refreshForwardEvidence = async () => {
-    const qualification = forwardQualification();
+    const qualification = (forwardQualification.error ? undefined : forwardQualification());
     if (!qualification) return;
     setBusy(true);
     setError(null);
@@ -301,7 +301,7 @@ export default function AlphaLabCampaignPage() {
   };
 
   const recordForwardDecision = async (outcome: "qualified" | "rejected") => {
-    const qualification = forwardQualification();
+    const qualification = (forwardQualification.error ? undefined : forwardQualification());
     if (!qualification || !decisionReason().trim()) {
       setError("Write a concrete decision rationale first.");
       return;
@@ -327,8 +327,8 @@ export default function AlphaLabCampaignPage() {
 
   return (
     <AppShell
-      title={campaign()?.name ?? "Alpha Lab campaign"}
-      subtitle={campaign() ? `${campaign()!.symbol} / ${campaign()!.interval} / ${campaign()!.total_bar_count.toLocaleString()} bars` : "Loading durable research state."}
+      title={(campaign.error ? undefined : campaign())?.name ?? "Alpha Lab campaign"}
+      subtitle={(campaign.error ? undefined : campaign()) ? `${(campaign.error ? undefined : campaign())!.symbol} / ${(campaign.error ? undefined : campaign())!.interval} / ${(campaign.error ? undefined : campaign())!.total_bar_count.toLocaleString()} bars` : "Loading durable research state."}
       actions={
         <div class="flex items-center gap-2">
           <button type="button" class="app-button-secondary gap-2" onClick={refresh}><RefreshCw size={15} /> Refresh</button>
@@ -341,10 +341,11 @@ export default function AlphaLabCampaignPage() {
           {campaign.error instanceof Error ? campaign.error.message : "Campaign data could not be loaded."}
         </div>
       </Show>
-      <Show when={campaign()} fallback={<Show when={!campaign.error}><div class="app-skeleton h-80" /></Show>}>
+      <Show when={(campaign.error ? undefined : campaign())} fallback={<Show when={!campaign.error}><div class="app-skeleton h-80" /></Show>}>
         {(current) => (
           <div class="space-y-6">
             <ResearchDisclosure />
+            <nav class="research-section-nav" aria-label="Campaign sections"><a href="#partitions">Data partitions</a><a href="#trial-ledger">Trial ledger</a><a href="#validation-evidence">Finalists &amp; evidence</a><a href="#campaign-audit">Audit trail</a></nav>
             <Show when={error()}><div class="rounded-sm border border-red-800 bg-red-950/35 px-4 py-3 text-sm text-red-200">{error()}</div></Show>
             <Show when={trials.error || finalists.error || promotions.error}>
               <div class="rounded-sm border border-red-800 bg-red-950/35 px-4 py-3 text-sm text-red-200">
@@ -371,13 +372,13 @@ export default function AlphaLabCampaignPage() {
                   ["Attempted", numberValue(progress(), "attempted_trials")],
                   ["Completed", numberValue(progress(), "completed_trials")],
                   ["Failed", numberValue(progress(), "failed_trials")],
-                  ["Finalists", finalists()?.length ?? 0],
-                  ["Promoted", promotions()?.length ?? 0],
+                  ["Finalists", (finalists.error ? undefined : finalists())?.length ?? 0],
+                  ["Promoted", (promotions.error ? undefined : promotions())?.length ?? 0],
                 ].map(([label, value]) => <div class="px-4 py-4"><p class="app-metric-label">{label}</p><p class="app-metric-value text-xl">{value}</p></div>)}
               </div>
             </section>
 
-            <section class="app-panel app-panel-section">
+            <section id="partitions" class="app-panel app-panel-section">
               <div class="mb-5">
                 <h2 class="text-lg font-semibold">Chronological partitions</h2>
                 <p class="mt-1 text-xs text-stone-500">Exact backend-calculated timestamps and bar counts. Segments do not overlap.</p>
@@ -446,30 +447,30 @@ export default function AlphaLabCampaignPage() {
               </section>
             </Show>
 
-            <section class="app-panel app-panel-section">
-              <div class="mb-5 flex items-end justify-between"><div><h2 class="text-lg font-semibold">Complete trial ledger</h2><p class="mt-1 text-xs text-stone-500">Successful and failed attempts remain visible. Select a row to inspect validation evidence.</p></div><span class="app-data text-xs text-stone-500">{trials()?.length ?? 0} loaded</span></div>
+            <section id="trial-ledger" class="app-panel app-panel-section">
+              <div class="mb-5 flex flex-wrap items-end justify-between gap-3"><div><h2 class="text-lg font-semibold">Complete trial ledger</h2><p class="mt-1 text-xs text-stone-500">Successful and failed attempts remain visible. Select a row to inspect validation evidence.</p></div><span class="app-data text-xs text-stone-500">{(trials.error ? undefined : trials())?.length ?? 0} loaded</span></div>
               <Show when={!trials.loading} fallback={<div class="app-skeleton h-52" />}>
-                <Show when={(trials() ?? []).length > 0} fallback={<div class="app-surface-muted px-5 py-10 text-center text-sm text-stone-500">No trial attempts have been recorded.</div>}>
-                  <div class="overflow-x-auto"><table class="app-table min-w-[900px]"><thead><tr><th>Attempt</th><th>Strategy</th><th>Parameters</th><th>PnL</th><th>Trades</th><th>Completed</th></tr></thead><tbody><For each={trials()}>{(trial) => <tr class={`cursor-pointer ${selectedTrialId() === trial.trial_id ? "bg-stone-900" : ""}`} onClick={() => setSelectedTrialId(trial.trial_id)}><td><span class={`inline-flex rounded-sm border px-2 py-1 text-[10px] font-semibold uppercase ${trial.status === "failed" ? "border-red-800 bg-red-950/30 text-red-200" : "border-emerald-800 bg-emerald-950/30 text-emerald-200"}`}>{trial.status}</span><p class="app-data mt-1 max-w-36 truncate text-[10px] text-stone-600" title={trial.fingerprint}>{trial.fingerprint}</p></td><td class="text-xs text-stone-200">{trial.strategy_type.replace(/_/g, " ")}</td><td class="app-data max-w-xs text-[11px] text-stone-400">{Object.entries(trial.strategy_params).map(([key, value]) => `${key}=${value}`).join(", ") || "defaults"}</td><td class="app-data text-xs text-stone-200">{trial.status === "completed" ? formatCurrency(metricFromTrial(trial, "total_pnl")) : "n/a"}</td><td class="app-data text-xs text-stone-400">{trial.status === "completed" ? formatNumber(metricFromTrial(trial, "total_trades"), 0) : "n/a"}</td><td class="text-xs text-stone-500">{formatDate(trial.completed_at)}<Show when={trial.error}><p class="mt-1 max-w-xs text-red-300">{trial.error}</p></Show></td></tr>}</For></tbody></table></div>
+                <Show when={((trials.error ? undefined : trials()) ?? []).length > 0} fallback={<div class="app-surface-muted px-5 py-10 text-center text-sm text-stone-500">No trial attempts have been recorded.</div>}>
+                  <div class="max-h-[32rem] overflow-auto"><table class="app-table min-w-[900px]"><thead><tr><th>Attempt</th><th>Strategy</th><th>Parameters</th><th>PnL</th><th>Trades</th><th>Completed</th></tr></thead><tbody><For each={(trials.error ? undefined : trials())}>{(trial) => <tr class={`cursor-pointer ${selectedTrialId() === trial.trial_id ? "bg-stone-900" : ""}`} tabindex="0" aria-label={`Inspect ${trial.strategy_type.replace(/_/g, " ")} trial ${trial.status}`} aria-selected={selectedTrialId() === trial.trial_id} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedTrialId(trial.trial_id); } }} onClick={() => setSelectedTrialId(trial.trial_id)}><td><span class={`inline-flex rounded-sm border px-2 py-1 text-[10px] font-semibold uppercase ${trial.status === "failed" ? "border-red-800 bg-red-950/30 text-red-200" : "border-emerald-800 bg-emerald-950/30 text-emerald-200"}`}>{trial.status}</span><p class="app-data mt-1 max-w-36 truncate text-[10px] text-stone-600" title={trial.fingerprint}>{trial.fingerprint}</p></td><td class="text-xs text-stone-200">{trial.strategy_type.replace(/_/g, " ")}</td><td class="app-data max-w-xs text-[11px] text-stone-400">{Object.entries(trial.strategy_params).map(([key, value]) => `${key}=${value}`).join(", ") || "defaults"}</td><td class="app-data text-xs text-stone-200">{trial.status === "completed" ? formatCurrency(metricFromTrial(trial, "total_pnl")) : "n/a"}</td><td class="app-data text-xs text-stone-400">{trial.status === "completed" ? formatNumber(metricFromTrial(trial, "total_trades"), 0) : "n/a"}</td><td class="text-xs text-stone-500">{formatDate(trial.completed_at)}<Show when={trial.error}><p class="mt-1 max-w-xs text-red-300">{trial.error}</p></Show></td></tr>}</For></tbody></table></div>
                 </Show>
               </Show>
             </section>
 
-            <section class="grid gap-6 xl:grid-cols-[22rem_minmax(0,1fr)]">
+            <section id="validation-evidence" class="grid min-w-0 gap-6 xl:grid-cols-[18rem_minmax(0,1fr)]">
               <div class="app-panel app-panel-section self-start">
                 <h2 class="text-lg font-semibold">Finalist ranking</h2>
                 <p class="mt-1 text-xs text-stone-500">Frozen validation scores only. Holdout results never rerank this list.</p>
-                <Show when={(finalists() ?? []).length > 0} fallback={<p class="mt-6 text-sm text-stone-500">No frozen research finalists.</p>}>
-                  <div class="mt-5 space-y-2"><For each={finalists()}>{(finalist, index) => <button type="button" onClick={() => setSelectedTrialId(finalist.trial_id)} class={`w-full rounded-sm border px-3 py-3 text-left ${selectedTrialId() === finalist.trial_id ? "border-stone-500 bg-stone-800" : "border-stone-800 bg-stone-950 hover:border-stone-700"}`}><div class="flex items-center justify-between"><span class="app-data text-xs text-stone-500">#{index() + 1}</span><span class="app-data text-sm font-semibold text-stone-100">{finalist.frozen_validation_score.toFixed(2)}</span></div><p class="app-data mt-2 truncate text-[10px] text-stone-500">{finalist.trial_id}</p><div class="mt-3 flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-stone-400">{finalist.holdout_status === "sealed" ? <LockKeyhole size={13} /> : <ShieldCheck size={13} />} {resultOutcome(finalist)}</div></button>}</For></div>
+                <Show when={((finalists.error ? undefined : finalists()) ?? []).length > 0} fallback={<p class="mt-6 text-sm text-stone-500">No frozen research finalists.</p>}>
+                  <div class="mt-5 space-y-2"><For each={(finalists.error ? undefined : finalists())}>{(finalist, index) => <button type="button" onClick={() => setSelectedTrialId(finalist.trial_id)} class={`w-full rounded-sm border px-3 py-3 text-left ${selectedTrialId() === finalist.trial_id ? "border-stone-500 bg-stone-800" : "border-stone-800 bg-stone-950 hover:border-stone-700"}`}><div class="flex items-center justify-between"><span class="app-data text-xs text-stone-500">#{index() + 1}</span><span class="app-data text-sm font-semibold text-stone-100">{finalist.frozen_validation_score.toFixed(2)}</span></div><p class="app-data mt-2 truncate text-[10px] text-stone-500">{finalist.trial_id}</p><div class="mt-3 flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-stone-400">{finalist.holdout_status === "sealed" ? <LockKeyhole size={13} /> : <ShieldCheck size={13} />} {resultOutcome(finalist)}</div></button>}</For></div>
                 </Show>
               </div>
 
               <div class="app-panel app-panel-section min-w-0">
                 <Show when={selectedTrial()} fallback={<div class="py-16 text-center text-sm text-stone-500">Select a trial or finalist to inspect its evidence.</div>}>
-                  <div class="flex flex-col gap-3 border-b border-stone-800 pb-5 sm:flex-row sm:items-start sm:justify-between"><div><h2 class="text-lg font-semibold">Validation evidence</h2><p class="app-data mt-1 text-[10px] text-stone-600">{selectedTrialId()}</p></div><Show when={validation()}>{(item) => <span class={`rounded-sm border px-2.5 py-1 text-[10px] font-semibold uppercase ${item().outcome === "research_finalist" ? "border-emerald-800 bg-emerald-950/30 text-emerald-200" : "border-red-800 bg-red-950/30 text-red-200"}`}>{item().outcome.replace(/_/g, " ")} / {item().robustness_score.toFixed(2)}</span>}</Show></div>
+                  <div class="flex flex-col gap-3 border-b border-stone-800 pb-5 sm:flex-row sm:items-start sm:justify-between"><div><h2 class="text-lg font-semibold">Validation evidence</h2><p class="app-data mt-1 text-[10px] text-stone-600">{selectedTrialId()}</p></div><Show when={(validation.error ? undefined : validation())}>{(item) => <span class={`rounded-sm border px-2.5 py-1 text-[10px] font-semibold uppercase ${item().outcome === "research_finalist" ? "border-emerald-800 bg-emerald-950/30 text-emerald-200" : "border-red-800 bg-red-950/30 text-red-200"}`}>{item().outcome.replace(/_/g, " ")} / {item().robustness_score.toFixed(2)}</span>}</Show></div>
                   <Show when={validation.error}><div class="mt-5 rounded-sm border border-red-800 bg-red-950/35 px-4 py-3 text-sm text-red-200">Validation evidence could not be loaded.</div></Show>
                   <Show when={!validation.loading && !validation.error} fallback={<Show when={!validation.error}><div class="app-skeleton mt-5 h-48" /></Show>}>
-                    <Show when={validation()} fallback={<div class="mt-5 app-surface-muted px-5 py-10 text-center text-sm text-stone-500">No validation evidence is stored for this trial.</div>}>
+                    <Show when={(validation.error ? undefined : validation())} fallback={<div class="mt-5 app-surface-muted px-5 py-10 text-center text-sm text-stone-500">No validation evidence is stored for this trial.</div>}>
                       {(item) => (
                         <div class="mt-5 space-y-6">
                           <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><For each={Object.entries(item().score_components)}>{([key, value]) => <div class="app-surface-muted px-3 py-3"><p class="text-[10px] leading-4 text-stone-500">{key.replace(/_/g, " ")}</p><p class="app-data mt-2 text-lg font-semibold">{value.toFixed(2)}</p></div>}</For></div>
@@ -485,7 +486,7 @@ export default function AlphaLabCampaignPage() {
                                 The handoff is explicit, creates a draft paper session, and enforces shadow mode before any approval-required paper decisions.
                               </p>
                               <Show
-                                when={forwardQualification()}
+                                when={(forwardQualification.error ? undefined : forwardQualification())}
                                 fallback={
                                   <div class="mt-4 space-y-3">
                                     <textarea
@@ -536,7 +537,7 @@ export default function AlphaLabCampaignPage() {
               </div>
             </section>
 
-            <section class="app-panel app-panel-section"><h2 class="text-lg font-semibold">Campaign audit</h2><div class="mt-4 grid gap-3 lg:grid-cols-2"><For each={current().audit_events}>{(event) => <div class="app-surface-muted px-4 py-3"><div class="flex items-center justify-between gap-4"><p class="text-xs font-semibold text-stone-200">{event.event_type.replace(/_/g, " ")}</p><time class="app-data text-[10px] text-stone-600">{formatDate(event.created_at)}</time></div><p class="mt-2 text-xs leading-5 text-stone-400">{event.summary}</p><p class="mt-2 text-[10px] text-stone-600">Actor: {event.actor}</p></div>}</For></div></section>
+            <section id="campaign-audit" class="app-panel app-panel-section"><h2 class="text-lg font-semibold">Campaign audit</h2><div class="mt-4 grid gap-3 lg:grid-cols-2"><For each={current().audit_events}>{(event) => <div class="app-surface-muted px-4 py-3"><div class="flex items-center justify-between gap-4"><p class="text-xs font-semibold text-stone-200">{event.event_type.replace(/_/g, " ")}</p><time class="app-data text-[10px] text-stone-600">{formatDate(event.created_at)}</time></div><p class="mt-2 text-xs leading-5 text-stone-400">{event.summary}</p><p class="mt-2 text-[10px] text-stone-600">Actor: {event.actor}</p></div>}</For></div></section>
           </div>
         )}
       </Show>
