@@ -1,4 +1,4 @@
-import { createEffect, createSignal, type JSX } from "solid-js";
+import { createEffect, createSignal, onCleanup, type JSX } from "solid-js";
 import ChartPanel from "./ChartPanel";
 import {
   clampWorkspaceRatio,
@@ -578,7 +578,17 @@ function TiledDesktopLayout(props: {
   );
 }
 
+// Tailwind's default `xl` breakpoint, which the CSS layouts below switch on.
+const DESKTOP_QUERY = "(min-width: 80rem)";
+
 export default function WorkspaceGrid(props: Props) {
+  // Mount only the layout that's visible. CSS alone hides the other one, but
+  // its panels would still fetch candles and draw charts.
+  const desktopMedia = window.matchMedia(DESKTOP_QUERY);
+  const [isDesktop, setIsDesktop] = createSignal(desktopMedia.matches);
+  const syncDesktop = (event: MediaQueryListEvent) => setIsDesktop(event.matches);
+  desktopMedia.addEventListener("change", syncDesktop);
+  onCleanup(() => desktopMedia.removeEventListener("change", syncDesktop));
   const [expandedPanelId, setExpandedPanelId] = createSignal<string | null>(null);
   const [draggingPanelId, setDraggingPanelId] = createSignal<string | null>(null);
   const [dropTargetPanelId, setDropTargetPanelId] = createSignal<string | null>(null);
@@ -637,7 +647,7 @@ export default function WorkspaceGrid(props: Props) {
         </div>
       ) : null}
 
-      {expandedPanel() ? null : (
+      {expandedPanel() || isDesktop() ? null : (
         <div class="grid gap-0 xl:hidden">
           {props.panels.map((panel) => (
             <PanelSlot
@@ -662,7 +672,7 @@ export default function WorkspaceGrid(props: Props) {
         </div>
       )}
 
-      {props.layout.kind === "focus" && !expandedPanel() ? (
+      {props.layout.kind === "focus" && !expandedPanel() && isDesktop() ? (
         <FocusDesktopLayout
           panels={props.panels}
           layout={props.layout}
@@ -683,7 +693,7 @@ export default function WorkspaceGrid(props: Props) {
         />
       ) : null}
 
-      {(props.layout.kind === "split" || props.layout.kind === "grid") && props.panels.length === 3 && !expandedPanel() ? (
+      {(props.layout.kind === "split" || props.layout.kind === "grid") && props.panels.length === 3 && !expandedPanel() && isDesktop() ? (
         <ThreePanelDesktopLayout
           panels={props.panels}
           layout={props.layout}
@@ -704,7 +714,7 @@ export default function WorkspaceGrid(props: Props) {
         />
       ) : null}
 
-      {props.layout.kind === "split" || props.layout.kind === "grid" ? (
+      {(props.layout.kind === "split" || props.layout.kind === "grid") && isDesktop() ? (
         props.panels.length === 3 ? null : (
           expandedPanel() ? null : (
             <TiledDesktopLayout
