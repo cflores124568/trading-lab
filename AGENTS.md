@@ -1,8 +1,4 @@
-# Codex Working Notes
-
-Read [`AGENTS.md`](./AGENTS.md) first. It has the writing and commit-style rules
-this repo expects, and I want changes to sound like they were actually written
-by a teammate, not a template.
+# Agent Working Notes
 
 Trading Lab is split across a SolidJS frontend, a FastAPI/Python backend, and a
 small C++ backtest kernel. Keep those boundaries in mind and only reach across
@@ -13,7 +9,6 @@ backtests, prop-firm evaluation, persistence, or data loading, make sure the
 backend and frontend still agree on the shape and meaning of the data.
 
 Useful docs:
-- [`docs/local-setup.md`](./docs/local-setup.md)
 - [`docs/CPP_KERNEL.md`](./docs/CPP_KERNEL.md)
 - [`docs/PROP_FIRM_RULES.md`](./docs/PROP_FIRM_RULES.md)
 - [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md)
