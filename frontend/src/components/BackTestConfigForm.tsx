@@ -3,9 +3,11 @@ import { createSignal, createResource, Show, For, batch, createEffect, createMem
 import { useNavigate } from "@solidjs/router";
 import { ChevronDown, ChevronRight } from "lucide-solid";
 import { fetchSymbols, fetchPropPresets, loadSymbol, runBacktest, type SymbolInfo, type PropFirmPreset} from "../services/api";
-import { BACKTEST_INTERVALS, STRATEGIES, STRATEGY_PARAMS, getBackendInterval, type StrategyValue} from "../constants";
+import { BACKTEST_INTERVALS, STRATEGIES, STRATEGY_PARAMS, getBackendInterval, isSessionStrategy, SESSION_STRATEGY_NOTE, type StrategyValue} from "../constants";
 import { defaultExecutionConfigForSymbol } from "../services/executionModel";
 import { loadActiveWorkspaceContext } from "./workspace/workspacePersistence";
+import { validateSessionStrategyGrid } from "../services/strategyValidation";
+import StrategyParameterInput from "./StrategyParameterInput";
 
 // Shared input styles 
 const field =
@@ -20,6 +22,8 @@ const strategyDescriptions: Record<StrategyValue, string> = {
   ema_crossover: "React faster to momentum changes with exponential moving averages.",
   rsi_overbought: "Fade stretched momentum when RSI reaches overbought or oversold zones.",
   bollinger_bands: "Trade reversion around volatility bands and mean-reversion pressure.",
+  orb: "Build the opening session range, then enter on a close beyond its high or low. The opening range must be a multiple of the bar interval.",
+  vwap_mean_reversion: "Fade a configurable percentage distance from session VWAP after a warmup. VWAP resets at the session start each New York day.",
 };
 
 // Group presets by firm name 
@@ -290,6 +294,14 @@ export default function BackTestConfigForm() {
     "focus:outline-none focus:ring-1 focus:ring-stone-500";
 
   async function handleSubmit() {
+    const sessionError = validateSessionStrategyGrid(
+      strategy(), Object.fromEntries(Object.entries(params()).map(([key, value]) => [key, [value]])),
+      [getBackendInterval(interval())],
+    );
+    if (sessionError) {
+      setError(sessionError);
+      return;
+    }
     const sym = symbol();
     const pre = preset();
     const stopLoss = parseOptionalTickInput(stopLossTicks(), "Stop loss");
@@ -506,16 +518,18 @@ export default function BackTestConfigForm() {
               </p>
               <p class="mt-2 text-sm font-medium text-stone-100">{selectedStrategy().label}</p>
               <p class="mt-1 text-sm text-stone-400">{strategyDescriptions[strategy()]}</p>
+              <Show when={isSessionStrategy(strategy())}>
+                <p class="mt-2 text-xs leading-relaxed text-stone-400">{SESSION_STRATEGY_NOTE}</p>
+              </Show>
             </div>
 
             <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
               <For each={strategyParams()}>
                 {(p) => (
-                  <StepperInput
-                    label={p.label}
+                  <StrategyParameterInput
+                    parameter={p}
                     value={String(params()[p.key] ?? p.default)}
-                    step={p.step}
-                    min={p.min}
+                    allowSweep={false}
                     onChange={(raw) => handleParamChange(p.key, raw)}
                   />
                 )}

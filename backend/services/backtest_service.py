@@ -72,6 +72,9 @@ def prepare_backtest_frame(dataset: dict, request: BacktestRequest):
     if df.empty:
         raise ValueError("Date range produced an empty dataset.")
 
+    # Session strategies need the actual bar duration, including short slices
+    # where inferring it from timestamp gaps would be ambiguous.
+    df.attrs["bar_interval"] = dataset["info"].get("interval")
     df = add_all_indicators(df, request.strategy.params, strategy_type=request.strategy.type)
     return generate_signals(df, request.strategy.type, request.strategy.params)
 

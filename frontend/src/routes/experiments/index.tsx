@@ -13,11 +13,16 @@ import {
 } from "solid-js";
 import AppShell from "../../components/AppShell";
 import PropPresetSelect from "../../components/PropPresetSelect";
+import StrategyParameterInput from "../../components/StrategyParameterInput";
+import { Check } from "lucide-solid";
+import { validateSessionStrategyGrid } from "../../services/strategyValidation";
 import {
   BACKTEST_INTERVALS,
   STRATEGIES,
   STRATEGY_PARAMS,
   getBackendInterval,
+  isSessionStrategy,
+  SESSION_STRATEGY_NOTE,
   type StrategyValue,
 } from "../../constants";
 import {
@@ -97,6 +102,22 @@ const strategyProfiles: Record<
     formula: "close crosses Bollinger(close, n, std_dev) bands",
     spark: [4, 7, 5, 9, 4, 6],
     family: "volatility",
+  },
+  orb: {
+    glyph: "ORB",
+    description: "Break the opening session range",
+    note: "Wait for the opening range to finish, then trade a close beyond its high or low.",
+    formula: "close breaks completed opening high / low",
+    spark: [3, 4, 3, 5, 7, 9],
+    family: "session breakout",
+  },
+  vwap_mean_reversion: {
+    glyph: "VWAP",
+    description: "Fade stretches from session VWAP",
+    note: "Buy below the VWAP distance band or sell above it after the session warmup.",
+    formula: "fade close at VWAP ± distance %",
+    spark: [8, 6, 3, 4, 6, 5],
+    family: "mean reversion",
   },
 };
 
@@ -178,7 +199,7 @@ function parseNumericGrid(raw: string, key: string): number[] {
 
   const parsed = tokens.map((token) => {
     const value = Number(token);
-    if (Number.isNaN(value)) {
+    if (!Number.isFinite(value)) {
       throw new Error(`\`${key}\` only accepts comma-separated numbers right now.`);
     }
     return value;
@@ -192,10 +213,16 @@ function parseParameterSpace(
   inputs: Record<string, string>,
 ): Record<string, number[]> {
   return Object.fromEntries(
-    STRATEGY_PARAMS[strategy].map((param) => [
-      param.key,
-      parseNumericGrid(inputs[param.key] ?? "", param.key),
-    ]),
+    STRATEGY_PARAMS[strategy].map((param) => {
+      const values = parseNumericGrid(inputs[param.key] ?? "", param.key);
+      if (values.some((value) => value < (param.min ?? 0) || (param.step === 1 && !Number.isInteger(value)))) {
+        throw new Error(`${param.label} needs ${param.step === 1 ? "whole numbers" : "values"} of at least ${param.min ?? 0}.`);
+      }
+      if (param.key === "vwap_bias" && values.some((value) => value !== 0 && value !== 1)) {
+        throw new Error("VWAP alignment accepts only Off (0) or On (1).");
+      }
+      return [param.key, values];
+    }),
   );
 }
 
@@ -615,6 +642,7 @@ export default function ExperimentsIndexPage() {
     return clustered;
   });
   const nyquistWarning = createMemo(() => {
+    if (isSessionStrategy(strategy())) return null;
     const grid = parsedGrid().grid;
     if (!grid || selectedIntervals().length === 0) {
       return null;
@@ -746,6 +774,11 @@ export default function ExperimentsIndexPage() {
     }
     if (selectedIntervals().length === 0) {
       return "Pick at least one interval.";
+    }
+    const sessionGrid = parsedGrid().grid;
+    if (sessionGrid) {
+      const sessionError = validateSessionStrategyGrid(strategy(), sessionGrid, selectedIntervals());
+      if (sessionError) return sessionError;
     }
     if (startDate() && endDate() && Date.parse(endDate()) < Date.parse(startDate())) {
       return "Your end date is earlier than your start date.";
@@ -952,13 +985,16 @@ export default function ExperimentsIndexPage() {
     setSortDirection(nextKey === "name" ? "asc" : "desc");
   };
 
+  let initializedSymbols = false;
   createEffect(() => {
     const availableSymbols = (symbols.error ? undefined : symbols());
-    if (!availableSymbols || availableSymbols.length === 0 || selectedSymbols().length > 0) {
+    if (initializedSymbols || !availableSymbols || availableSymbols.length === 0) {
       return;
     }
-
-    setSelectedSymbols([availableSymbols[0].symbol]);
+    initializedSymbols = true;
+    if (selectedSymbols().length === 0 && !templateSeed()) {
+      setSelectedSymbols([availableSymbols[0].symbol]);
+    }
   });
 
   createEffect(() => {
@@ -1231,6 +1267,9 @@ export default function ExperimentsIndexPage() {
                     return (
                       <button
                         type="button"
+                        role="checkbox"
+                        aria-checked={checked()}
+                        aria-label={`${symbol.symbol} — ${symbol.full_name}`}
                         onClick={() =>
                           setSelectedSymbols((current) => toggleValue(current, symbol.symbol))
                         }
@@ -1241,6 +1280,9 @@ export default function ExperimentsIndexPage() {
                         }`}
                       >
                         <div class="flex items-start justify-between gap-3">
+                          <span aria-hidden="true" class={`mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-sm border ${checked() ? "border-stone-200 bg-stone-200 text-stone-950" : "border-stone-600"}`}>
+                            <Show when={checked()}><Check size={12} /></Show>
+                          </span>
                           <div>
                             <p class="text-sm font-semibold">{symbol.symbol}</p>
                             <p class="mt-1 text-xs text-stone-400">{symbol.full_name}</p>
@@ -1349,6 +1391,7 @@ export default function ExperimentsIndexPage() {
                   return (
                     <button
                       type="button"
+                      aria-pressed={checked()}
                       title={profile.formula}
                       onClick={() => {
                         const nextStrategy = item.value as StrategyValue;
@@ -1377,7 +1420,7 @@ export default function ExperimentsIndexPage() {
                           </div>
                         </div>
                         <span class="rounded-full border border-stone-800 bg-stone-950/80 px-2.5 py-1 text-xs text-stone-300">
-                          {STRATEGY_PARAMS[item.value].length} params
+                          <span class="flex items-center gap-1.5 whitespace-nowrap"><Show when={checked()}><Check size={12} aria-hidden="true" /></Show>{STRATEGY_PARAMS[item.value].length} params</span>
                         </span>
                       </div>
 
@@ -1402,22 +1445,16 @@ export default function ExperimentsIndexPage() {
             </div>
 
             <div class="grid gap-3 md:grid-cols-2">
+              <Show when={isSessionStrategy(strategy())}>
+                <p class="text-xs leading-relaxed text-stone-400 md:col-span-2">{SESSION_STRATEGY_NOTE}</p>
+                <p class="text-xs text-stone-400 md:col-span-2">{strategy() === "orb"
+                  ? "A 15-minute opening range supports 1m, 5m, and 15m bars. Sessions with missing opening bars are skipped."
+                  : "VWAP resets at the session start. Sessions without the opening bar are skipped."}</p>
+              </Show>
               <For each={STRATEGY_PARAMS[strategy()]}>
                 {(param) => (
-                  <div>
-                    <label for={`experiment-param-${param.key}`} class={label}>{param.label}</label>
-                    <input id={`experiment-param-${param.key}`}
-                      class={`${field} app-data`}
-                      value={paramInputs()[param.key] ?? ""}
-                      onInput={(event) =>
-                        setParamInputs((current) => ({
-                          ...current,
-                          [param.key]: event.currentTarget.value,
-                        }))
-                      }
-                      placeholder={String(param.default)}
-                    />
-                  </div>
+                  <StrategyParameterInput parameter={param} value={paramInputs()[param.key] ?? ""}
+                    onChange={(value) => setParamInputs((current) => ({ ...current, [param.key]: value }))} />
                 )}
               </For>
             </div>

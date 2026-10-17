@@ -22,7 +22,8 @@ import {
 import AppShell from "../../components/AppShell";
 import ResearchDisclosure from "../../components/research/ResearchDisclosure";
 import ResearchStatus from "../../components/research/ResearchStatus";
-import { STRATEGIES, STRATEGY_PARAMS, type StrategyValue } from "../../constants";
+import { STRATEGIES, STRATEGY_PARAMS, isSessionStrategy, SESSION_STRATEGY_NOTE, type StrategyValue } from "../../constants";
+import { validateSessionStrategyGrid } from "../../services/strategyValidation";
 import {
   createResearchForwardQualification,
   decideResearchForwardQualification,
@@ -170,6 +171,11 @@ export default function AlphaLabCampaignPage() {
     const grid = parsedGrid();
     if (!grid) {
       setError("Fix the parameter grid before launch.");
+      return;
+    }
+    const sessionError = validateSessionStrategyGrid(strategy(), grid, [campaign()?.interval ?? ""]);
+    if (sessionError) {
+      setError(sessionError);
       return;
     }
     if (plannedTrials() < 1) {
@@ -425,6 +431,9 @@ export default function AlphaLabCampaignPage() {
                     </div>
                   </div>
                   <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <Show when={isSessionStrategy(strategy())}>
+                      <p class="text-xs leading-relaxed text-stone-400 md:col-span-2 xl:col-span-3">{SESSION_STRATEGY_NOTE}</p>
+                    </Show>
                     <For each={STRATEGY_PARAMS[strategy()]}>
                       {(item) => <label><span class={labelClass}>{item.label}</span><input class={inputClass} value={gridInputs()[item.key] ?? ""} onInput={(event) => setGridInputs((values) => ({ ...values, [item.key]: event.currentTarget.value }))} /><span class="mt-1 block text-[10px] text-stone-600">Comma-separated values</span></label>}
                     </For>

@@ -32,6 +32,12 @@ src/
 
 ## Notes
 
+- Experiments selects its initial symbol once; clearing the last selection keeps
+  the grid empty until a symbol is chosen. Strategy settings support Single or
+  Sweep input, suggested values, removable sweep values, and explicit filter
+  toggles. VWAP alignment can compare Off and On in the same batch. Session
+  times use a time picker in Single mode and HHMM values in Sweep mode.
+
 - The chart fetches candles directly from TimescaleDB via `GET /api/data/db/{symbol}/candles`.
   No dataset loading step or client-side cache — aggregation happens in SQL via `time_bucket()`.
 - `interval().resampleRule === null` marks timeframes that are not yet wired up. Those

@@ -113,6 +113,8 @@ export const STRATEGIES = [
   { label: "EMA Crossover", value: "ema_crossover"},
   { label: "RSI Overbought", value: "rsi_overbought"},
   { label: "Bollinger Bands", value: "bollinger_bands" },
+  { label: "Opening Range Breakout", value: "orb" },
+  { label: "VWAP Mean Reversion", value: "vwap_mean_reversion" },
 ] as const;
 
 export type StrategyValue = typeof STRATEGIES[number]["value"];
@@ -123,6 +125,18 @@ const SHARED_RESEARCH_PARAMS = [
   { key: "vwap_bias", label: "VWAP bias (0/1)", default: 0, min: 0, step: 1 },
   { key: "cooldown_bars", label: "Cooldown bars", default: 0, min: 0, step: 1 },
 ] as const;
+
+const SESSION_PARAMS = [
+  { key: "session_start", label: "Session start (HHMM, New York)", default: 930, min: 0, step: 1 },
+  { key: "session_end", label: "Entry cutoff (HHMM, New York)", default: 1600, min: 0, step: 1 },
+] as const;
+
+export function isSessionStrategy(strategy: StrategyValue): boolean {
+  return strategy === "orb" || strategy === "vwap_mean_reversion";
+}
+
+export const SESSION_STRATEGY_NOTE =
+  "Times use New York with daylight saving: 930 = 9:30 a.m., 1600 = 4 p.m. Use intraday bars aligned to session open. Existing exit rules apply; entry cutoff does not flatten positions and VWAP is not an automatic take-profit target.";
 
 export const STRATEGY_PARAMS: Record<
   StrategyValue,
@@ -148,5 +162,17 @@ export const STRATEGY_PARAMS: Record<
     { key: "bb_period", label: "BB period", default: 20, min: 1, step: 1 },
     { key: "std_dev", label: "Std deviation", default: 2, min: 0.1, step: 0.1 },
     ...SHARED_RESEARCH_PARAMS,
+  ],
+  orb: [
+    { key: "opening_range_minutes", label: "Opening range (minutes)", default: 15, min: 1, step: 1 },
+    { key: "breakout_buffer_percent", label: "Breakout buffer (%)", default: 0, min: 0, step: 0.01 },
+    ...SESSION_PARAMS,
+    ...SHARED_RESEARCH_PARAMS,
+  ],
+  vwap_mean_reversion: [
+    { key: "entry_deviation_percent", label: "Distance from VWAP (%)", default: 0.1, min: 0.001, step: 0.01 },
+    { key: "warmup_minutes", label: "VWAP warmup (minutes)", default: 15, min: 0, step: 1 },
+    ...SESSION_PARAMS,
+    ...SHARED_RESEARCH_PARAMS.filter((param) => param.key !== "vwap_bias"),
   ],
 };

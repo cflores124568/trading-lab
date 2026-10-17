@@ -497,6 +497,14 @@ def _candidate_values(key: str, base_value: Any) -> list[Any]:
 
 
 def _candidate_is_valid(strategy_type: str, params: dict[str, Any]) -> bool:
+    if strategy_type in {"orb", "vwap_mean_reversion"}:
+        from services.session_strategies import validate_session_params
+
+        try:
+            validate_session_params(strategy_type, params)
+        except ValueError:
+            return False
+
     if strategy_type in {"ma_crossover", "ema_crossover"}:
         fast = int(params.get("fast_period", 0))
         slow = int(params.get("slow_period", 0))

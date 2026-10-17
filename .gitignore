@@ -26,6 +26,7 @@ docs/*
 !docs/DEPLOYMENT.md
 !docs/PAPER_TRADING_GUIDE.md
 !docs/PROP_FIRM_RULES.md
+!docs/SESSION_STRATEGIES.md
 docs/style.local.md
 docs/*.local.md
 

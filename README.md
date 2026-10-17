@@ -14,6 +14,8 @@ Current capabilities:
 - query and aggregate OHLCV candles from TimescaleDB with `time_bucket()`
 - preview live market data with `yfinance`
 - run strategy backtests bar by bar
+- sweep Opening Range Breakout and VWAP Mean Reversion alongside the existing
+  strategy families; see [session strategy rules](docs/SESSION_STRATEGIES.md)
 - calculate performance metrics and prop-firm pass/fail outcomes
 - save completed backtests
 - browse list/detail views for prior runs

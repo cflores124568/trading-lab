@@ -210,6 +210,13 @@ def add_vwap(df: pd.DataFrame) -> pd.DataFrame:
 def add_all_indicators(df: pd.DataFrame, params: dict, strategy_type=None) -> pd.DataFrame:
     from schemas import StrategyType
 
+    if strategy_type in (StrategyType.ORB, StrategyType.VWAP_MEAN_REVERSION):
+        from services.session_strategies import validate_session_params
+
+        validate_session_params(strategy_type, params)
+        params = {**params, "atr_period": int(float(params.get("atr_period", 14))),
+                  "trend_ema_period": int(float(params.get("trend_ema_period", 0)))}
+
     fast: int = params.get("fast_period", 9)
     slow: int = params.get("slow_period", 21)
     rsi_period: int = params.get("rsi_period", 14)
@@ -236,6 +243,11 @@ def add_all_indicators(df: pd.DataFrame, params: dict, strategy_type=None) -> pd
         df = add_ema_period(df, trend_ema_period)
 
     df = add_atr(df, period=atr_period)
-    df = df.groupby(df.index.date, group_keys=False).apply(add_vwap)
+    if strategy_type in (StrategyType.ORB, StrategyType.VWAP_MEAN_REVERSION):
+        from services.session_strategies import add_session_indicators
+
+        df = add_session_indicators(df, strategy_type, params)
+    else:
+        df = df.groupby(df.index.date, group_keys=False).apply(add_vwap)
 
     return df

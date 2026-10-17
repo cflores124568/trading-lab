@@ -14,6 +14,10 @@ def generate_signals(df: pd.DataFrame, strategy_type: str, params: dict) -> pd.D
         df = _bollinger_signals(df, params)
     elif strategy_type == StrategyType.EMA_CROSSOVER:
         df = _ema_crossover_signals(df, params)
+    elif strategy_type in (StrategyType.ORB, StrategyType.VWAP_MEAN_REVERSION):
+        from services.session_strategies import generate_session_signals
+
+        df = generate_session_signals(df, strategy_type, params)
     else:
         raise ValueError(f"Unknown strategy type: {strategy_type}")
 

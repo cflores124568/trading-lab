@@ -23,6 +23,8 @@ class StrategyType(str, Enum):
     EMA_CROSSOVER = "ema_crossover"
     RSI_OVERBOUGHT = "rsi_overbought"
     BOLLINGER_BANDS = "bollinger_bands"
+    ORB = "orb"
+    VWAP_MEAN_REVERSION = "vwap_mean_reversion"
 
 class DrawdownType(str, Enum):
     INTRADAY = "intraday" 
@@ -32,6 +34,18 @@ class DrawdownType(str, Enum):
 class Strategy(BaseModel):
     type: StrategyType
     params: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_session_strategy(self):
+        if self.type in {StrategyType.ORB, StrategyType.VWAP_MEAN_REVERSION}:
+            from services.session_strategies import validate_session_params
+
+            validate_session_params(self.type, self.params)
+            integer_keys = {"session_start", "session_end", "opening_range_minutes", "warmup_minutes",
+                            "trend_ema_period", "cooldown_bars", "atr_period", "vwap_bias"}
+            self.params = {key: int(float(value)) if key in integer_keys else value
+                           for key, value in self.params.items()}
+        return self
 
 #Prop-firm rules 
 class PropFirmRules(BaseModel):
