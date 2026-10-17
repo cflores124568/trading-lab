@@ -113,6 +113,7 @@ Data layer:
 - [`docs/CPP_KERNEL.md`](docs/CPP_KERNEL.md) explains when to build the pybind11 kernel, where the compiled module needs to land, and how the Python fallback works
 - [`docs/PROP_FIRM_RULES.md`](docs/PROP_FIRM_RULES.md) spells out what the evaluator actually checks today, including a couple rules that exist in presets but are not fully enforced yet
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) lays out the clean split between static frontend hosting and a containerized backend + database
+- [`docs/openapi.json`](docs/openapi.json) is the committed API spec (the deployed host doesn't serve `/docs`); regenerate it from `backend/` with `./venv/bin/python scripts/export_openapi.py`
 - [`PHASE_3C.md`](PHASE_3C.md) records the frozen agent-ready paper core, policy modes, pre-trade risk gate, durable scorecard, and restart-safe approvals
 - [`PHASE_3D.md`](PHASE_3D.md) tracks the MCP research plane, audited paper notes, and the safety boundary for future control tools
 - [`PHASE_3E.md`](PHASE_3E.md) records durable paper-runner ownership, leases, heartbeats, and stale-worker takeover
