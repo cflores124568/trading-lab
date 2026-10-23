@@ -48,6 +48,7 @@ struct TradeRecord {
     double entry_price;
     double exit_price;
     double pnl;           // net of commission, rounded to 2 decimals
+    int    exit_reason;   // 0 flip, 1 stop, 2 target, 3 trail, 4 BE, 5 time, 6 session, 7 EOD
 };
 
 struct Position {
@@ -55,6 +56,22 @@ struct Position {
     int    side        = 0;
     int    entry_idx   = -1;
     double entry_price = 0.0;
+
+    bool   has_stop      = false;
+    double stop_price    = 0.0;
+    int    stop_source   = 0;   // 0 initial, 1 breakeven, 2 trailing
+
+    bool   has_target    = false;
+    double target_price  = 0.0;
+
+    bool   has_initial_risk = false;
+    double initial_risk     = 0.0;
+    double best_price       = 0.0;
+    bool   breakeven_done   = false;
+
+    bool   has_trailing      = false;
+    bool   trailing_active   = false;
+    double trailing_distance = 0.0;
 };
 
 struct Quote {
@@ -76,6 +93,17 @@ struct RunConfig {
     int    spread_ticks;
     int    volatile_bar_threshold_ticks;
     int    volatile_bar_extra_ticks;
+
+    std::optional<double> stop_loss_atr;
+    std::optional<double> take_profit_atr;
+    std::optional<double> trailing_stop_atr;
+    std::optional<double> trailing_stop_ticks;
+    std::optional<double> trailing_activation_r;
+    std::optional<double> breakeven_at_r;
+    std::optional<int>    time_stop_bars;
+    bool   exit_at_session_end;
+    const double* atr;
+    const int*    session_end;
 };
 
 struct RunResult {
@@ -118,7 +146,10 @@ static RunResult run_core(
     const RunConfig& cfg
 ) {
     const double tick_size = cfg.tick_size;
-    const bool uses_brackets = cfg.stop_loss_ticks.has_value() || cfg.take_profit_ticks.has_value();
+    const bool uses_atr =
+        cfg.stop_loss_atr.has_value() ||
+        cfg.take_profit_atr.has_value() ||
+        cfg.trailing_stop_atr.has_value();
 
     auto round_to_tick = [&](double price) -> double {
         return py_round10(py_round(price / tick_size) * tick_size);
@@ -160,6 +191,19 @@ static RunResult run_core(
         return side == 1 ? q.bid : q.ask;
     };
 
+    auto barrier_price = [&](int side, double entry, double distance, bool is_target) -> double {
+        const double raw = side == 1
+            ? (is_target ? entry + distance : entry - distance)
+            : (is_target ? entry - distance : entry + distance);
+        return round_to_tick(raw);
+    };
+
+    auto stop_reason = [](int source) -> int {
+        if (source == 2) return 3;   // trailing stop
+        if (source == 1) return 4;   // breakeven stop
+        return 1;                    // original stop
+    };
+
     RunResult out;
     out.equity_curve.reserve(n + 1);
     out.trades.reserve(n / 4);        // rough guess — prevents many resizes
@@ -169,7 +213,7 @@ static RunResult run_core(
 
     out.equity_curve.push_back(balance);  // starting equity (bar 0)
 
-    auto close_position = [&](std::size_t exit_idx, double exit_price) {
+    auto close_position = [&](std::size_t exit_idx, double exit_price, int reason) {
         const double net_pnl = position_pnl(pos.side, pos.entry_price, exit_price, cfg.commission);
         balance += net_pnl;
         out.trades.push_back({
@@ -178,7 +222,8 @@ static RunResult run_core(
             pos.side,
             pos.entry_price,
             exit_price,
-            py_round2(net_pnl)
+            py_round2(net_pnl),
+            reason
         });
         pos = {};   // reset position
     };
@@ -203,49 +248,184 @@ static RunResult run_core(
                 const double exit_price = cfg.use_synthetic_quotes
                     ? flatten_price(pos.side, quote)
                     : apply_slippage(execution_base, pos.side, true);
-                close_position(i, exit_price);
+                close_position(i, exit_price, 0);
             }
         }
 
-        //Open new position when flat and we have a signal
-        if(!pos.open && signal != 0 && i < n - 1){
-            pos.open = true;
-            pos.side = signal;           // +1 or -1
-            pos.entry_idx = static_cast<int>(i);
-            pos.entry_price = cfg.use_synthetic_quotes
-                ? (signal == 1 ? quote.ask : quote.bid)
-                : apply_slippage(execution_base, pos.side, false);
+        // Open new position when flat, not on the final bar, and not on a bar
+        // that is about to be flattened at session close.
+        const bool session_is_closing =
+            cfg.exit_at_session_end && cfg.session_end != nullptr && cfg.session_end[i] != 0;
+
+        if(!pos.open && signal != 0 && i < n - 1 && !session_is_closing){
+            double entry_atr = 0.0;
+            bool atr_ok = true;
+            if (uses_atr) {
+                if (cfg.atr == nullptr || i == 0) {
+                    atr_ok = false;
+                } else {
+                    entry_atr = cfg.atr[i - 1];
+                    if (!std::isfinite(entry_atr) || entry_atr <= 0.0)
+                        atr_ok = false;
+                }
+            }
+
+            if (atr_ok) {
+                pos.open = true;
+                pos.side = signal;           // +1 or -1
+                pos.entry_idx = static_cast<int>(i);
+                pos.entry_price = cfg.use_synthetic_quotes
+                    ? (signal == 1 ? quote.ask : quote.bid)
+                    : apply_slippage(execution_base, pos.side, false);
+                pos.best_price = pos.entry_price;
+                pos.breakeven_done = false;
+
+                double stop_distance = 0.0;
+                bool has_stop_distance = false;
+                if (cfg.stop_loss_atr.has_value()) {
+                    stop_distance = *cfg.stop_loss_atr * entry_atr;
+                    has_stop_distance = true;
+                } else if (cfg.stop_loss_ticks.has_value()) {
+                    stop_distance = *cfg.stop_loss_ticks * tick_size;
+                    has_stop_distance = true;
+                }
+                if (has_stop_distance) {
+                    pos.has_stop = true;
+                    pos.stop_price = barrier_price(pos.side, pos.entry_price, stop_distance, false);
+                    pos.stop_source = 0;
+                    pos.initial_risk = stop_distance;
+                    pos.has_initial_risk = true;
+                }
+
+                double target_distance = 0.0;
+                bool has_target_distance = false;
+                if (cfg.take_profit_atr.has_value()) {
+                    target_distance = *cfg.take_profit_atr * entry_atr;
+                    has_target_distance = true;
+                } else if (cfg.take_profit_ticks.has_value()) {
+                    target_distance = *cfg.take_profit_ticks * tick_size;
+                    has_target_distance = true;
+                }
+                if (has_target_distance) {
+                    pos.has_target = true;
+                    pos.target_price = barrier_price(pos.side, pos.entry_price, target_distance, true);
+                }
+
+                double trailing_distance = 0.0;
+                bool has_trailing = false;
+                if (cfg.trailing_stop_atr.has_value()) {
+                    trailing_distance = *cfg.trailing_stop_atr * entry_atr;
+                    has_trailing = true;
+                } else if (cfg.trailing_stop_ticks.has_value()) {
+                    trailing_distance = *cfg.trailing_stop_ticks * tick_size;
+                    has_trailing = true;
+                }
+                pos.has_trailing = has_trailing;
+                pos.trailing_distance = trailing_distance;
+                pos.trailing_active = has_trailing && !cfg.trailing_activation_r.has_value();
+            }
         }
 
-        // Bracket exits can fire inside the same bar off its high/low.
-        // A candle that tags both levels resolves to the stop, so the sim
-        // stays honest instead of quietly cherry-picking the target.
-        if(pos.open && uses_brackets){
-            double stop_price   = 0.0;
-            double target_price = 0.0;
-            bool   hit_stop     = false;
-            bool   hit_target   = false;
+        // Bracket and trailing exits can fire inside the same bar off its
+        // high/low. A candle that tags both levels resolves to the stop, so
+        // the sim stays honest instead of quietly cherry-picking the target.
+        if(pos.open && (pos.has_stop || pos.has_target)){
+            bool hit_stop = false;
+            bool hit_target = false;
 
-            if(cfg.stop_loss_ticks.has_value()){
-                const double offset = *cfg.stop_loss_ticks * tick_size;
-                stop_price = round_to_tick(pos.side == 1 ? pos.entry_price - offset
-                                                         : pos.entry_price + offset);
-                hit_stop = pos.side == 1 ? lows[i] <= stop_price : highs[i] >= stop_price;
+            if (pos.has_stop) {
+                hit_stop = pos.side == 1 ? lows[i] <= pos.stop_price : highs[i] >= pos.stop_price;
             }
-            if(cfg.take_profit_ticks.has_value()){
-                const double offset = *cfg.take_profit_ticks * tick_size;
-                target_price = round_to_tick(pos.side == 1 ? pos.entry_price + offset
-                                                           : pos.entry_price - offset);
-                hit_target = pos.side == 1 ? highs[i] >= target_price : lows[i] <= target_price;
+            if (pos.has_target) {
+                hit_target = pos.side == 1 ? highs[i] >= pos.target_price : lows[i] <= pos.target_price;
             }
 
             if(hit_stop || hit_target){
                 // Bracket fills keep bar-style slippage even in quote mode,
                 // matching the Python oracle.
-                const double raw_exit = hit_stop ? stop_price : target_price;
-                close_position(i, apply_slippage(raw_exit, pos.side, true));
+                const double raw_exit = hit_stop ? pos.stop_price : pos.target_price;
+                const int reason = hit_stop ? stop_reason(pos.stop_source) : 2;
+                close_position(i, apply_slippage(raw_exit, pos.side, true), reason);
                 out.equity_curve.push_back(py_round2(balance));
                 continue;   // no mark-to-market on the exit bar
+            }
+        }
+
+        // Intraday flat: market-on-close at the last bar of the session.
+        if(pos.open && cfg.exit_at_session_end && cfg.session_end != nullptr && cfg.session_end[i] != 0){
+            double exit_price;
+            if (cfg.use_synthetic_quotes) {
+                const Quote close_quote = synthetic_quote(closes[i], highs[i], lows[i]);
+                exit_price = flatten_price(pos.side, close_quote);
+            } else {
+                exit_price = apply_slippage(round_to_tick(closes[i]), pos.side, true);
+            }
+            close_position(i, exit_price, 6);
+            out.equity_curve.push_back(py_round2(balance));
+            continue;
+        }
+
+        // Time stop: close at the Nth bar's close, counting the entry bar.
+        if(pos.open && cfg.time_stop_bars.has_value() &&
+           (i - static_cast<std::size_t>(pos.entry_idx) + 1) >= static_cast<std::size_t>(*cfg.time_stop_bars)){
+            double exit_price;
+            if (cfg.use_synthetic_quotes) {
+                const Quote close_quote = synthetic_quote(closes[i], highs[i], lows[i]);
+                exit_price = flatten_price(pos.side, close_quote);
+            } else {
+                exit_price = apply_slippage(round_to_tick(closes[i]), pos.side, true);
+            }
+            close_position(i, exit_price, 5);
+            out.equity_curve.push_back(py_round2(balance));
+            continue;
+        }
+
+        // Update breakeven and trailing levels from this bar's favorable
+        // extreme. They become active on the next bar, so the loop never
+        // assumes an intrabar high/low ordering it cannot actually know.
+        if(pos.open){
+            double favorable;
+            if (pos.side == 1) {
+                pos.best_price = std::max(pos.best_price, highs[i]);
+                favorable = pos.best_price - pos.entry_price;
+            } else {
+                pos.best_price = std::min(pos.best_price, lows[i]);
+                favorable = pos.entry_price - pos.best_price;
+            }
+
+            if (cfg.breakeven_at_r.has_value() && pos.has_initial_risk &&
+                pos.initial_risk > 0.0 && !pos.breakeven_done &&
+                favorable >= *cfg.breakeven_at_r * pos.initial_risk) {
+                const double candidate = round_to_tick(pos.entry_price);
+                const bool better = !pos.has_stop ||
+                    (pos.side == 1 ? candidate > pos.stop_price : candidate < pos.stop_price);
+                if (better) {
+                    pos.has_stop = true;
+                    pos.stop_price = candidate;
+                    pos.stop_source = 1;
+                }
+                pos.breakeven_done = true;
+            }
+
+            if (pos.has_trailing) {
+                if (!pos.trailing_active && cfg.trailing_activation_r.has_value() &&
+                    pos.has_initial_risk && pos.initial_risk > 0.0 &&
+                    favorable >= *cfg.trailing_activation_r * pos.initial_risk) {
+                    pos.trailing_active = true;
+                }
+                if (pos.trailing_active) {
+                    const double candidate = round_to_tick(
+                        pos.side == 1 ? pos.best_price - pos.trailing_distance
+                                      : pos.best_price + pos.trailing_distance
+                    );
+                    const bool better = !pos.has_stop ||
+                        (pos.side == 1 ? candidate > pos.stop_price : candidate < pos.stop_price);
+                    if (better) {
+                        pos.has_stop = true;
+                        pos.stop_price = candidate;
+                        pos.stop_source = 2;
+                    }
+                }
             }
         }
 
@@ -267,7 +447,7 @@ static RunResult run_core(
         } else {
             exit_price = apply_slippage(round_to_tick(closes[n - 1]), pos.side, true);
         }
-        close_position(n - 1, exit_price);
+        close_position(n - 1, exit_price, 7);
         // Update final equity value (now fully realized)
         out.equity_curve.back() = py_round2(balance);
     }
@@ -311,7 +491,8 @@ static py::dict result_to_dict(const RunResult& result) {
         "sides"_a         = mk_int_arr   ([](const TradeRecord& r){ return r.side;        }),
         "entry_prices"_a  = mk_double_arr([](const TradeRecord& r){ return r.entry_price; }),
         "exit_prices"_a   = mk_double_arr([](const TradeRecord& r){ return r.exit_price;  }),
-        "pnls"_a          = mk_double_arr([](const TradeRecord& r){ return r.pnl;         })
+        "pnls"_a          = mk_double_arr([](const TradeRecord& r){ return r.pnl;         }),
+        "exit_reasons"_a  = mk_int_arr   ([](const TradeRecord& r){ return r.exit_reason; })
     );
 }
 
@@ -352,18 +533,52 @@ py::dict run_backtest_kernel(
     bool   use_synthetic_quotes,
     int    spread_ticks,
     int    volatile_bar_threshold_ticks,
-    int    volatile_bar_extra_ticks
+    int    volatile_bar_extra_ticks,
+    std::optional<double> stop_loss_atr,
+    std::optional<double> take_profit_atr,
+    std::optional<double> trailing_stop_atr,
+    std::optional<double> trailing_stop_ticks,
+    std::optional<double> trailing_activation_r,
+    std::optional<double> breakeven_at_r,
+    std::optional<int>    time_stop_bars,
+    bool   exit_at_session_end,
+    DoubleArr atr_arr,
+    IntArr    session_end_arr
 ) {
     validate_inputs(opens_arr, highs_arr, lows_arr, closes_arr, tick_size);
     if (signals_arr.shape(0) != closes_arr.shape(0))
         throw std::invalid_argument("signals must match the price arrays in length");
 
-    const RunConfig cfg{
-        initial_balance, position_size, commission, tick_size, tick_value,
-        slippage_ticks, stop_loss_ticks, take_profit_ticks,
-        use_synthetic_quotes, spread_ticks,
-        volatile_bar_threshold_ticks, volatile_bar_extra_ticks
-    };
+    const std::size_t n = static_cast<std::size_t>(closes_arr.shape(0));
+    const bool uses_atr = stop_loss_atr.has_value() || take_profit_atr.has_value() || trailing_stop_atr.has_value();
+    if (uses_atr && static_cast<std::size_t>(atr_arr.shape(0)) != n)
+        throw std::invalid_argument("atr must match the price arrays in length when ATR exits are enabled");
+    if (exit_at_session_end && static_cast<std::size_t>(session_end_arr.shape(0)) != n)
+        throw std::invalid_argument("session_end must match the price arrays in length when session exits are enabled");
+
+    RunConfig cfg{};
+    cfg.initial_balance = initial_balance;
+    cfg.position_size = position_size;
+    cfg.commission = commission;
+    cfg.tick_size = tick_size;
+    cfg.tick_value = tick_value;
+    cfg.slippage_ticks = slippage_ticks;
+    cfg.stop_loss_ticks = stop_loss_ticks;
+    cfg.take_profit_ticks = take_profit_ticks;
+    cfg.use_synthetic_quotes = use_synthetic_quotes;
+    cfg.spread_ticks = spread_ticks;
+    cfg.volatile_bar_threshold_ticks = volatile_bar_threshold_ticks;
+    cfg.volatile_bar_extra_ticks = volatile_bar_extra_ticks;
+    cfg.stop_loss_atr = stop_loss_atr;
+    cfg.take_profit_atr = take_profit_atr;
+    cfg.trailing_stop_atr = trailing_stop_atr;
+    cfg.trailing_stop_ticks = trailing_stop_ticks;
+    cfg.trailing_activation_r = trailing_activation_r;
+    cfg.breakeven_at_r = breakeven_at_r;
+    cfg.time_stop_bars = time_stop_bars;
+    cfg.exit_at_session_end = exit_at_session_end;
+    cfg.atr = uses_atr ? atr_arr.data(0) : nullptr;
+    cfg.session_end = exit_at_session_end ? session_end_arr.data(0) : nullptr;
 
     const RunResult result = run_core(
         opens_arr.data(0), highs_arr.data(0), lows_arr.data(0),
@@ -391,11 +606,27 @@ py::list run_backtest_batch(
     int    spread_ticks,
     int    volatile_bar_threshold_ticks,
     int    volatile_bar_extra_ticks,
+    std::optional<double> stop_loss_atr,
+    std::optional<double> take_profit_atr,
+    std::optional<double> trailing_stop_atr,
+    std::optional<double> trailing_stop_ticks,
+    std::optional<double> trailing_activation_r,
+    std::optional<double> breakeven_at_r,
+    std::optional<int>    time_stop_bars,
+    bool   exit_at_session_end,
+    DoubleArr atr_arr,
+    IntArr    session_end_arr,
     int    max_threads
 ) {
     validate_inputs(opens_arr, highs_arr, lows_arr, closes_arr, tick_size);
 
     const std::size_t n = static_cast<std::size_t>(closes_arr.shape(0));
+    const bool uses_atr = stop_loss_atr.has_value() || take_profit_atr.has_value() || trailing_stop_atr.has_value();
+    if (uses_atr && static_cast<std::size_t>(atr_arr.shape(0)) != n)
+        throw std::invalid_argument("atr must match the price arrays in length when ATR exits are enabled");
+    if (exit_at_session_end && static_cast<std::size_t>(session_end_arr.shape(0)) != n)
+        throw std::invalid_argument("session_end must match the price arrays in length when session exits are enabled");
+
     const std::size_t n_runs = signals_list.size();
     if (n_runs == 0)
         return py::list();
@@ -416,12 +647,29 @@ py::list run_backtest_batch(
         signal_arrays.push_back(std::move(arr));
     }
 
-    const RunConfig cfg{
-        initial_balance, position_size, commission, tick_size, tick_value,
-        slippage_ticks, stop_loss_ticks, take_profit_ticks,
-        use_synthetic_quotes, spread_ticks,
-        volatile_bar_threshold_ticks, volatile_bar_extra_ticks
-    };
+    RunConfig cfg{};
+    cfg.initial_balance = initial_balance;
+    cfg.position_size = position_size;
+    cfg.commission = commission;
+    cfg.tick_size = tick_size;
+    cfg.tick_value = tick_value;
+    cfg.slippage_ticks = slippage_ticks;
+    cfg.stop_loss_ticks = stop_loss_ticks;
+    cfg.take_profit_ticks = take_profit_ticks;
+    cfg.use_synthetic_quotes = use_synthetic_quotes;
+    cfg.spread_ticks = spread_ticks;
+    cfg.volatile_bar_threshold_ticks = volatile_bar_threshold_ticks;
+    cfg.volatile_bar_extra_ticks = volatile_bar_extra_ticks;
+    cfg.stop_loss_atr = stop_loss_atr;
+    cfg.take_profit_atr = take_profit_atr;
+    cfg.trailing_stop_atr = trailing_stop_atr;
+    cfg.trailing_stop_ticks = trailing_stop_ticks;
+    cfg.trailing_activation_r = trailing_activation_r;
+    cfg.breakeven_at_r = breakeven_at_r;
+    cfg.time_stop_bars = time_stop_bars;
+    cfg.exit_at_session_end = exit_at_session_end;
+    cfg.atr = uses_atr ? atr_arr.data(0) : nullptr;
+    cfg.session_end = exit_at_session_end ? session_end_arr.data(0) : nullptr;
 
     const double* opens  = opens_arr.data(0);
     const double* highs  = highs_arr.data(0);
@@ -500,6 +748,16 @@ PYBIND11_MODULE(backtest_core, m) {
         py::arg("spread_ticks") = 1,
         py::arg("volatile_bar_threshold_ticks") = 0,
         py::arg("volatile_bar_extra_ticks") = 0,
+        py::arg("stop_loss_atr") = py::none(),
+        py::arg("take_profit_atr") = py::none(),
+        py::arg("trailing_stop_atr") = py::none(),
+        py::arg("trailing_stop_ticks") = py::none(),
+        py::arg("trailing_activation_r") = py::none(),
+        py::arg("breakeven_at_r") = py::none(),
+        py::arg("time_stop_bars") = py::none(),
+        py::arg("exit_at_session_end") = false,
+        py::arg("atr") = py::array_t<double>(0),
+        py::arg("session_end") = py::array_t<int>(0),
         R"pbdoc(
         Fast next-bar futures backtest loop written in C++.
 
@@ -522,6 +780,14 @@ PYBIND11_MODULE(backtest_core, m) {
         spread_ticks    : int                — base synthetic spread
         volatile_bar_threshold_ticks : int   — bar range that counts as volatile
         volatile_bar_extra_ticks     : int   — extra spread on volatile bars
+        stop_loss_atr / take_profit_atr : float or None — bracket distance as ATR multiples
+        trailing_stop_atr / trailing_stop_ticks : float or None — trail distance
+        trailing_activation_r : float or None — defer trailing until +N R
+        breakeven_at_r : float or None — move stop to entry at +N R
+        time_stop_bars : int or None — exit at the close of the Nth bar in a trade
+        exit_at_session_end : bool — flatten at the last bar of each session
+        atr : 1-D float64 array — ATR aligned to bars; value at i-1 sizes entries
+        session_end : 1-D int32 array — 1 marks the last bar of a session
 
         Returns
         -------
@@ -533,6 +799,8 @@ PYBIND11_MODULE(backtest_core, m) {
             entry_prices
             exit_prices
             pnls           — net profit/loss (after commission), rounded 2 decimals
+            exit_reasons   — 0 flip, 1 stop, 2 target, 3 trailing, 4 breakeven,
+                             5 time, 6 session, 7 end of data
         )pbdoc"
     );
 
@@ -556,6 +824,16 @@ PYBIND11_MODULE(backtest_core, m) {
         py::arg("spread_ticks") = 1,
         py::arg("volatile_bar_threshold_ticks") = 0,
         py::arg("volatile_bar_extra_ticks") = 0,
+        py::arg("stop_loss_atr") = py::none(),
+        py::arg("take_profit_atr") = py::none(),
+        py::arg("trailing_stop_atr") = py::none(),
+        py::arg("trailing_stop_ticks") = py::none(),
+        py::arg("trailing_activation_r") = py::none(),
+        py::arg("breakeven_at_r") = py::none(),
+        py::arg("time_stop_bars") = py::none(),
+        py::arg("exit_at_session_end") = false,
+        py::arg("atr") = py::array_t<double>(0),
+        py::arg("session_end") = py::array_t<int>(0),
         py::arg("max_threads") = 0,
         R"pbdoc(
         Run many signal variants over one shared OHLC series in parallel.

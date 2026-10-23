@@ -222,7 +222,7 @@ def add_all_indicators(df: pd.DataFrame, params: dict, strategy_type=None) -> pd
     rsi_period: int = params.get("rsi_period", 14)
     bb_period: int = params.get("bb_period", 20)
     bb_std: float = params.get("std_dev", 2.0)
-    atr_period: int = params.get("atr_period", 14)
+    atr_period: int = int(params.get("atr_period", 14) or 14)
     trend_ema_period: int = int(params.get("trend_ema_period", 0) or 0)
 
     # Compute only what the strategy needs, with VWAP and ATR always set

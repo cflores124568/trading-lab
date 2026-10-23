@@ -47,6 +47,25 @@ class Strategy(BaseModel):
                            for key, value in self.params.items()}
         return self
 
+
+def _validate_exit_policy(model):
+    """Shared guardrails for tick/ATR brackets and dynamic exits."""
+    if model.stop_loss_ticks is not None and model.stop_loss_atr is not None:
+        raise ValueError("Choose stop_loss_ticks or stop_loss_atr, not both.")
+    if model.take_profit_ticks is not None and model.take_profit_atr is not None:
+        raise ValueError("Choose take_profit_ticks or take_profit_atr, not both.")
+    if model.trailing_stop_atr is not None and model.trailing_stop_ticks is not None:
+        raise ValueError("Choose trailing_stop_atr or trailing_stop_ticks, not both.")
+
+    has_initial_stop = model.stop_loss_ticks is not None or model.stop_loss_atr is not None
+    has_trailing_stop = model.trailing_stop_atr is not None or model.trailing_stop_ticks is not None
+
+    if model.trailing_activation_r is not None and not has_trailing_stop:
+        raise ValueError("trailing_activation_r requires a trailing stop.")
+    if (model.trailing_activation_r is not None or model.breakeven_at_r is not None) and not has_initial_stop:
+        raise ValueError("R-based exits require an initial stop (ticks or ATR).")
+    return model
+
 #Prop-firm rules 
 class PropFirmRules(BaseModel):
     name: str
@@ -83,6 +102,7 @@ class Trade(BaseModel):
     pnl: float
     status: TradeStatus
     commission: float
+    exit_reason: Optional[str] = None
     quantity: Optional[float] = None
     tick_size: Optional[float] = None
     tick_value: Optional[float] = None
@@ -462,11 +482,25 @@ class ExperimentBase(BaseModel):
     position_size: float = Field(default=1.0, gt=0)
     commission: float = Field(default=5.0, ge=0)
     slippage_ticks: float = Field(default=1.0, ge=0)
+    stop_loss_ticks: Optional[float] = Field(default=None, gt=0)
+    take_profit_ticks: Optional[float] = Field(default=None, gt=0)
+    stop_loss_atr: Optional[float] = Field(default=None, gt=0)
+    take_profit_atr: Optional[float] = Field(default=None, gt=0)
+    trailing_stop_atr: Optional[float] = Field(default=None, gt=0)
+    trailing_stop_ticks: Optional[float] = Field(default=None, gt=0)
+    trailing_activation_r: Optional[float] = Field(default=None, gt=0)
+    breakeven_at_r: Optional[float] = Field(default=None, gt=0)
+    time_stop_bars: Optional[int] = Field(default=None, gt=0)
+    exit_at_session_end: bool = False
     execution_mode: Literal["bar", "synthetic_quotes"] = Field(default="bar")
     spread_ticks: int = Field(default=1, ge=1)
     volatile_bar_threshold_ticks: int = Field(default=0, ge=0)
     volatile_bar_extra_ticks: int = Field(default=0, ge=0)
     scoring_rule: ExperimentScoringRule = Field(default=ExperimentScoringRule.PROP_SCORE_V1)
+
+    @model_validator(mode="after")
+    def validate_exit_policy(self):
+        return _validate_exit_policy(self)
 
 
 class ExperimentCreate(ExperimentBase):
@@ -1088,10 +1122,22 @@ class BacktestRequest(BaseModel):
     slippage_ticks:  float          = Field(default=1.0, ge=0)
     stop_loss_ticks: Optional[float] = Field(default=None, gt=0)
     take_profit_ticks: Optional[float] = Field(default=None, gt=0)
+    stop_loss_atr: Optional[float] = Field(default=None, gt=0)
+    take_profit_atr: Optional[float] = Field(default=None, gt=0)
+    trailing_stop_atr: Optional[float] = Field(default=None, gt=0)
+    trailing_stop_ticks: Optional[float] = Field(default=None, gt=0)
+    trailing_activation_r: Optional[float] = Field(default=None, gt=0)
+    breakeven_at_r: Optional[float] = Field(default=None, gt=0)
+    time_stop_bars: Optional[int] = Field(default=None, gt=0)
+    exit_at_session_end: bool = False
     execution_mode: Literal["bar", "synthetic_quotes"] = Field(default="bar")
     spread_ticks: int = Field(default=1, ge=1)
     volatile_bar_threshold_ticks: int = Field(default=0, ge=0)
     volatile_bar_extra_ticks: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def validate_exit_policy(self):
+        return _validate_exit_policy(self)
 
 
 class BacktestRunConfig(BaseModel):
@@ -1103,10 +1149,22 @@ class BacktestRunConfig(BaseModel):
     slippage_ticks: float = Field(default=1.0, ge=0)
     stop_loss_ticks: Optional[float] = Field(default=None, gt=0)
     take_profit_ticks: Optional[float] = Field(default=None, gt=0)
+    stop_loss_atr: Optional[float] = Field(default=None, gt=0)
+    take_profit_atr: Optional[float] = Field(default=None, gt=0)
+    trailing_stop_atr: Optional[float] = Field(default=None, gt=0)
+    trailing_stop_ticks: Optional[float] = Field(default=None, gt=0)
+    trailing_activation_r: Optional[float] = Field(default=None, gt=0)
+    breakeven_at_r: Optional[float] = Field(default=None, gt=0)
+    time_stop_bars: Optional[int] = Field(default=None, gt=0)
+    exit_at_session_end: bool = False
     execution_mode: Literal["bar", "synthetic_quotes"] = Field(default="bar")
     spread_ticks: int = Field(default=1, ge=1)
     volatile_bar_threshold_ticks: int = Field(default=0, ge=0)
     volatile_bar_extra_ticks: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def validate_exit_policy(self):
+        return _validate_exit_policy(self)
 
 class BacktestResult(BaseModel):
     backtest_id:    str

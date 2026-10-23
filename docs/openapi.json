@@ -25,6 +25,18 @@
       },
       "BacktestRequest": {
         "properties": {
+          "breakeven_at_r": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakeven At R"
+          },
           "commission": {
             "default": 5.0,
             "minimum": 0.0,
@@ -54,6 +66,11 @@
             ],
             "title": "Execution Mode",
             "type": "string"
+          },
+          "exit_at_session_end": {
+            "default": false,
+            "title": "Exit At Session End",
+            "type": "boolean"
           },
           "initial_balance": {
             "default": 100000,
@@ -93,6 +110,18 @@
             ],
             "title": "Start Date"
           },
+          "stop_loss_atr": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Loss Atr"
+          },
           "stop_loss_ticks": {
             "anyOf": [
               {
@@ -107,6 +136,18 @@
           },
           "strategy": {
             "$ref": "#/components/schemas/Strategy"
+          },
+          "take_profit_atr": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Take Profit Atr"
           },
           "take_profit_ticks": {
             "anyOf": [
@@ -131,6 +172,54 @@
             "exclusiveMinimum": 0.0,
             "title": "Tick Value",
             "type": "number"
+          },
+          "time_stop_bars": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Stop Bars"
+          },
+          "trailing_activation_r": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trailing Activation R"
+          },
+          "trailing_stop_atr": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trailing Stop Atr"
+          },
+          "trailing_stop_ticks": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trailing Stop Ticks"
           },
           "volatile_bar_extra_ticks": {
             "default": 0,
@@ -298,6 +387,18 @@
       },
       "BacktestRunConfig": {
         "properties": {
+          "breakeven_at_r": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakeven At R"
+          },
           "commission": {
             "default": 5.0,
             "minimum": 0.0,
@@ -312,6 +413,11 @@
             ],
             "title": "Execution Mode",
             "type": "string"
+          },
+          "exit_at_session_end": {
+            "default": false,
+            "title": "Exit At Session End",
+            "type": "boolean"
           },
           "initial_balance": {
             "default": 100000,
@@ -337,6 +443,18 @@
             "title": "Spread Ticks",
             "type": "integer"
           },
+          "stop_loss_atr": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Loss Atr"
+          },
           "stop_loss_ticks": {
             "anyOf": [
               {
@@ -348,6 +466,18 @@
               }
             ],
             "title": "Stop Loss Ticks"
+          },
+          "take_profit_atr": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Take Profit Atr"
           },
           "take_profit_ticks": {
             "anyOf": [
@@ -372,6 +502,54 @@
             "exclusiveMinimum": 0.0,
             "title": "Tick Value",
             "type": "number"
+          },
+          "time_stop_bars": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Stop Bars"
+          },
+          "trailing_activation_r": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trailing Activation R"
+          },
+          "trailing_stop_atr": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trailing Stop Atr"
+          },
+          "trailing_stop_ticks": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trailing Stop Ticks"
           },
           "volatile_bar_extra_ticks": {
             "default": 0,
@@ -953,6 +1131,18 @@
       },
       "ExperimentCreate": {
         "properties": {
+          "breakeven_at_r": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakeven At R"
+          },
           "commission": {
             "default": 5.0,
             "minimum": 0.0,
@@ -978,6 +1168,11 @@
             ],
             "title": "Execution Mode",
             "type": "string"
+          },
+          "exit_at_session_end": {
+            "default": false,
+            "title": "Exit At Session End",
+            "type": "boolean"
           },
           "initial_balance": {
             "default": 100000,
@@ -1040,6 +1235,30 @@
             ],
             "title": "Start Date"
           },
+          "stop_loss_atr": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Loss Atr"
+          },
+          "stop_loss_ticks": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Loss Ticks"
+          },
           "strategy_type": {
             "$ref": "#/components/schemas/StrategyType"
           },
@@ -1049,6 +1268,78 @@
             },
             "title": "Symbols",
             "type": "array"
+          },
+          "take_profit_atr": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Take Profit Atr"
+          },
+          "take_profit_ticks": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Take Profit Ticks"
+          },
+          "time_stop_bars": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Stop Bars"
+          },
+          "trailing_activation_r": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trailing Activation R"
+          },
+          "trailing_stop_atr": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trailing Stop Atr"
+          },
+          "trailing_stop_ticks": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trailing Stop Ticks"
           },
           "volatile_bar_extra_ticks": {
             "default": 0,
@@ -1115,6 +1406,18 @@
             ],
             "title": "Best Run Id"
           },
+          "breakeven_at_r": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakeven At R"
+          },
           "commission": {
             "default": 5.0,
             "minimum": 0.0,
@@ -1149,6 +1452,11 @@
             ],
             "title": "Execution Mode",
             "type": "string"
+          },
+          "exit_at_session_end": {
+            "default": false,
+            "title": "Exit At Session End",
+            "type": "boolean"
           },
           "experiment_id": {
             "title": "Experiment Id",
@@ -1235,6 +1543,30 @@
             "$ref": "#/components/schemas/ExperimentStatus",
             "default": "draft"
           },
+          "stop_loss_atr": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Loss Atr"
+          },
+          "stop_loss_ticks": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Loss Ticks"
+          },
           "strategy_type": {
             "$ref": "#/components/schemas/StrategyType"
           },
@@ -1245,10 +1577,82 @@
             "title": "Symbols",
             "type": "array"
           },
+          "take_profit_atr": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Take Profit Atr"
+          },
+          "take_profit_ticks": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Take Profit Ticks"
+          },
+          "time_stop_bars": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Stop Bars"
+          },
           "total_runs": {
             "default": 0,
             "title": "Total Runs",
             "type": "integer"
+          },
+          "trailing_activation_r": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trailing Activation R"
+          },
+          "trailing_stop_atr": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trailing Stop Atr"
+          },
+          "trailing_stop_ticks": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trailing Stop Ticks"
           },
           "updated_at": {
             "title": "Updated At",
@@ -5748,6 +6152,17 @@
               }
             ],
             "title": "Exit Price"
+          },
+          "exit_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Reason"
           },
           "exit_time": {
             "anyOf": [

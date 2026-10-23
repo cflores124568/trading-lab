@@ -217,6 +217,70 @@ class BacktestServiceTests(unittest.TestCase):
         self.assertEqual(result["run_config"]["volatile_bar_threshold_ticks"], 12)
         self.assertEqual(result["run_config"]["volatile_bar_extra_ticks"], 1)
 
+    @patch("services.backtest_service.run_backtest")
+    @patch("services.backtest_service.generate_signals", side_effect=lambda df, *_args, **_kwargs: df)
+    @patch("services.backtest_service.add_all_indicators", side_effect=lambda df, *_args, **_kwargs: df)
+    def test_build_backtest_result_persists_dynamic_exit_config(
+        self,
+        _mock_indicators,
+        _mock_signals,
+        mock_run_backtest,
+    ):
+        mock_run_backtest.return_value = {
+            "trades": [],
+            "equity_curve": [100_000.0] * 5,
+        }
+
+        result = build_backtest_result(
+            _dataset(),
+            _request(
+                stop_loss_atr=1.5,
+                trailing_stop_ticks=12.0,
+                breakeven_at_r=1.0,
+                time_stop_bars=20,
+                exit_at_session_end=True,
+            ),
+        )
+
+        run_config = result["run_config"]
+        self.assertEqual(run_config["stop_loss_atr"], 1.5)
+        self.assertEqual(run_config["trailing_stop_ticks"], 12.0)
+        self.assertEqual(run_config["breakeven_at_r"], 1.0)
+        self.assertEqual(run_config["time_stop_bars"], 20)
+        self.assertTrue(run_config["exit_at_session_end"])
+
+        call = mock_run_backtest.call_args.kwargs
+        self.assertEqual(call["stop_loss_atr"], 1.5)
+        self.assertEqual(call["trailing_stop_ticks"], 12.0)
+        self.assertEqual(call["breakeven_at_r"], 1.0)
+        self.assertEqual(call["time_stop_bars"], 20)
+        self.assertTrue(call["exit_at_session_end"])
+        self.assertEqual(call["atr_period"], 14)
+
+
+class BacktestExitPolicyValidationTests(unittest.TestCase):
+    def test_tick_and_atr_stop_are_mutually_exclusive(self):
+        with self.assertRaises(ValueError):
+            _request(stop_loss_ticks=8.0, stop_loss_atr=1.0)
+
+    def test_tick_and_atr_target_are_mutually_exclusive(self):
+        with self.assertRaises(ValueError):
+            _request(take_profit_ticks=16.0, take_profit_atr=2.0)
+
+    def test_trailing_distance_has_one_unit(self):
+        with self.assertRaises(ValueError):
+            _request(trailing_stop_atr=1.0, trailing_stop_ticks=12.0)
+
+    def test_trailing_activation_requires_a_trailing_stop(self):
+        with self.assertRaises(ValueError):
+            _request(stop_loss_ticks=8.0, trailing_activation_r=1.0)
+
+    def test_r_based_exits_require_an_initial_stop(self):
+        with self.assertRaises(ValueError):
+            _request(breakeven_at_r=1.0)
+        with self.assertRaises(ValueError):
+            _request(trailing_stop_atr=1.0, trailing_activation_r=1.0)
+
 
 if __name__ == "__main__":
     unittest.main()

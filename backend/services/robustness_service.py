@@ -120,6 +120,18 @@ def _request_from_backtest(backtest: dict) -> tuple[BacktestRequest, list[str]]:
         if run_config.get("take_profit_ticks") is not None
         else None
     )
+    def optional_float(key):
+        return (
+            float(run_config.get(key))
+            if run_config.get(key) is not None
+            else None
+        )
+    def optional_int(key):
+        return (
+            int(run_config.get(key))
+            if run_config.get(key) is not None
+            else None
+        )
     execution_mode = str(run_config.get("execution_mode") or "bar")
     spread_ticks = int(run_config.get("spread_ticks") or 1)
     volatile_bar_threshold_ticks = int(run_config.get("volatile_bar_threshold_ticks") or 0)
@@ -146,6 +158,14 @@ def _request_from_backtest(backtest: dict) -> tuple[BacktestRequest, list[str]]:
         slippage_ticks=slippage_ticks,
         stop_loss_ticks=stop_loss_ticks,
         take_profit_ticks=take_profit_ticks,
+        stop_loss_atr=optional_float("stop_loss_atr"),
+        take_profit_atr=optional_float("take_profit_atr"),
+        trailing_stop_atr=optional_float("trailing_stop_atr"),
+        trailing_stop_ticks=optional_float("trailing_stop_ticks"),
+        trailing_activation_r=optional_float("trailing_activation_r"),
+        breakeven_at_r=optional_float("breakeven_at_r"),
+        time_stop_bars=optional_int("time_stop_bars"),
+        exit_at_session_end=bool(run_config.get("exit_at_session_end")),
         execution_mode=execution_mode,
         spread_ticks=spread_ticks,
         volatile_bar_threshold_ticks=volatile_bar_threshold_ticks,

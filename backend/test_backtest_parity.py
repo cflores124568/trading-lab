@@ -45,6 +45,8 @@ def _random_walk_bars() -> pd.DataFrame:
     signal_idx = rng.choice(N_BARS, size=400, replace=False)
     signals[signal_idx] = rng.choice([-1, 1], size=400)
 
+    atr = pd.Series(highs - lows).rolling(14, min_periods=1).mean().to_numpy()
+
     return pd.DataFrame(
         {
             "open": opens,
@@ -52,6 +54,7 @@ def _random_walk_bars() -> pd.DataFrame:
             "low": lows,
             "close": closes,
             "signal": signals,
+            "atr_14": atr,
         },
         index=pd.date_range("2024-01-02 09:30", periods=N_BARS, freq="1min"),
     )
@@ -108,7 +111,73 @@ class KernelParityTests(unittest.TestCase):
                 self.assertGreater(len(oracle["trades"]), 10, "oracle produced too few trades to prove anything")
                 self.assertEqual(len(cpp["trades"]), len(oracle["trades"]))
                 for cpp_trade, py_trade in zip(cpp["trades"], oracle["trades"]):
-                    for field in ("entry_time", "exit_time", "side", "quantity", "entry_price", "exit_price", "pnl"):
+                    for field in ("entry_time", "exit_time", "side", "quantity", "entry_price", "exit_price", "pnl", "exit_reason"):
+                        self.assertEqual(cpp_trade[field], py_trade[field], f"trade field '{field}' drifted")
+
+                self.assertEqual(cpp["equity_curve"], oracle["equity_curve"])
+
+    def test_cpp_matches_python_oracle_for_dynamic_exits(self):
+        df = _random_walk_bars()
+
+        cases = [
+            ("bar", dict(stop_loss_atr=1.0, take_profit_atr=2.0)),
+            ("bar", dict(stop_loss_ticks=20.0, trailing_stop_ticks=12.0)),
+            ("bar", dict(stop_loss_atr=1.5, trailing_stop_atr=2.0,
+                         trailing_activation_r=1.0, breakeven_at_r=1.0)),
+            ("bar", dict(stop_loss_ticks=20.0, time_stop_bars=17)),
+            ("bar", dict(stop_loss_ticks=20.0, take_profit_ticks=30.0,
+                         exit_at_session_end=True)),
+            ("synthetic_quotes", dict(stop_loss_atr=2.0, trailing_stop_atr=1.5,
+                                      trailing_activation_r=0.5, breakeven_at_r=1.0,
+                                      time_stop_bars=30, exit_at_session_end=True)),
+        ]
+
+        for execution_mode, policy in cases:
+            with self.subTest(mode=execution_mode, policy=policy):
+                common = dict(
+                    initial_balance=100_000.0,
+                    position_size=2.0,
+                    commission=5.0,
+                    tick_size=TICK,
+                    tick_value=12.5,
+                    slippage_ticks=1.0,
+                )
+                spread = dict(
+                    spread_ticks=2,
+                    volatile_bar_threshold_ticks=12,
+                    volatile_bar_extra_ticks=1,
+                )
+                stop_ticks = policy.get("stop_loss_ticks")
+                tp_ticks = policy.get("take_profit_ticks")
+                exit_policy = {
+                    key: value
+                    for key, value in policy.items()
+                    if key not in ("stop_loss_ticks", "take_profit_ticks")
+                }
+
+                cpp = _run_cpp(
+                    df,
+                    *common.values(),
+                    stop_loss_ticks=stop_ticks,
+                    take_profit_ticks=tp_ticks,
+                    use_synthetic_quotes=execution_mode == "synthetic_quotes",
+                    exit_policy=exit_policy,
+                    **spread,
+                )
+                oracle = _run_python(
+                    df,
+                    *common.values(),
+                    stop_loss_ticks=stop_ticks,
+                    take_profit_ticks=tp_ticks,
+                    execution_mode=execution_mode,
+                    exit_policy=exit_policy,
+                    **spread,
+                )
+
+                self.assertGreater(len(oracle["trades"]), 10, "oracle produced too few trades to prove anything")
+                self.assertEqual(len(cpp["trades"]), len(oracle["trades"]))
+                for cpp_trade, py_trade in zip(cpp["trades"], oracle["trades"]):
+                    for field in ("entry_time", "exit_time", "side", "quantity", "entry_price", "exit_price", "pnl", "exit_reason"):
                         self.assertEqual(cpp_trade[field], py_trade[field], f"trade field '{field}' drifted")
 
                 self.assertEqual(cpp["equity_curve"], oracle["equity_curve"])
@@ -126,13 +195,27 @@ class BatchParityTests(unittest.TestCase):
         signal_arrays = [np.roll(base_signals, shift) for shift in (0, 3, 7, 13)]
         signal_arrays += [base_signals * rng.choice([0, 1], size=N_BARS) for _ in range(4)]
 
-        for execution_mode, stop_ticks, tp_ticks in [
-            ("bar", None, None),
-            ("bar", 20.0, 30.0),
-            ("synthetic_quotes", None, None),
-            ("synthetic_quotes", 20.0, 30.0),
+        for execution_mode, policy in [
+            ("bar", {}),
+            ("bar", {"stop_loss_ticks": 20.0, "take_profit_ticks": 30.0}),
+            ("synthetic_quotes", {}),
+            ("synthetic_quotes", {"stop_loss_ticks": 20.0, "take_profit_ticks": 30.0}),
+            ("bar", {
+                "stop_loss_atr": 1.0,
+                "trailing_stop_atr": 1.5,
+                "breakeven_at_r": 1.0,
+                "time_stop_bars": 17,
+                "exit_at_session_end": True,
+            }),
         ]:
-            with self.subTest(mode=execution_mode, stop=stop_ticks, tp=tp_ticks):
+            stop_ticks = policy.get("stop_loss_ticks")
+            tp_ticks = policy.get("take_profit_ticks")
+            exit_policy = {
+                key: value
+                for key, value in policy.items()
+                if key not in ("stop_loss_ticks", "take_profit_ticks")
+            }
+            with self.subTest(mode=execution_mode, policy=policy):
                 config = dict(
                     initial_balance=100_000.0,
                     position_size=2.0,
@@ -145,6 +228,8 @@ class BatchParityTests(unittest.TestCase):
                     spread_ticks=2,
                     volatile_bar_threshold_ticks=12,
                     volatile_bar_extra_ticks=1,
+                    atr_period=14,
+                    **exit_policy,
                 )
 
                 batch = run_backtest_batch(
@@ -170,6 +255,8 @@ class BatchParityTests(unittest.TestCase):
                         config["spread_ticks"],
                         config["volatile_bar_threshold_ticks"],
                         config["volatile_bar_extra_ticks"],
+                        exit_policy=exit_policy,
+                        atr_period=14,
                     )
                     self.assertEqual(
                         batch[run_index]["trades"], oracle["trades"],

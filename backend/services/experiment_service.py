@@ -140,14 +140,36 @@ def run_experiment(experiment: dict) -> tuple[dict, list[dict]]:
                 spread_ticks=max(1, int(experiment.get("spread_ticks") or 1)),
                 volatile_bar_threshold_ticks=max(0, int(experiment.get("volatile_bar_threshold_ticks") or 0)),
                 volatile_bar_extra_ticks=max(0, int(experiment.get("volatile_bar_extra_ticks") or 0)),
+                stop_loss_ticks=experiment.get("stop_loss_ticks"),
+                take_profit_ticks=experiment.get("take_profit_ticks"),
+                stop_loss_atr=experiment.get("stop_loss_atr"),
+                take_profit_atr=experiment.get("take_profit_atr"),
+                trailing_stop_atr=experiment.get("trailing_stop_atr"),
+                trailing_stop_ticks=experiment.get("trailing_stop_ticks"),
+                trailing_activation_r=experiment.get("trailing_activation_r"),
+                breakeven_at_r=experiment.get("breakeven_at_r"),
+                time_stop_bars=experiment.get("time_stop_bars"),
+                exit_at_session_end=bool(experiment.get("exit_at_session_end")),
             )
             frame = prepare_backtest_frame(dataset, request)
+            atr_period = int(plan["strategy_params"].get("atr_period", 14) or 14)
+            uses_atr = any(
+                experiment.get(key) is not None
+                for key in ("stop_loss_atr", "take_profit_atr", "trailing_stop_atr")
+            )
             entry.update({
                 "dataset_info": dataset_info,
                 "dataset": dataset,
                 "request": request,
                 "signals": frame["signal"].to_numpy(dtype=np.int32),
                 "frame": frame,
+                "atr_period": atr_period,
+                # Plans can vary atr_period inside one dataset. Only split the
+                # batch when ATR exits actually read that column.
+                "group_key": (
+                    dataset_info["dataset_id"],
+                    atr_period if uses_atr else None,
+                ),
             })
         except Exception as exc:
             entry["error"] = str(exc)
@@ -162,7 +184,7 @@ def run_experiment(experiment: dict) -> tuple[dict, list[dict]]:
         if entry["error"] is not None:
             continue
         group = groups.setdefault(
-            entry["dataset_info"]["dataset_id"],
+            entry["group_key"],
             {"frame": entry["frame"], "entries": []},
         )
         group["entries"].append(entry)
@@ -187,6 +209,15 @@ def run_experiment(experiment: dict) -> tuple[dict, list[dict]]:
                 spread_ticks=request.spread_ticks,
                 volatile_bar_threshold_ticks=request.volatile_bar_threshold_ticks,
                 volatile_bar_extra_ticks=request.volatile_bar_extra_ticks,
+                stop_loss_atr=request.stop_loss_atr,
+                take_profit_atr=request.take_profit_atr,
+                trailing_stop_atr=request.trailing_stop_atr,
+                trailing_stop_ticks=request.trailing_stop_ticks,
+                trailing_activation_r=request.trailing_activation_r,
+                breakeven_at_r=request.breakeven_at_r,
+                time_stop_bars=request.time_stop_bars,
+                exit_at_session_end=request.exit_at_session_end,
+                atr_period=group_entries[0]["atr_period"],
             )
             for group_entry, engine_result in zip(group_entries, engine_results):
                 group_entry["engine_result"] = engine_result
@@ -199,7 +230,7 @@ def run_experiment(experiment: dict) -> tuple[dict, list[dict]]:
     for entry in entries:
         if entry["error"] is None:
             try:
-                group = groups[entry["dataset_info"]["dataset_id"]]
+                group = groups[entry["group_key"]]
                 backtest = complete_backtest_result(
                     group["frame"],
                     entry["engine_result"],

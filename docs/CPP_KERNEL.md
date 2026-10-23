@@ -13,9 +13,26 @@ one open position, applies commission, and returns flat numpy arrays for
 equity and completed trades.
 
 It covers all three execution styles the app knows: legacy bar fills,
-synthetic bid/ask quotes (same spread rules as paper/replay), and
-stop/take-profit bracket exits. So the C++ path is the primary engine now,
-not just the fast lane for the simple case.
+synthetic bid/ask quotes (same spread rules as paper/replay), and bracket
+exits. Brackets can be sized in ticks or ATR multiples, and the kernel also
+handles trailing stops, breakeven moves, time stops, and session-close
+flattening. So the C++ path is the primary engine now, not just the fast lane
+for the simple case.
+
+## Dynamic Exit Semantics
+
+- ATR brackets use `atr[i - 1]` at entry, so the stop is sized from the last
+  completed bar rather than the bar that is still forming. A signal whose ATR
+  is missing or non-positive is skipped instead of taking an unhedged trade.
+- Trailing and breakeven levels update from a completed bar's favorable
+  extreme and take effect on the next bar. The loop never assumes an intrabar
+  high/low order it cannot know.
+- A candle that tags both the stop and target resolves to the stop.
+- Time stops and session-close exits fill at the bar close, after any bracket
+  check on that bar. `exit_at_session_end` uses the 18:00 ET futures roll and
+  is rejected on daily bars.
+- Every trade carries an `exit_reason`: signal flip, stop, target, trailing
+  stop, breakeven stop, time stop, session close, or end of data.
 
 The pure-Python loop in `backtest_engine._run_python` didn't go away — it's
 the reference implementation. `test_backtest_parity.py` runs both engines on
@@ -58,13 +75,17 @@ bother building it when one of these is true:
 
 ## Local Build
 
-Run this from `backend/cpp`:
+Run this from `backend/cpp` (the venv already carries the build tooling):
 
 ```bash
-cd /Users/chrisflores/trading-lab/backend/cpp
-python -m pip install pybind11
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build
+cd /Users/christopherflores/trading-lab/backend
+./venv/bin/python -m pip install pybind11 cmake
+cd cpp
+../venv/bin/python -m cmake -B build -DCMAKE_BUILD_TYPE=Release \
+  -DPYBIND11_FINDPYTHON=ON \
+  -DPython_EXECUTABLE="$(pwd)/../venv/bin/python" \
+  -Dpybind11_DIR="$(../venv/bin/python -m pybind11 --cmakedir)"
+../venv/bin/python -m cmake --build build
 find build -name 'backtest_core*.so*' -exec cp {} .. \;
 ```
 
@@ -73,7 +94,9 @@ top-level module, so the compiled extension needs to end up in `backend/`,
 not buried inside `backend/cpp/` and not in `backend/services/`.
 
 If the copy lands in the wrong place, the app just falls back to Python and it
-can look like "nothing happened".
+can look like "nothing happened". If CMake picks the system Python instead of
+the venv, the `.so` filename will end in the wrong version suffix (for example
+`cpython-314`); the `Python_EXECUTABLE` flag above is what keeps it on 3.12.
 
 ## Files That Matter
 
@@ -95,8 +118,9 @@ when it isn't.
 
 The kernel still doesn't know about DataFrame indexes, prop-firm rules, or
 resting orders. Python handles timestamps, metrics, and prop evaluation
-around it. One dispatch edge: quote mode and brackets need `high`/`low`
-columns, so a dataset without them quietly takes the Python path instead.
+around it. One dispatch edge: quote mode, brackets, trailing stops, and
+breakeven moves need `high`/`low` columns, so a dataset without them quietly
+takes the Python path instead.
 
 Rounding is deliberately Python-shaped: `nearbyint` (ties-to-even) instead of
 `std::round`, because Python's `round()` is banker's rounding and the parity
