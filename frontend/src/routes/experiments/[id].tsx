@@ -326,8 +326,19 @@ export default function ExperimentDetailPage() {
                   <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Sizing + Dates</p>
                   <div class="mt-3 grid gap-2 text-sm text-stone-300">
                     <p>Initial balance: ${batchResult().initial_balance.toLocaleString()}</p>
-                    <p>Position size: {batchResult().position_size}</p>
-                    <p>Commission: ${batchResult().commission.toFixed(2)}</p>
+                    <p>
+                      Position sizing:{" "}
+                      {batchResult().sizing_mode === "risk_percent"
+                        ? `Risk ${batchResult().risk_per_trade_pct ?? "?"}%${
+                            batchResult().max_position_size
+                              ? ` (max ${batchResult().max_position_size})`
+                              : ""
+                          }`
+                        : `${batchResult().position_size} contract${
+                            batchResult().position_size === 1 ? "" : "s"
+                          }`}
+                    </p>
+                    <p>Commission: ${batchResult().commission.toFixed(2)} / contract</p>
                     <p>Slippage: {batchResult().slippage_ticks.toFixed(2)} ticks</p>
                     <p>Execution: {formatExecutionMode(batchResult().execution_mode)}</p>
                     <Show when={batchResult().execution_mode === "synthetic_quotes"}>
