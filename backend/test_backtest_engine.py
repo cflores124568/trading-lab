@@ -200,6 +200,121 @@ class BacktestEngineBracketTests(unittest.TestCase):
             )
 
 
+class BacktestSizingTests(unittest.TestCase):
+    def test_fractional_position_size_is_rejected(self):
+        with self.assertRaises(ValueError):
+            run_backtest(
+                _bars(high=101.0, low=99.0, close=100.0),
+                position_size=1.5,
+                commission=0.0,
+                tick_size=1.0,
+                tick_value=10.0,
+                slippage_ticks=0.0,
+            )
+
+    def test_risk_sizing_rounds_down_to_whole_contracts(self):
+        result = run_backtest(
+            _bars(high=101.0, low=99.0, close=100.0),
+            initial_balance=1_000.0,
+            sizing_mode="risk_percent",
+            risk_per_trade_pct=10.0,
+            stop_loss_ticks=4.0,
+            commission=0.0,
+            tick_size=1.0,
+            tick_value=10.0,
+            slippage_ticks=0.0,
+        )
+
+        trade = result["trades"][0]
+        self.assertEqual(trade["quantity"], 2)
+        self.assertEqual(trade["initial_risk"], 80.0)
+        self.assertEqual(trade["risk_budget"], 100.0)
+        self.assertFalse(trade["risk_exceeded"])
+        self.assertEqual(trade["r_multiple"], 0.0)
+
+    def test_risk_sizing_floors_at_one_and_flags_budget(self):
+        result = run_backtest(
+            _bars(high=101.0, low=99.0, close=100.0),
+            initial_balance=1_000.0,
+            sizing_mode="risk_percent",
+            risk_per_trade_pct=1.0,
+            stop_loss_ticks=4.0,
+            commission=0.0,
+            tick_size=1.0,
+            tick_value=10.0,
+            slippage_ticks=0.0,
+        )
+
+        trade = result["trades"][0]
+        self.assertEqual(trade["quantity"], 1)
+        self.assertEqual(trade["initial_risk"], 40.0)
+        self.assertEqual(trade["risk_budget"], 10.0)
+        self.assertTrue(trade["risk_exceeded"])
+
+    def test_risk_sizing_honors_max_contracts(self):
+        result = run_backtest(
+            _bars(high=101.0, low=99.0, close=100.0),
+            initial_balance=10_000.0,
+            sizing_mode="risk_percent",
+            risk_per_trade_pct=100.0,
+            max_position_size=3,
+            stop_loss_ticks=4.0,
+            commission=0.0,
+            tick_size=1.0,
+            tick_value=10.0,
+            slippage_ticks=0.0,
+        )
+
+        self.assertEqual(result["trades"][0]["quantity"], 3)
+
+    def test_risk_sizing_requires_a_stop(self):
+        with self.assertRaises(ValueError):
+            run_backtest(
+                _bars(high=101.0, low=99.0, close=100.0),
+                sizing_mode="risk_percent",
+                risk_per_trade_pct=1.0,
+                commission=0.0,
+                tick_size=1.0,
+                tick_value=10.0,
+                slippage_ticks=0.0,
+            )
+
+    def test_fixed_sizing_reports_initial_risk_and_r_multiple(self):
+        df = _bars(high=103.0, low=99.0, close=102.0)
+        df.loc[df.index[-1], "close"] = 102.0
+        result = run_backtest(
+            df,
+            initial_balance=1_000.0,
+            position_size=2,
+            stop_loss_ticks=4.0,
+            commission=0.0,
+            tick_size=1.0,
+            tick_value=10.0,
+            slippage_ticks=0.0,
+        )
+
+        trade = result["trades"][0]
+        self.assertEqual(trade["quantity"], 2)
+        self.assertEqual(trade["initial_risk"], 80.0)
+        self.assertEqual(trade["pnl"], 40.0)
+        self.assertEqual(trade["r_multiple"], 0.5)
+
+    def test_commission_is_charged_per_contract(self):
+        result = run_backtest(
+            _bars(high=101.0, low=99.0, close=100.0),
+            initial_balance=1_000.0,
+            position_size=2,
+            commission=5.0,
+            tick_size=1.0,
+            tick_value=10.0,
+            slippage_ticks=0.0,
+        )
+
+        trade = result["trades"][0]
+        self.assertEqual(trade["commission"], 10.0)
+        self.assertEqual(trade["pnl"], -10.0)
+
+
 class BacktestEngineDynamicExitTests(unittest.TestCase):
     def _frame(self, rows, index):
         return pd.DataFrame(rows, index=pd.to_datetime(index))

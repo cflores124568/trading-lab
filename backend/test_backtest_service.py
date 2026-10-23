@@ -258,7 +258,77 @@ class BacktestServiceTests(unittest.TestCase):
         self.assertEqual(call["atr_period"], 14)
 
 
+    @patch("services.backtest_service.run_backtest")
+    @patch("services.backtest_service.generate_signals", side_effect=lambda df, *_args, **_kwargs: df)
+    @patch("services.backtest_service.add_all_indicators", side_effect=lambda df, *_args, **_kwargs: df)
+    def test_build_backtest_result_persists_sizing_config(
+        self,
+        _mock_indicators,
+        _mock_signals,
+        mock_run_backtest,
+    ):
+        mock_run_backtest.return_value = {
+            "trades": [],
+            "equity_curve": [100_000.0] * 5,
+        }
+
+        result = build_backtest_result(
+            _dataset(),
+            _request(
+                position_size=2,
+                sizing_mode="risk_percent",
+                risk_per_trade_pct=1.25,
+                max_position_size=4,
+                stop_loss_ticks=8.0,
+            ),
+        )
+
+        run_config = result["run_config"]
+        self.assertEqual(run_config["position_size"], 2)
+        self.assertEqual(run_config["sizing_mode"], "risk_percent")
+        self.assertEqual(run_config["risk_per_trade_pct"], 1.25)
+        self.assertEqual(run_config["max_position_size"], 4)
+
+        call = mock_run_backtest.call_args.kwargs
+        self.assertEqual(call["position_size"], 2)
+        self.assertEqual(call["sizing_mode"], "risk_percent")
+        self.assertEqual(call["risk_per_trade_pct"], 1.25)
+        self.assertEqual(call["max_position_size"], 4)
+
+
 class BacktestExitPolicyValidationTests(unittest.TestCase):
+    def test_position_size_must_be_a_whole_contract(self):
+        with self.assertRaises(ValueError):
+            _request(position_size=1.5)
+
+    def test_integral_float_position_size_is_accepted(self):
+        self.assertEqual(_request(position_size=2.0).position_size, 2)
+
+    def test_risk_sizing_requires_risk_percent(self):
+        with self.assertRaises(ValueError):
+            _request(sizing_mode="risk_percent", stop_loss_ticks=8.0)
+
+    def test_risk_sizing_requires_an_initial_stop(self):
+        with self.assertRaises(ValueError):
+            _request(sizing_mode="risk_percent", risk_per_trade_pct=1.0)
+
+    def test_risk_fields_require_risk_mode(self):
+        with self.assertRaises(ValueError):
+            _request(risk_per_trade_pct=1.0)
+        with self.assertRaises(ValueError):
+            _request(max_position_size=2)
+
+    def test_risk_sizing_config_is_valid(self):
+        request = _request(
+            sizing_mode="risk_percent",
+            risk_per_trade_pct=1.0,
+            max_position_size=3,
+            stop_loss_ticks=8.0,
+        )
+        self.assertEqual(request.sizing_mode, "risk_percent")
+        self.assertEqual(request.risk_per_trade_pct, 1.0)
+        self.assertEqual(request.max_position_size, 3)
+
     def test_tick_and_atr_stop_are_mutually_exclusive(self):
         with self.assertRaises(ValueError):
             _request(stop_loss_ticks=8.0, stop_loss_atr=1.0)

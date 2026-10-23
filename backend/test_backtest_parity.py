@@ -182,6 +182,52 @@ class KernelParityTests(unittest.TestCase):
 
                 self.assertEqual(cpp["equity_curve"], oracle["equity_curve"])
 
+    def test_cpp_matches_python_oracle_for_risk_sizing(self):
+        df = _random_walk_bars()
+        common = dict(
+            initial_balance=100_000.0,
+            position_size=2,
+            commission=5.0,
+            tick_size=TICK,
+            tick_value=12.5,
+            slippage_ticks=1.0,
+        )
+        sizing = dict(
+            sizing_mode="risk_percent",
+            risk_per_trade_pct=2.0,
+            max_position_size=5,
+        )
+
+        cpp = _run_cpp(
+            df,
+            *common.values(),
+            stop_loss_ticks=20.0,
+            take_profit_ticks=30.0,
+            **sizing,
+        )
+        oracle = _run_python(
+            df,
+            *common.values(),
+            20.0,
+            30.0,
+            "bar",
+            2,
+            12,
+            1,
+            **sizing,
+        )
+
+        self.assertGreater(len(oracle["trades"]), 10)
+        self.assertEqual(len(cpp["trades"]), len(oracle["trades"]))
+        for cpp_trade, py_trade in zip(cpp["trades"], oracle["trades"]):
+            for field in (
+                "entry_time", "exit_time", "side", "quantity", "entry_price",
+                "exit_price", "pnl", "exit_reason", "initial_risk",
+                "risk_budget", "r_multiple", "risk_exceeded", "commission",
+            ):
+                self.assertEqual(cpp_trade[field], py_trade[field], f"trade field '{field}' drifted")
+        self.assertEqual(cpp["equity_curve"], oracle["equity_curve"])
+
 
 @unittest.skipUnless(_CPP_BATCH_AVAILABLE, "compiled batch entry point not available")
 class BatchParityTests(unittest.TestCase):
@@ -263,6 +309,53 @@ class BatchParityTests(unittest.TestCase):
                         f"run {run_index} trades drifted",
                     )
                     self.assertEqual(batch[run_index]["equity_curve"], oracle["equity_curve"])
+
+    def test_batch_matches_python_oracle_for_risk_sizing(self):
+        df = _random_walk_bars()
+        base_signals = df["signal"].to_numpy()
+        signal_arrays = [base_signals, np.roll(base_signals, shift=7)]
+        sizing = dict(
+            sizing_mode="risk_percent",
+            risk_per_trade_pct=2.0,
+            max_position_size=5,
+        )
+
+        batch = run_backtest_batch(
+            df.drop(columns=["signal"]),
+            signal_arrays,
+            initial_balance=100_000.0,
+            position_size=2,
+            commission=5.0,
+            tick_size=TICK,
+            tick_value=12.5,
+            slippage_ticks=1.0,
+            stop_loss_ticks=20.0,
+            take_profit_ticks=30.0,
+            **sizing,
+        )
+
+        for run_index, signals in enumerate(signal_arrays):
+            oracle = _run_python(
+                df.assign(signal=signals),
+                100_000.0,
+                2,
+                5.0,
+                TICK,
+                12.5,
+                1.0,
+                20.0,
+                30.0,
+                "bar",
+                2,
+                12,
+                1,
+                **sizing,
+            )
+            self.assertEqual(len(batch[run_index]["trades"]), len(oracle["trades"]))
+            for batch_trade, py_trade in zip(batch[run_index]["trades"], oracle["trades"]):
+                for field in ("quantity", "pnl", "initial_risk", "risk_budget", "r_multiple", "risk_exceeded"):
+                    self.assertEqual(batch_trade[field], py_trade[field], f"trade field '{field}' drifted")
+            self.assertEqual(batch[run_index]["equity_curve"], oracle["equity_curve"])
 
 
 if __name__ == "__main__":

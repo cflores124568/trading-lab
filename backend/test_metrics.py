@@ -121,5 +121,55 @@ class MetricsSharpeBasisTests(unittest.TestCase):
         self.assertAlmostEqual(metrics["sortino_ratio"], round(expected, 4), places=4)
 
 
+class MetricsRMultipleTests(unittest.TestCase):
+    def test_r_metrics_and_risk_budget_warnings(self):
+        trades = [
+            {
+                "pnl": 100,
+                "r_multiple": 2.0,
+                "risk_exceeded": False,
+                "entry_time": "2024-01-02T09:30:00",
+                "exit_time": "2024-01-02T10:00:00",
+            },
+            {
+                "pnl": -50,
+                "r_multiple": -1.0,
+                "risk_exceeded": True,
+                "entry_time": "2024-01-02T10:00:00",
+                "exit_time": "2024-01-02T10:30:00",
+            },
+            {
+                "pnl": 25,
+                "r_multiple": 0.5,
+                "risk_exceeded": False,
+                "entry_time": "2024-01-02T10:30:00",
+                "exit_time": "2024-01-02T11:00:00",
+            },
+        ]
+
+        metrics = calculate_metrics(
+            trades,
+            [100_000, 100_100, 100_050, 100_075],
+            100_000,
+        )
+
+        self.assertEqual(metrics["avg_r_multiple"], 0.5)
+        self.assertEqual(metrics["total_r"], 1.5)
+        self.assertEqual(metrics["r_profit_factor"], 2.5)
+        self.assertEqual(metrics["risk_budget_exceeded_trades"], 1)
+
+    def test_r_metrics_are_empty_without_defined_risk(self):
+        metrics = calculate_metrics(
+            [_trade(10)],
+            [100_000, 100_010],
+            100_000,
+        )
+
+        self.assertIsNone(metrics["avg_r_multiple"])
+        self.assertIsNone(metrics["total_r"])
+        self.assertIsNone(metrics["r_profit_factor"])
+        self.assertEqual(metrics["risk_budget_exceeded_trades"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()
