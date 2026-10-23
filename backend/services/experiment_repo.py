@@ -37,7 +37,10 @@ def _ensure_experiments_schema(conn) -> None:
                     end_date         TEXT,
                     prop_firm_rules  JSONB NOT NULL,
                     initial_balance  DOUBLE PRECISION NOT NULL DEFAULT 100000,
-                    position_size    DOUBLE PRECISION NOT NULL DEFAULT 1,
+                    position_size    INTEGER NOT NULL DEFAULT 1,
+                    sizing_mode      TEXT NOT NULL DEFAULT 'fixed',
+                    risk_per_trade_pct DOUBLE PRECISION,
+                    max_position_size INTEGER,
                     commission       DOUBLE PRECISION NOT NULL DEFAULT 5,
                     slippage_ticks   DOUBLE PRECISION NOT NULL DEFAULT 1,
                     execution_mode   TEXT NOT NULL DEFAULT 'bar',
@@ -91,6 +94,15 @@ def _ensure_experiments_schema(conn) -> None:
                 "ALTER TABLE experiments ADD COLUMN IF NOT EXISTS slippage_ticks DOUBLE PRECISION NOT NULL DEFAULT 1"
             )
             cur.execute(
+                "ALTER TABLE experiments ADD COLUMN IF NOT EXISTS sizing_mode TEXT NOT NULL DEFAULT 'fixed'"
+            )
+            cur.execute(
+                "ALTER TABLE experiments ADD COLUMN IF NOT EXISTS risk_per_trade_pct DOUBLE PRECISION"
+            )
+            cur.execute(
+                "ALTER TABLE experiments ADD COLUMN IF NOT EXISTS max_position_size INTEGER"
+            )
+            cur.execute(
                 "ALTER TABLE experiments ADD COLUMN IF NOT EXISTS execution_mode TEXT NOT NULL DEFAULT 'bar'"
             )
             cur.execute(
@@ -134,14 +146,16 @@ def save_experiment(experiment: dict) -> None:
         INSERT INTO experiments (
             experiment_id, name, symbols, intervals, strategy_type, parameter_space,
             start_date, end_date, prop_firm_rules, initial_balance, position_size,
+            sizing_mode, risk_per_trade_pct, max_position_size,
             commission, slippage_ticks, execution_mode, spread_ticks,
             volatile_bar_threshold_ticks, volatile_bar_extra_ticks, scoring_rule,
             status, total_runs, completed_runs, failed_runs,
             best_run_id, best_backtest_id, last_run_at, created_at, updated_at
         )
         VALUES (
-            %s, %s, %s::jsonb, %s::jsonb, %s, %s::jsonb, %s, %s, %s::jsonb, %s, %s, %s,
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            %s, %s, %s::jsonb, %s::jsonb, %s, %s::jsonb, %s, %s, %s::jsonb, %s, %s,
+            %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
         )
         ON CONFLICT (experiment_id) DO UPDATE SET
             name             = EXCLUDED.name,
@@ -154,6 +168,9 @@ def save_experiment(experiment: dict) -> None:
             prop_firm_rules  = EXCLUDED.prop_firm_rules,
             initial_balance  = EXCLUDED.initial_balance,
             position_size    = EXCLUDED.position_size,
+            sizing_mode      = EXCLUDED.sizing_mode,
+            risk_per_trade_pct = EXCLUDED.risk_per_trade_pct,
+            max_position_size  = EXCLUDED.max_position_size,
             commission       = EXCLUDED.commission,
             slippage_ticks   = EXCLUDED.slippage_ticks,
             execution_mode   = EXCLUDED.execution_mode,
@@ -188,6 +205,9 @@ def save_experiment(experiment: dict) -> None:
                     json.dumps(experiment["prop_firm_rules"]),
                     experiment["initial_balance"],
                     experiment["position_size"],
+                    experiment.get("sizing_mode") or "fixed",
+                    experiment.get("risk_per_trade_pct"),
+                    experiment.get("max_position_size"),
                     experiment["commission"],
                     experiment.get("slippage_ticks", 1.0),
                     experiment.get("execution_mode", "bar"),
@@ -316,7 +336,18 @@ def _row_to_experiment(row) -> dict:
         "end_date": row["end_date"],
         "prop_firm_rules": _maybe_json(row["prop_firm_rules"]),
         "initial_balance": float(row["initial_balance"]),
-        "position_size": float(row["position_size"]),
+        "position_size": max(1, int(row["position_size"])),
+        "sizing_mode": str(row.get("sizing_mode") or "fixed") if hasattr(row, "get") else "fixed",
+        "risk_per_trade_pct": (
+            float(row.get("risk_per_trade_pct"))
+            if hasattr(row, "get") and row.get("risk_per_trade_pct") is not None
+            else None
+        ),
+        "max_position_size": (
+            int(row.get("max_position_size"))
+            if hasattr(row, "get") and row.get("max_position_size") is not None
+            else None
+        ),
         "commission": float(row["commission"]),
         "slippage_ticks": float(row.get("slippage_ticks") or 1.0) if hasattr(row, "get") else float(row["slippage_ticks"]),
         "execution_mode": str(row.get("execution_mode") or "bar") if hasattr(row, "get") else str(row["execution_mode"]),

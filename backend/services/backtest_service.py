@@ -52,6 +52,9 @@ def build_backtest_result(
         time_stop_bars=request.time_stop_bars,
         exit_at_session_end=request.exit_at_session_end,
         atr_period=int(request.strategy.params.get("atr_period") or 14),
+        sizing_mode=request.sizing_mode,
+        risk_per_trade_pct=request.risk_per_trade_pct,
+        max_position_size=request.max_position_size,
     )
 
     return complete_backtest_result(
@@ -139,6 +142,9 @@ def complete_backtest_result(
         "run_config": {
             "initial_balance": request.initial_balance,
             "position_size": request.position_size,
+            "sizing_mode": request.sizing_mode,
+            "risk_per_trade_pct": request.risk_per_trade_pct,
+            "max_position_size": request.max_position_size,
             "commission": request.commission,
             "tick_size": request.tick_size,
             "tick_value": request.tick_value,

@@ -2,6 +2,7 @@
 #Python wrapper for C++ pybind11 kernel
 from __future__ import annotations
 from typing import List
+import math
 import numpy as np
 import pandas as pd
 from services.execution_model import (
@@ -29,7 +30,7 @@ _CPP_BATCH_AVAILABLE = _CPP_AVAILABLE and hasattr(_core, "run_backtest_batch")
 def run_backtest(
     df:              pd.DataFrame,
     initial_balance: float = 100_000,
-    position_size:   float = 1.0,
+    position_size:   int = 1,
     commission:      float = 5.0,
     tick_size:       float = 0.25,
     tick_value:      float = 12.50,
@@ -50,6 +51,9 @@ def run_backtest(
     time_stop_bars: int | None = None,
     exit_at_session_end: bool = False,
     atr_period: int = 14,
+    sizing_mode: str = "fixed",
+    risk_per_trade_pct: float | None = None,
+    max_position_size: int | None = None,
 ) -> dict:
     """Run a next-bar futures backtest from completed-bar signals.
 
@@ -61,7 +65,19 @@ def run_backtest(
     breakeven moves are updated from each completed bar's favorable extreme, so
     they take effect on the next bar instead of assuming an intrabar high/low
     order. Time stops and session-close exits fill at the bar close.
+
+    `position_size` is always whole contracts. With `sizing_mode="risk_percent"`,
+    each entry risks `risk_per_trade_pct` percent of current equity and rounds
+    down to the nearest contract, with a minimum of one contract so a signal is
+    never silently dropped. Trades that exceed the target risk are flagged.
     """
+    position_size = _coerce_position_size(position_size)
+    sizing_mode = _validate_sizing(
+        sizing_mode,
+        risk_per_trade_pct=risk_per_trade_pct,
+        max_position_size=max_position_size,
+        has_initial_stop=stop_loss_ticks is not None or stop_loss_atr is not None,
+    )
     exit_policy = {
         "stop_loss_ticks": stop_loss_ticks,
         "take_profit_ticks": take_profit_ticks,
@@ -102,6 +118,9 @@ def run_backtest(
                 volatile_bar_extra_ticks,
                 exit_policy=exit_policy,
                 atr_period=atr_period,
+                sizing_mode=sizing_mode,
+                risk_per_trade_pct=risk_per_trade_pct,
+                max_position_size=max_position_size,
             )
         except TypeError:
             # Local dev can have an old compiled extension hanging around. Falling
@@ -123,13 +142,16 @@ def run_backtest(
         volatile_bar_extra_ticks,
         exit_policy=exit_policy,
         atr_period=atr_period,
+        sizing_mode=sizing_mode,
+        risk_per_trade_pct=risk_per_trade_pct,
+        max_position_size=max_position_size,
     )
 
 def run_backtest_batch(
     df:              pd.DataFrame,
     signal_arrays:   list[np.ndarray],
     initial_balance: float = 100_000,
-    position_size:   float = 1.0,
+    position_size:   int = 1,
     commission:      float = 5.0,
     tick_size:       float = 0.25,
     tick_value:      float = 12.50,
@@ -151,6 +173,9 @@ def run_backtest_batch(
     time_stop_bars: int | None = None,
     exit_at_session_end: bool = False,
     atr_period: int = 14,
+    sizing_mode: str = "fixed",
+    risk_per_trade_pct: float | None = None,
+    max_position_size: int | None = None,
 ) -> list[dict]:
     """Run many signal variants over one shared OHLC frame.
 
@@ -161,6 +186,13 @@ def run_backtest_batch(
     Without the compiled kernel it just loops the Python oracle, so callers
     don't need their own fallback.
     """
+    position_size = _coerce_position_size(position_size)
+    sizing_mode = _validate_sizing(
+        sizing_mode,
+        risk_per_trade_pct=risk_per_trade_pct,
+        max_position_size=max_position_size,
+        has_initial_stop=stop_loss_ticks is not None or stop_loss_atr is not None,
+    )
     exit_policy = {
         "stop_loss_ticks": stop_loss_ticks,
         "take_profit_ticks": take_profit_ticks,
@@ -216,6 +248,9 @@ def run_backtest_batch(
                 bool(exit_at_session_end),
                 atr_values if atr_values is not None else np.empty(0, dtype=np.float64),
                 session_flags if session_flags is not None else np.empty(0, dtype=np.int32),
+                sizing_mode == "risk_percent",
+                float(risk_per_trade_pct or 0.0),
+                int(max_position_size or 0),
                 int(max_threads),
             )
         except TypeError:
@@ -236,6 +271,7 @@ def run_backtest_batch(
                         tick_size=tick_size,
                         tick_value=tick_value,
                         slippage_ticks=slippage_ticks,
+                        risk_sizing=sizing_mode == "risk_percent",
                     ),
                     "equity_curve": raw["equity_curve"].tolist(),
                 }
@@ -259,6 +295,9 @@ def run_backtest_batch(
             volatile_bar_extra_ticks,
             exit_policy=exit_policy,
             atr_period=atr_period,
+            sizing_mode=sizing_mode,
+            risk_per_trade_pct=risk_per_trade_pct,
+            max_position_size=max_position_size,
         )
         for signals in signal_arrays
     ]
@@ -302,7 +341,7 @@ def _iso(index_val) -> str:
 def _run_cpp(
     df:              pd.DataFrame,
     initial_balance: float,
-    position_size:   float,
+    position_size:   int,
     commission:      float,
     tick_size:       float,
     tick_value:      float,
@@ -316,12 +355,22 @@ def _run_cpp(
     *,
     exit_policy: dict | None = None,
     atr_period: int = 14,
+    sizing_mode: str = "fixed",
+    risk_per_trade_pct: float | None = None,
+    max_position_size: int | None = None,
 ) -> dict:
     """Call the C++ kernel, then stitch timestamps back onto trades."""
+    position_size = _coerce_position_size(position_size)
     policy = _normalize_exit_policy(
         exit_policy,
         stop_loss_ticks=stop_loss_ticks,
         take_profit_ticks=take_profit_ticks,
+    )
+    sizing_mode = _validate_sizing(
+        sizing_mode,
+        risk_per_trade_pct=risk_per_trade_pct,
+        max_position_size=max_position_size,
+        has_initial_stop=policy["stop_loss_ticks"] is not None or policy["stop_loss_atr"] is not None,
     )
     opens = df["open"].to_numpy(dtype=np.float64)
     closes = df["close"].to_numpy(dtype=np.float64)
@@ -348,6 +397,9 @@ def _run_cpp(
         bool(policy["exit_at_session_end"]),
         atr_values if atr_values is not None else np.empty(0, dtype=np.float64),
         session_flags if session_flags is not None else np.empty(0, dtype=np.int32),
+        sizing_mode == "risk_percent",
+        float(risk_per_trade_pct or 0.0),
+        int(max_position_size or 0),
     )
 
     return {
@@ -358,6 +410,7 @@ def _run_cpp(
             tick_size=tick_size,
             tick_value=tick_value,
             slippage_ticks=slippage_ticks,
+            risk_sizing=sizing_mode == "risk_percent",
         ),
         "equity_curve": raw["equity_curve"].tolist(),
     }
@@ -379,11 +432,12 @@ def _trades_from_raw(
     raw: dict,
     idx,
     *,
-    position_size: float,
+    position_size: int,
     commission: float,
     tick_size: float,
     tick_value: float,
     slippage_ticks: float,
+    risk_sizing: bool = False,
 ) -> List[dict]:
     """Stitch timestamps and run config back onto the kernel's flat arrays.
 
@@ -392,33 +446,60 @@ def _trades_from_raw(
     pay the isoformat cost once instead of per trade.
     """
     exit_reasons = raw.get("exit_reasons") if hasattr(raw, "get") else None
-    return [
-        {
+    quantities = raw.get("quantities") if hasattr(raw, "get") else None
+    initial_risks = raw.get("initial_risks") if hasattr(raw, "get") else None
+    risk_budgets = raw.get("risk_budgets") if hasattr(raw, "get") else None
+    risk_exceeded = raw.get("risk_exceeded") if hasattr(raw, "get") else None
+
+    trades: List[dict] = []
+    for trade_id in range(len(raw["entry_indices"])):
+        quantity = (
+            int(round(float(quantities[trade_id])))
+            if quantities is not None
+            else position_size
+        )
+        pnl = float(raw["pnls"][trade_id])
+        initial_risk = (
+            round(float(initial_risks[trade_id]), 2)
+            if initial_risks is not None
+            and (risk_sizing or float(initial_risks[trade_id]) > 0)
+            else None
+        )
+        risk_budget = (
+            round(float(risk_budgets[trade_id]), 2)
+            if risk_budgets is not None
+            and (risk_sizing or float(risk_budgets[trade_id]) > 0)
+            else None
+        )
+        trades.append({
             "trade_id":    trade_id,
             "entry_time":  _iso(idx[raw["entry_indices"][trade_id]]),
             "exit_time":   _iso(idx[raw["exit_indices"] [trade_id]]),
             "side":        "buy" if raw["sides"][trade_id] == 1 else "sell",
-            "quantity":    position_size,
+            "quantity":    quantity,
             "entry_price": float(raw["entry_prices"][trade_id]),
             "exit_price":  float(raw["exit_prices"] [trade_id]),
-            "pnl":         float(raw["pnls"]        [trade_id]),
+            "pnl":         pnl,
             "status":      "closed",
-            "commission":  commission,
+            "commission":  round(commission * quantity, 2),
+            "initial_risk": initial_risk,
+            "risk_budget": risk_budget,
+            "r_multiple":  round(pnl / initial_risk, 4) if initial_risk else None,
+            "risk_exceeded": bool(risk_exceeded[trade_id]) if risk_exceeded is not None else False,
             "tick_size":   tick_size,
             "tick_value":  tick_value,
             "slippage_ticks": slippage_ticks,
             "exit_reason": _EXIT_REASON_BY_CODE.get(int(exit_reasons[trade_id]))
                            if exit_reasons is not None else None,
-        }
-        for trade_id in range(len(raw["entry_indices"]))
-    ]
+        })
+    return trades
 
 
 #Pure Python fallback
 def _run_python(
     df:              pd.DataFrame,
     initial_balance: float,
-    position_size:   float,
+    position_size:   int,
     commission:      float,
     tick_size:       float,
     tick_value:      float,
@@ -432,14 +513,24 @@ def _run_python(
     *,
     exit_policy: dict | None = None,
     atr_period: int = 14,
+    sizing_mode: str = "fixed",
+    risk_per_trade_pct: float | None = None,
+    max_position_size: int | None = None,
 ) -> dict:
     if tick_size <= 0:
         raise ValueError("tick_size must be greater than zero.")
 
+    position_size = _coerce_position_size(position_size)
     policy = _normalize_exit_policy(
         exit_policy,
         stop_loss_ticks=stop_loss_ticks,
         take_profit_ticks=take_profit_ticks,
+    )
+    sizing_mode = _validate_sizing(
+        sizing_mode,
+        risk_per_trade_pct=risk_per_trade_pct,
+        max_position_size=max_position_size,
+        has_initial_stop=policy["stop_loss_ticks"] is not None or policy["stop_loss_atr"] is not None,
     )
     uses_atr = any(
         policy.get(key) is not None
@@ -458,28 +549,35 @@ def _run_python(
 
     def close_position(exit_time, exit_price: float, reason: str) -> None:
         nonlocal balance, trade_id, position
+        quantity = position["quantity"]
         pnl = _position_pnl(
             side=position["side"],
             entry_price=position["entry_price"],
             exit_price=exit_price,
-            position_size=position_size,
+            quantity=quantity,
             tick_size=tick_size,
             tick_value=tick_value,
             commission=commission,
         )
         balance += pnl
+        initial_risk = position["initial_risk"]
+        risk_budget = position["risk_budget"]
 
         trades.append({
             "trade_id":    trade_id,
             "entry_time":  position["entry_time"],
             "exit_time":   exit_time,
             "side":        position["side"],
-            "quantity":    position_size,
+            "quantity":    quantity,
             "entry_price": position["entry_price"],
             "exit_price":  exit_price,
             "pnl":         round(pnl, 2),
             "status":      "closed",
-            "commission":  commission,
+            "commission":  round(commission * quantity, 2),
+            "initial_risk": round(initial_risk, 2) if initial_risk is not None else None,
+            "risk_budget": round(risk_budget, 2) if risk_budget is not None else None,
+            "r_multiple":  round(pnl / initial_risk, 4) if initial_risk and initial_risk > 0 else None,
+            "risk_exceeded": bool(position["risk_exceeded"]),
             "tick_size":   tick_size,
             "tick_value":  tick_value,
             "slippage_ticks": slippage_ticks,
@@ -583,14 +681,31 @@ def _run_python(
                     tick_size=tick_size,
                 )
                 trailing_distance = _trailing_distance(policy, atr=entry_atr, tick_size=tick_size)
+                stop_price = _barrier_price(side, entry_price, stop_distance, tick_size)
+                sizing = _size_position(
+                    sizing_mode=sizing_mode,
+                    position_size=position_size,
+                    max_position_size=max_position_size,
+                    risk_per_trade_pct=risk_per_trade_pct,
+                    balance=balance,
+                    entry_price=entry_price,
+                    stop_price=stop_price,
+                    tick_size=tick_size,
+                    tick_value=tick_value,
+                    commission=commission,
+                )
 
                 position = {
                     "side":            side,
                     "entry_price":     entry_price,
                     "entry_time":      _iso(bar.name),
                     "entry_index":     i,
-                    "initial_risk":    stop_distance,
-                    "stop_price":      _barrier_price(side, entry_price, stop_distance, tick_size),
+                    "quantity":        sizing["quantity"],
+                    "stop_distance":   stop_distance,
+                    "initial_risk":    sizing["initial_risk"],
+                    "risk_budget":     sizing["risk_budget"],
+                    "risk_exceeded":   sizing["risk_exceeded"],
+                    "stop_price":      stop_price,
                     "stop_source":     "initial" if stop_distance is not None else None,
                     "target_price":    _barrier_price(side, entry_price, target_distance, tick_size, is_target=True),
                     "best_price":      entry_price,
@@ -660,7 +775,7 @@ def _run_python(
                 side=position["side"],
                 entry_price=position["entry_price"],
                 exit_price=mark_price,
-                position_size=position_size,
+                quantity=position["quantity"],
                 tick_size=tick_size,
                 tick_value=tick_value,
                 commission=commission,
@@ -793,14 +908,14 @@ def _update_dynamic_exits(position: dict, bar, policy: dict, tick_size: float) -
         position["best_price"] = min(position["best_price"], low)
         favorable = entry_price - position["best_price"]
 
-    initial_risk = position["initial_risk"]
+    stop_distance = position["stop_distance"]
     breakeven_at_r = policy.get("breakeven_at_r")
     if (
         breakeven_at_r is not None
-        and initial_risk is not None
-        and initial_risk > 0
+        and stop_distance is not None
+        and stop_distance > 0
         and not position["breakeven_done"]
-        and favorable >= float(breakeven_at_r) * initial_risk
+        and favorable >= float(breakeven_at_r) * stop_distance
     ):
         _raise_stop(position, _round_to_tick(entry_price, tick_size), "breakeven")
         position["breakeven_done"] = True
@@ -813,9 +928,9 @@ def _update_dynamic_exits(position: dict, bar, policy: dict, tick_size: float) -
     if not position["trailing_active"]:
         if (
             activation is not None
-            and initial_risk is not None
-            and initial_risk > 0
-            and favorable >= float(activation) * initial_risk
+            and stop_distance is not None
+            and stop_distance > 0
+            and favorable >= float(activation) * stop_distance
         ):
             position["trailing_active"] = True
         else:
@@ -948,11 +1063,98 @@ def _position_pnl(
     side: str,
     entry_price: float,
     exit_price: float,
-    position_size: float,
+    quantity: int,
     tick_size: float,
     tick_value: float,
     commission: float,
 ) -> float:
     direction = 1 if side == "buy" else -1
     ticks = direction * (exit_price - entry_price) / tick_size
-    return ticks * tick_value * position_size - commission
+    return (ticks * tick_value - commission) * quantity
+
+
+def _coerce_position_size(value) -> int:
+    """Backtests trade whole contracts only; accept 1.0 but reject 1.5."""
+    if isinstance(value, bool):
+        raise ValueError("position_size must be a positive whole number of contracts.")
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("position_size must be a positive whole number of contracts.") from exc
+    if not math.isfinite(numeric) or not numeric.is_integer() or numeric < 1:
+        raise ValueError("position_size must be a positive whole number of contracts.")
+    return int(numeric)
+
+
+def _validate_sizing(
+    sizing_mode: str,
+    *,
+    risk_per_trade_pct: float | None,
+    max_position_size: int | None,
+    has_initial_stop: bool,
+) -> str:
+    if sizing_mode not in {"fixed", "risk_percent"}:
+        raise ValueError("sizing_mode must be 'fixed' or 'risk_percent'.")
+    if sizing_mode == "risk_percent":
+        if risk_per_trade_pct is None or not math.isfinite(float(risk_per_trade_pct)) or risk_per_trade_pct <= 0:
+            raise ValueError("risk_per_trade_pct must be greater than zero for risk-based sizing.")
+        if float(risk_per_trade_pct) > 100:
+            raise ValueError("risk_per_trade_pct must be 100 or less.")
+        if not has_initial_stop:
+            raise ValueError("Risk-based sizing requires an initial stop loss.")
+    else:
+        if risk_per_trade_pct is not None:
+            raise ValueError("risk_per_trade_pct requires sizing_mode='risk_percent'.")
+        if max_position_size is not None:
+            raise ValueError("max_position_size requires sizing_mode='risk_percent'.")
+    if max_position_size is not None:
+        max_position_size = _coerce_position_size(max_position_size)
+    return sizing_mode
+
+
+def _size_position(
+    *,
+    sizing_mode: str,
+    position_size: int,
+    max_position_size: int | None,
+    risk_per_trade_pct: float | None,
+    balance: float,
+    entry_price: float,
+    stop_price: float | None,
+    tick_size: float,
+    tick_value: float,
+    commission: float,
+) -> dict:
+    """Return whole-contract size plus the dollar risk attached to the entry.
+
+    Commission is round-trip per contract and is included in the planned
+    risk, so a clean stop-out is approximately -1R rather than slightly worse
+    than the configured budget.
+    """
+    has_stop = stop_price is not None
+    stop_ticks = abs(entry_price - stop_price) / tick_size if has_stop else 0.0
+    risk_per_contract = stop_ticks * tick_value + commission
+
+    if sizing_mode == "fixed":
+        quantity = position_size
+        risk_budget = None
+        risk_exceeded = False
+    else:
+        risk_budget = balance * float(risk_per_trade_pct or 0.0) / 100.0
+        raw_contracts = (
+            math.floor(risk_budget / risk_per_contract)
+            if risk_per_contract > 0
+            else 1
+        )
+        quantity = max(1, int(raw_contracts))
+        if max_position_size is not None:
+            quantity = min(quantity, _coerce_position_size(max_position_size))
+        risk_exceeded = quantity * risk_per_contract > risk_budget
+
+    initial_risk = quantity * risk_per_contract if has_stop else None
+    return {
+        "quantity": quantity,
+        "initial_risk": initial_risk,
+        "risk_budget": risk_budget,
+        "risk_exceeded": risk_exceeded,
+    }

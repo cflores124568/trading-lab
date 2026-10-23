@@ -49,6 +49,10 @@ struct TradeRecord {
     double exit_price;
     double pnl;           // net of commission, rounded to 2 decimals
     int    exit_reason;   // 0 flip, 1 stop, 2 target, 3 trail, 4 BE, 5 time, 6 session, 7 EOD
+    double quantity;
+    double initial_risk;  // planned dollar risk, 0 when no stop
+    double risk_budget;   // target dollar risk, 0 in fixed mode
+    int    risk_exceeded; // 1 when one-contract minimum exceeded the budget
 };
 
 struct Position {
@@ -56,6 +60,7 @@ struct Position {
     int    side        = 0;
     int    entry_idx   = -1;
     double entry_price = 0.0;
+    double quantity    = 1.0;
 
     bool   has_stop      = false;
     double stop_price    = 0.0;
@@ -65,7 +70,10 @@ struct Position {
     double target_price  = 0.0;
 
     bool   has_initial_risk = false;
-    double initial_risk     = 0.0;
+    double initial_risk     = 0.0;  // stop distance in price points
+    double risk_amount      = 0.0;  // planned dollar risk at entry
+    double risk_budget      = 0.0;
+    bool   risk_exceeded    = false;
     double best_price       = 0.0;
     bool   breakeven_done   = false;
 
@@ -104,6 +112,10 @@ struct RunConfig {
     bool   exit_at_session_end;
     const double* atr;
     const int*    session_end;
+
+    bool   risk_sizing;
+    double risk_per_trade_pct;
+    int    max_position_size;
 };
 
 struct RunResult {
@@ -162,9 +174,9 @@ static RunResult run_core(
         return round_to_tick(price + direction * cfg.slippage_ticks * tick_size);
     };
 
-    auto position_pnl = [&](int side, double entry_price, double exit_price, double trade_commission) -> double {
+    auto position_pnl = [&](int side, double entry_price, double exit_price, double quantity) -> double {
         const double ticks = static_cast<double>(side) * (exit_price - entry_price) / tick_size;
-        return ticks * cfg.tick_value * cfg.position_size - trade_commission;
+        return (ticks * cfg.tick_value - cfg.commission) * quantity;
     };
 
     // Same fake top-of-book as execution_model.synthetic_quote_for_bar:
@@ -214,7 +226,7 @@ static RunResult run_core(
     out.equity_curve.push_back(balance);  // starting equity (bar 0)
 
     auto close_position = [&](std::size_t exit_idx, double exit_price, int reason) {
-        const double net_pnl = position_pnl(pos.side, pos.entry_price, exit_price, cfg.commission);
+        const double net_pnl = position_pnl(pos.side, pos.entry_price, exit_price, pos.quantity);
         balance += net_pnl;
         out.trades.push_back({
             pos.entry_idx,
@@ -223,7 +235,11 @@ static RunResult run_core(
             pos.entry_price,
             exit_price,
             py_round2(net_pnl),
-            reason
+            reason,
+            pos.quantity,
+            pos.has_initial_risk ? py_round2(pos.risk_amount) : 0.0,
+            py_round2(pos.risk_budget),
+            pos.risk_exceeded ? 1 : 0
         });
         pos = {};   // reset position
     };
@@ -295,6 +311,29 @@ static RunResult run_core(
                     pos.stop_source = 0;
                     pos.initial_risk = stop_distance;
                     pos.has_initial_risk = true;
+                }
+
+                // Size after the stop exists: risk-percent mode needs the
+                // actual tick distance to turn a dollar budget into contracts.
+                double risk_per_contract = cfg.commission;
+                if (pos.has_stop) {
+                    risk_per_contract += std::abs(pos.entry_price - pos.stop_price) / tick_size * cfg.tick_value;
+                }
+                pos.quantity = cfg.position_size;
+                pos.risk_amount = pos.has_stop ? pos.quantity * risk_per_contract : 0.0;
+                if (cfg.risk_sizing) {
+                    const double budget = balance * cfg.risk_per_trade_pct / 100.0;
+                    const double raw = risk_per_contract > 0.0
+                        ? std::floor(budget / risk_per_contract)
+                        : 1.0;
+                    double quantity = std::max(1.0, raw);
+                    if (cfg.max_position_size > 0) {
+                        quantity = std::min(quantity, static_cast<double>(cfg.max_position_size));
+                    }
+                    pos.quantity = quantity;
+                    pos.risk_budget = budget;
+                    pos.risk_exceeded = quantity * risk_per_contract > budget;
+                    pos.risk_amount = pos.has_stop ? quantity * risk_per_contract : 0.0;
                 }
 
                 double target_distance = 0.0;
@@ -433,7 +472,7 @@ static RunResult run_core(
         double unrealised = 0.0;
         if(pos.open){
             const double mark_price = round_to_tick(closes[i]);
-            unrealised = position_pnl(pos.side, pos.entry_price, mark_price, cfg.commission);
+            unrealised = position_pnl(pos.side, pos.entry_price, mark_price, pos.quantity);
         }
         out.equity_curve.push_back(py_round2(balance + unrealised));
     }
@@ -492,6 +531,10 @@ static py::dict result_to_dict(const RunResult& result) {
         "entry_prices"_a  = mk_double_arr([](const TradeRecord& r){ return r.entry_price; }),
         "exit_prices"_a   = mk_double_arr([](const TradeRecord& r){ return r.exit_price;  }),
         "pnls"_a          = mk_double_arr([](const TradeRecord& r){ return r.pnl;         }),
+        "quantities"_a    = mk_double_arr([](const TradeRecord& r){ return r.quantity;    }),
+        "initial_risks"_a = mk_double_arr([](const TradeRecord& r){ return r.initial_risk; }),
+        "risk_budgets"_a  = mk_double_arr([](const TradeRecord& r){ return r.risk_budget; }),
+        "risk_exceeded"_a = mk_int_arr   ([](const TradeRecord& r){ return r.risk_exceeded; }),
         "exit_reasons"_a  = mk_int_arr   ([](const TradeRecord& r){ return r.exit_reason; })
     );
 }
@@ -543,7 +586,10 @@ py::dict run_backtest_kernel(
     std::optional<int>    time_stop_bars,
     bool   exit_at_session_end,
     DoubleArr atr_arr,
-    IntArr    session_end_arr
+    IntArr    session_end_arr,
+    bool   risk_sizing,
+    double risk_per_trade_pct,
+    int    max_position_size
 ) {
     validate_inputs(opens_arr, highs_arr, lows_arr, closes_arr, tick_size);
     if (signals_arr.shape(0) != closes_arr.shape(0))
@@ -579,6 +625,9 @@ py::dict run_backtest_kernel(
     cfg.exit_at_session_end = exit_at_session_end;
     cfg.atr = uses_atr ? atr_arr.data(0) : nullptr;
     cfg.session_end = exit_at_session_end ? session_end_arr.data(0) : nullptr;
+    cfg.risk_sizing = risk_sizing;
+    cfg.risk_per_trade_pct = risk_per_trade_pct;
+    cfg.max_position_size = max_position_size;
 
     const RunResult result = run_core(
         opens_arr.data(0), highs_arr.data(0), lows_arr.data(0),
@@ -616,6 +665,9 @@ py::list run_backtest_batch(
     bool   exit_at_session_end,
     DoubleArr atr_arr,
     IntArr    session_end_arr,
+    bool   risk_sizing,
+    double risk_per_trade_pct,
+    int    max_position_size,
     int    max_threads
 ) {
     validate_inputs(opens_arr, highs_arr, lows_arr, closes_arr, tick_size);
@@ -670,6 +722,9 @@ py::list run_backtest_batch(
     cfg.exit_at_session_end = exit_at_session_end;
     cfg.atr = uses_atr ? atr_arr.data(0) : nullptr;
     cfg.session_end = exit_at_session_end ? session_end_arr.data(0) : nullptr;
+    cfg.risk_sizing = risk_sizing;
+    cfg.risk_per_trade_pct = risk_per_trade_pct;
+    cfg.max_position_size = max_position_size;
 
     const double* opens  = opens_arr.data(0);
     const double* highs  = highs_arr.data(0);
@@ -758,6 +813,9 @@ PYBIND11_MODULE(backtest_core, m) {
         py::arg("exit_at_session_end") = false,
         py::arg("atr") = py::array_t<double>(0),
         py::arg("session_end") = py::array_t<int>(0),
+        py::arg("risk_sizing") = false,
+        py::arg("risk_per_trade_pct") = 0.0,
+        py::arg("max_position_size") = 0,
         R"pbdoc(
         Fast next-bar futures backtest loop written in C++.
 
@@ -769,8 +827,8 @@ PYBIND11_MODULE(backtest_core, m) {
         closes          : 1-D float64 array  — bar closing prices
         signals         : 1-D int32  array   — +1 long, -1 short, 0 flat
         initial_balance : float              — starting cash
-        position_size   : float              — contracts per trade
-        commission      : float              — round-trip commission per trade
+        position_size   : int                — whole contracts per trade (fixed sizing)
+        commission      : float              — round-trip commission per contract
         tick_size       : float              — minimum price increment
         tick_value      : float              — dollar value of one tick
         slippage_ticks  : float              — adverse ticks per fill (bar mode + brackets)
@@ -788,6 +846,9 @@ PYBIND11_MODULE(backtest_core, m) {
         exit_at_session_end : bool — flatten at the last bar of each session
         atr : 1-D float64 array — ATR aligned to bars; value at i-1 sizes entries
         session_end : 1-D int32 array — 1 marks the last bar of a session
+        risk_sizing : bool — size from risk budget instead of position_size
+        risk_per_trade_pct : float — percent of current equity risked per trade
+        max_position_size : int — optional contract cap in risk mode (0 = none)
 
         Returns
         -------
@@ -799,6 +860,10 @@ PYBIND11_MODULE(backtest_core, m) {
             entry_prices
             exit_prices
             pnls           — net profit/loss (after commission), rounded 2 decimals
+            quantities     — whole contracts held for each trade
+            initial_risks  — planned dollar risk at entry (0 when no stop)
+            risk_budgets   — target dollar risk (0 in fixed mode)
+            risk_exceeded  — 1 when the one-contract floor exceeded the budget
             exit_reasons   — 0 flip, 1 stop, 2 target, 3 trailing, 4 breakeven,
                              5 time, 6 session, 7 end of data
         )pbdoc"
@@ -834,6 +899,9 @@ PYBIND11_MODULE(backtest_core, m) {
         py::arg("exit_at_session_end") = false,
         py::arg("atr") = py::array_t<double>(0),
         py::arg("session_end") = py::array_t<int>(0),
+        py::arg("risk_sizing") = false,
+        py::arg("risk_per_trade_pct") = 0.0,
+        py::arg("max_position_size") = 0,
         py::arg("max_threads") = 0,
         R"pbdoc(
         Run many signal variants over one shared OHLC series in parallel.

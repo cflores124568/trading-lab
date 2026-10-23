@@ -167,15 +167,30 @@ def _hydrate_run_config(row) -> dict:
     trades = _maybe_json(row["trades"]) or []
 
     if isinstance(raw, dict) and raw:
+        raw_position_size = raw.get("position_size") or 1
         return {
             "initial_balance": float(raw.get("initial_balance") or prop_rules.get("account_size") or 100_000),
-            "position_size": float(raw.get("position_size") or 1.0),
+            # Older rows could contain fractional contracts. New runs are
+            # whole-contract only, so floor legacy values instead of failing
+            # the whole saved backtest on load.
+            "position_size": max(1, int(float(raw_position_size))),
+            "sizing_mode": raw.get("sizing_mode") or "fixed",
+            "risk_per_trade_pct": float(raw["risk_per_trade_pct"]) if raw.get("risk_per_trade_pct") is not None else None,
+            "max_position_size": max(1, int(raw["max_position_size"])) if raw.get("max_position_size") is not None else None,
             "commission": float(raw.get("commission") if raw.get("commission") is not None else _infer_trade_commission(trades)),
             "tick_size": float(raw.get("tick_size") or _infer_trade_tick_size(trades)),
             "tick_value": float(raw.get("tick_value") or 12.5),
             "slippage_ticks": float(raw.get("slippage_ticks") if raw.get("slippage_ticks") is not None else 1.0),
             "stop_loss_ticks": float(raw.get("stop_loss_ticks")) if raw.get("stop_loss_ticks") is not None else None,
             "take_profit_ticks": float(raw.get("take_profit_ticks")) if raw.get("take_profit_ticks") is not None else None,
+            "stop_loss_atr": float(raw.get("stop_loss_atr")) if raw.get("stop_loss_atr") is not None else None,
+            "take_profit_atr": float(raw.get("take_profit_atr")) if raw.get("take_profit_atr") is not None else None,
+            "trailing_stop_atr": float(raw.get("trailing_stop_atr")) if raw.get("trailing_stop_atr") is not None else None,
+            "trailing_stop_ticks": float(raw.get("trailing_stop_ticks")) if raw.get("trailing_stop_ticks") is not None else None,
+            "trailing_activation_r": float(raw.get("trailing_activation_r")) if raw.get("trailing_activation_r") is not None else None,
+            "breakeven_at_r": float(raw.get("breakeven_at_r")) if raw.get("breakeven_at_r") is not None else None,
+            "time_stop_bars": int(raw.get("time_stop_bars")) if raw.get("time_stop_bars") is not None else None,
+            "exit_at_session_end": bool(raw.get("exit_at_session_end", False)),
             "execution_mode": normalize_backtest_execution_mode(raw.get("execution_mode")),
             "spread_ticks": max(1, int(raw.get("spread_ticks") or DEFAULT_SPREAD_TICKS)),
             "volatile_bar_threshold_ticks": max(
@@ -188,13 +203,24 @@ def _hydrate_run_config(row) -> dict:
 
     return {
         "initial_balance": float(prop_rules.get("account_size") or 100_000),
-        "position_size": 1.0,
+        "position_size": 1,
+        "sizing_mode": "fixed",
+        "risk_per_trade_pct": None,
+        "max_position_size": None,
         "commission": float(_infer_trade_commission(trades)),
         "tick_size": float(_infer_trade_tick_size(trades)),
         "tick_value": 12.5,
         "slippage_ticks": 1.0,
         "stop_loss_ticks": None,
         "take_profit_ticks": None,
+        "stop_loss_atr": None,
+        "take_profit_atr": None,
+        "trailing_stop_atr": None,
+        "trailing_stop_ticks": None,
+        "trailing_activation_r": None,
+        "breakeven_at_r": None,
+        "time_stop_bars": None,
+        "exit_at_session_end": False,
         "execution_mode": DEFAULT_BACKTEST_EXECUTION_MODE,
         "spread_ticks": DEFAULT_SPREAD_TICKS,
         "volatile_bar_threshold_ticks": DEFAULT_VOLATILE_BAR_THRESHOLD_TICKS,

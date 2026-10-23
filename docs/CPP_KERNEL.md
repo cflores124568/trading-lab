@@ -9,8 +9,8 @@ stuff around it in `backend/services/backtest_engine.py`.
 ## What It Does
 
 The C++ module takes plain OHLC + `signal` arrays, walks bar by bar, manages
-one open position, applies commission, and returns flat numpy arrays for
-equity and completed trades.
+one open position, applies per-contract commission, and returns flat numpy
+arrays for equity and completed trades.
 
 It covers all three execution styles the app knows: legacy bar fills,
 synthetic bid/ask quotes (same spread rules as paper/replay), and bracket
@@ -18,6 +18,22 @@ exits. Brackets can be sized in ticks or ATR multiples, and the kernel also
 handles trailing stops, breakeven moves, time stops, and session-close
 flattening. So the C++ path is the primary engine now, not just the fast lane
 for the simple case.
+
+## Position Sizing
+
+- `position_size` is always a whole number of contracts. The Python wrapper
+  accepts an integral float like `2.0` for old callers but rejects `2.5`.
+- Fixed sizing uses `position_size` directly. Risk sizing uses
+  `sizing_mode="risk_percent"`, a required initial stop, and
+  `risk_per_trade_pct` of current equity. Contracts round down to the nearest
+  whole contract, with a minimum of one so a signal is never silently skipped.
+- `max_position_size` can cap risk-sized entries. If the one-contract floor
+  exceeds the target risk, the trade is marked `risk_exceeded` and the run
+  counts it in `risk_budget_exceeded_trades`.
+- Commission is a round-trip cost per contract, so two contracts pay twice the
+  configured commission.
+- Each trade also carries `quantity`, `initial_risk` (planned dollar risk at
+  entry), `risk_budget`, and `r_multiple`, which feeds the R metrics in Python.
 
 ## Dynamic Exit Semantics
 

@@ -57,6 +57,9 @@ def create_experiment_record(request: ExperimentCreate) -> dict:
         prop_firm_rules=request.prop_firm_rules,
         initial_balance=request.initial_balance,
         position_size=request.position_size,
+        sizing_mode=request.sizing_mode,
+        risk_per_trade_pct=request.risk_per_trade_pct,
+        max_position_size=request.max_position_size,
         commission=request.commission,
         slippage_ticks=request.slippage_ticks,
         execution_mode=request.execution_mode,
@@ -132,6 +135,9 @@ def run_experiment(experiment: dict) -> tuple[dict, list[dict]]:
                 end_date=experiment.get("end_date"),
                 initial_balance=experiment["initial_balance"],
                 position_size=experiment["position_size"],
+                sizing_mode=experiment.get("sizing_mode") or "fixed",
+                risk_per_trade_pct=experiment.get("risk_per_trade_pct"),
+                max_position_size=experiment.get("max_position_size"),
                 commission=experiment["commission"],
                 slippage_ticks=experiment.get("slippage_ticks") or 1.0,
                 tick_size=dataset_info.get("tick_size") or 0.25,
@@ -218,6 +224,9 @@ def run_experiment(experiment: dict) -> tuple[dict, list[dict]]:
                 time_stop_bars=request.time_stop_bars,
                 exit_at_session_end=request.exit_at_session_end,
                 atr_period=group_entries[0]["atr_period"],
+                sizing_mode=request.sizing_mode,
+                risk_per_trade_pct=request.risk_per_trade_pct,
+                max_position_size=request.max_position_size,
             )
             for group_entry, engine_result in zip(group_entries, engine_results):
                 group_entry["engine_result"] = engine_result

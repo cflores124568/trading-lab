@@ -73,6 +73,8 @@ def calculate_metrics(
     else:
         profit_factor = round(gross_wins / gross_losses, 4)
     avg_duration = _avg_duration_minutes(trades)
+    avg_r, total_r, r_profit_factor = _r_metrics(trades)
+    risk_budget_exceeded = sum(1 for t in trades if t.get("risk_exceeded"))
 
     return {
         "total_trades":       total_trades,
@@ -86,6 +88,10 @@ def calculate_metrics(
         "sharpe_ratio":       sharpe,
         "sortino_ratio":      sortino,
         "sharpe_basis":       sharpe_basis,
+        "avg_r_multiple":     avg_r,
+        "total_r":            total_r,
+        "r_profit_factor":    r_profit_factor,
+        "risk_budget_exceeded_trades": risk_budget_exceeded,
         "avg_trade_duration": round(avg_duration, 2),
         "best_trade":         round(float(np.max(pnls)), 2),
         "worst_trade":        round(float(np.min(pnls)), 2),
@@ -105,9 +111,40 @@ def _empty_metrics(
         "win_rate": 0.0, "total_pnl": round(total_pnl, 2), "average_pnl": 0.0,
         "profit_factor": 0.0, "max_drawdown": round(max_drawdown, 4),
         "sharpe_ratio": sharpe, "sortino_ratio": sortino,
-        "sharpe_basis": sharpe_basis, "avg_trade_duration": 0.0,
+        "sharpe_basis": sharpe_basis,
+        "avg_r_multiple": None, "total_r": None, "r_profit_factor": None,
+        "risk_budget_exceeded_trades": 0,
+        "avg_trade_duration": 0.0,
         "best_trade": 0.0, "worst_trade": 0.0,
     }
+
+
+def _r_metrics(trades: List[dict]) -> tuple[Optional[float], Optional[float], Optional[float]]:
+    """Summarize R multiples only for trades that had a defined initial risk."""
+    r_values = np.array(
+        [
+            value
+            for value in (
+                float(t["r_multiple"]) for t in trades if t.get("r_multiple") is not None
+            )
+            if np.isfinite(value)
+        ],
+        dtype=float,
+    )
+    if len(r_values) == 0:
+        return None, None, None
+
+    gross_r_wins = float(np.sum(r_values[r_values > 0]))
+    gross_r_losses = float(np.abs(np.sum(r_values[r_values < 0])))
+    if gross_r_losses == 0:
+        r_profit_factor = round(gross_r_wins, 4) if gross_r_wins > 0 else 0.0
+    else:
+        r_profit_factor = round(gross_r_wins / gross_r_losses, 4)
+    return (
+        round(float(np.mean(r_values)), 4),
+        round(float(np.sum(r_values)), 4),
+        r_profit_factor,
+    )
 
 def _max_drawdown(equity_curve: List[float]) -> float:
     if len(equity_curve) < 2:

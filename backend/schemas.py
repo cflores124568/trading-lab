@@ -48,8 +48,8 @@ class Strategy(BaseModel):
         return self
 
 
-def _validate_exit_policy(model):
-    """Shared guardrails for tick/ATR brackets and dynamic exits."""
+def _validate_execution_policy(model):
+    """Shared guardrails for brackets, dynamic exits, and position sizing."""
     if model.stop_loss_ticks is not None and model.stop_loss_atr is not None:
         raise ValueError("Choose stop_loss_ticks or stop_loss_atr, not both.")
     if model.take_profit_ticks is not None and model.take_profit_atr is not None:
@@ -64,6 +64,17 @@ def _validate_exit_policy(model):
         raise ValueError("trailing_activation_r requires a trailing stop.")
     if (model.trailing_activation_r is not None or model.breakeven_at_r is not None) and not has_initial_stop:
         raise ValueError("R-based exits require an initial stop (ticks or ATR).")
+
+    if model.sizing_mode == "risk_percent":
+        if model.risk_per_trade_pct is None:
+            raise ValueError("risk_per_trade_pct is required for risk-based sizing.")
+        if not has_initial_stop:
+            raise ValueError("Risk-based sizing requires an initial stop (ticks or ATR).")
+    else:
+        if model.risk_per_trade_pct is not None:
+            raise ValueError("risk_per_trade_pct requires sizing_mode='risk_percent'.")
+        if model.max_position_size is not None:
+            raise ValueError("max_position_size requires sizing_mode='risk_percent'.")
     return model
 
 #Prop-firm rules 
@@ -104,6 +115,10 @@ class Trade(BaseModel):
     commission: float
     exit_reason: Optional[str] = None
     quantity: Optional[float] = None
+    initial_risk: Optional[float] = None
+    risk_budget: Optional[float] = None
+    r_multiple: Optional[float] = None
+    risk_exceeded: bool = False
     tick_size: Optional[float] = None
     tick_value: Optional[float] = None
     slippage_ticks: Optional[float] = None
@@ -121,6 +136,10 @@ class PerformanceMetrics(BaseModel):
     sharpe_ratio: float
     sortino_ratio: float
     sharpe_basis: Literal["daily", "trade", "insufficient", "legacy"] = "legacy"
+    avg_r_multiple: Optional[float] = None
+    total_r: Optional[float] = None
+    r_profit_factor: Optional[float] = None
+    risk_budget_exceeded_trades: int = 0
     avg_trade_duration: float
     best_trade: float
     worst_trade: float
@@ -176,7 +195,7 @@ class ReplaySessionBase(BaseModel):
     commission: float = Field(default=5.0, ge=0)
     tick_value: float = Field(default=1.0, gt=0)
     tick_size: float = Field(default=0.25, gt=0)
-    position_size: float = Field(default=1.0, gt=0)
+    position_size: int = Field(default=1, ge=1)
     spread_ticks: int = Field(default=1, ge=1)
     volatile_bar_threshold_ticks: int = Field(default=0, ge=0)
     volatile_bar_extra_ticks: int = Field(default=0, ge=0)
@@ -479,7 +498,10 @@ class ExperimentBase(BaseModel):
     end_date: Optional[str] = None
     prop_firm_rules: PropFirmRules
     initial_balance: float = Field(default=100_000, gt=0)
-    position_size: float = Field(default=1.0, gt=0)
+    position_size: int = Field(default=1, ge=1)
+    sizing_mode: Literal["fixed", "risk_percent"] = "fixed"
+    risk_per_trade_pct: Optional[float] = Field(default=None, gt=0, le=100)
+    max_position_size: Optional[int] = Field(default=None, ge=1)
     commission: float = Field(default=5.0, ge=0)
     slippage_ticks: float = Field(default=1.0, ge=0)
     stop_loss_ticks: Optional[float] = Field(default=None, gt=0)
@@ -500,7 +522,7 @@ class ExperimentBase(BaseModel):
 
     @model_validator(mode="after")
     def validate_exit_policy(self):
-        return _validate_exit_policy(self)
+        return _validate_execution_policy(self)
 
 
 class ExperimentCreate(ExperimentBase):
@@ -1115,7 +1137,10 @@ class BacktestRequest(BaseModel):
     start_date:      Optional[str]  = None
     end_date:        Optional[str]  = None
     initial_balance: float          = Field(default=100_000, gt=0)
-    position_size:   float          = Field(default=1.0, gt=0)
+    position_size:   int            = Field(default=1, ge=1)
+    sizing_mode:     Literal["fixed", "risk_percent"] = "fixed"
+    risk_per_trade_pct: Optional[float] = Field(default=None, gt=0, le=100)
+    max_position_size:  Optional[int]   = Field(default=None, ge=1)
     commission:      float          = Field(default=5.0, ge=0)
     tick_size:       float          = Field(default=0.25, gt=0)
     tick_value:      float          = Field(default=12.5, gt=0)
@@ -1137,12 +1162,15 @@ class BacktestRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_exit_policy(self):
-        return _validate_exit_policy(self)
+        return _validate_execution_policy(self)
 
 
 class BacktestRunConfig(BaseModel):
     initial_balance: float = Field(default=100_000, gt=0)
-    position_size: float = Field(default=1.0, gt=0)
+    position_size: int = Field(default=1, ge=1)
+    sizing_mode: Literal["fixed", "risk_percent"] = "fixed"
+    risk_per_trade_pct: Optional[float] = Field(default=None, gt=0, le=100)
+    max_position_size: Optional[int] = Field(default=None, ge=1)
     commission: float = Field(default=5.0, ge=0)
     tick_size: float = Field(default=0.25, gt=0)
     tick_value: float = Field(default=12.5, gt=0)
@@ -1164,7 +1192,7 @@ class BacktestRunConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_exit_policy(self):
-        return _validate_exit_policy(self)
+        return _validate_execution_policy(self)
 
 class BacktestResult(BaseModel):
     backtest_id:    str

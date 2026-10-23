@@ -64,12 +64,23 @@ def analyze_backtest_robustness(
         "run_config": {
             "initial_balance": request.initial_balance,
             "position_size": request.position_size,
+            "sizing_mode": request.sizing_mode,
+            "risk_per_trade_pct": request.risk_per_trade_pct,
+            "max_position_size": request.max_position_size,
             "commission": request.commission,
             "tick_size": request.tick_size,
             "tick_value": request.tick_value,
             "slippage_ticks": request.slippage_ticks,
             "stop_loss_ticks": request.stop_loss_ticks,
             "take_profit_ticks": request.take_profit_ticks,
+            "stop_loss_atr": request.stop_loss_atr,
+            "take_profit_atr": request.take_profit_atr,
+            "trailing_stop_atr": request.trailing_stop_atr,
+            "trailing_stop_ticks": request.trailing_stop_ticks,
+            "trailing_activation_r": request.trailing_activation_r,
+            "breakeven_at_r": request.breakeven_at_r,
+            "time_stop_bars": request.time_stop_bars,
+            "exit_at_session_end": request.exit_at_session_end,
             "execution_mode": request.execution_mode,
             "spread_ticks": request.spread_ticks,
             "volatile_bar_threshold_ticks": request.volatile_bar_threshold_ticks,
@@ -101,7 +112,13 @@ def _request_from_backtest(backtest: dict) -> tuple[BacktestRequest, list[str]]:
         or backtest["prop_firm_rules"].get("account_size")
         or 100_000
     )
-    position_size = float(run_config.get("position_size") or 1.0)
+    raw_position_size = run_config.get("position_size") or 1
+    position_size = int(raw_position_size)
+    if float(raw_position_size) != position_size:
+        warnings.append(
+            f"Legacy fractional position size {raw_position_size} was floored to "
+            f"{position_size} whole contract(s) for the rerun."
+        )
     commission = float(
         run_config.get("commission")
         if run_config.get("commission") is not None
@@ -152,6 +169,9 @@ def _request_from_backtest(backtest: dict) -> tuple[BacktestRequest, list[str]]:
         end_date=backtest.get("replay_context", {}).get("end_date") if backtest.get("replay_context") else None,
         initial_balance=initial_balance,
         position_size=position_size,
+        sizing_mode=str(run_config.get("sizing_mode") or "fixed"),
+        risk_per_trade_pct=optional_float("risk_per_trade_pct"),
+        max_position_size=optional_int("max_position_size"),
         commission=commission,
         tick_size=tick_size,
         tick_value=tick_value,

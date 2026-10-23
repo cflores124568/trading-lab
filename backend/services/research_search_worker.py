@@ -80,7 +80,7 @@ def execute_search_plan(campaign: dict, plan: dict) -> dict:
     config=(campaign.get("search_config") or {}).get("execution_config") or {}
     rules=PropFirmRules(name="Alpha Lab discovery",daily_loss_limit=None,max_drawdown=1,profit_target=1,consistency_rule=False)
     request=BacktestRequest(dataset_id=info["dataset_id"],strategy=Strategy(type=plan["strategy_type"],params=plan["strategy_params"]),
-        prop_firm_rules=rules,initial_balance=float(config.get("initial_balance",100000)),position_size=float(config.get("position_size",1)),
+        prop_firm_rules=rules,initial_balance=float(config.get("initial_balance",100000)),position_size=config.get("position_size") or 1,
         commission=float(config.get("commission",5)),tick_size=float(config.get("tick_size") or info.get("tick_size") or .25),
         tick_value=float(config.get("tick_value") or info.get("tick_value") or 1),slippage_ticks=float(config.get("slippage_ticks",1)),
         execution_mode=str(config.get("execution_mode","bar")),spread_ticks=int(config.get("spread_ticks",1)),

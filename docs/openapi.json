@@ -78,14 +78,48 @@
             "title": "Initial Balance",
             "type": "number"
           },
+          "max_position_size": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Position Size"
+          },
           "position_size": {
-            "default": 1.0,
-            "exclusiveMinimum": 0.0,
+            "default": 1,
+            "minimum": 1.0,
             "title": "Position Size",
-            "type": "number"
+            "type": "integer"
           },
           "prop_firm_rules": {
             "$ref": "#/components/schemas/PropFirmRules"
+          },
+          "risk_per_trade_pct": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 100.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Per Trade Pct"
+          },
+          "sizing_mode": {
+            "default": "fixed",
+            "enum": [
+              "fixed",
+              "risk_percent"
+            ],
+            "title": "Sizing Mode",
+            "type": "string"
           },
           "slippage_ticks": {
             "default": 1.0,
@@ -425,11 +459,45 @@
             "title": "Initial Balance",
             "type": "number"
           },
+          "max_position_size": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Position Size"
+          },
           "position_size": {
-            "default": 1.0,
-            "exclusiveMinimum": 0.0,
+            "default": 1,
+            "minimum": 1.0,
             "title": "Position Size",
-            "type": "number"
+            "type": "integer"
+          },
+          "risk_per_trade_pct": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 100.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Per Trade Pct"
+          },
+          "sizing_mode": {
+            "default": "fixed",
+            "enum": [
+              "fixed",
+              "risk_percent"
+            ],
+            "title": "Sizing Mode",
+            "type": "string"
           },
           "slippage_ticks": {
             "default": 1.0,
@@ -1187,6 +1255,18 @@
             "title": "Intervals",
             "type": "array"
           },
+          "max_position_size": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Position Size"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -1200,17 +1280,39 @@
             "type": "object"
           },
           "position_size": {
-            "default": 1.0,
-            "exclusiveMinimum": 0.0,
+            "default": 1,
+            "minimum": 1.0,
             "title": "Position Size",
-            "type": "number"
+            "type": "integer"
           },
           "prop_firm_rules": {
             "$ref": "#/components/schemas/PropFirmRules"
           },
+          "risk_per_trade_pct": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 100.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Per Trade Pct"
+          },
           "scoring_rule": {
             "$ref": "#/components/schemas/ExperimentScoringRule",
             "default": "prop_score_v1"
+          },
+          "sizing_mode": {
+            "default": "fixed",
+            "enum": [
+              "fixed",
+              "risk_percent"
+            ],
+            "title": "Sizing Mode",
+            "type": "string"
           },
           "slippage_ticks": {
             "default": 1.0,
@@ -1491,6 +1593,18 @@
             ],
             "title": "Last Run At"
           },
+          "max_position_size": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Position Size"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -1504,17 +1618,39 @@
             "type": "object"
           },
           "position_size": {
-            "default": 1.0,
-            "exclusiveMinimum": 0.0,
+            "default": 1,
+            "minimum": 1.0,
             "title": "Position Size",
-            "type": "number"
+            "type": "integer"
           },
           "prop_firm_rules": {
             "$ref": "#/components/schemas/PropFirmRules"
           },
+          "risk_per_trade_pct": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 100.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Per Trade Pct"
+          },
           "scoring_rule": {
             "$ref": "#/components/schemas/ExperimentScoringRule",
             "default": "prop_score_v1"
+          },
+          "sizing_mode": {
+            "default": "fixed",
+            "enum": [
+              "fixed",
+              "risk_percent"
+            ],
+            "title": "Sizing Mode",
+            "type": "string"
           },
           "slippage_ticks": {
             "default": 1.0,
@@ -2842,6 +2978,17 @@
             "title": "Average Pnl",
             "type": "number"
           },
+          "avg_r_multiple": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg R Multiple"
+          },
           "avg_trade_duration": {
             "title": "Avg Trade Duration",
             "type": "number"
@@ -2869,6 +3016,22 @@
             ],
             "title": "Profit Factor"
           },
+          "r_profit_factor": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "R Profit Factor"
+          },
+          "risk_budget_exceeded_trades": {
+            "default": 0,
+            "title": "Risk Budget Exceeded Trades",
+            "type": "integer"
+          },
           "sharpe_basis": {
             "default": "legacy",
             "enum": [
@@ -2891,6 +3054,17 @@
           "total_pnl": {
             "title": "Total Pnl",
             "type": "number"
+          },
+          "total_r": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total R"
           },
           "total_trades": {
             "title": "Total Trades",
@@ -3280,10 +3454,10 @@
             "type": "string"
           },
           "position_size": {
-            "default": 1.0,
-            "exclusiveMinimum": 0.0,
+            "default": 1,
+            "minimum": 1.0,
             "title": "Position Size",
-            "type": "number"
+            "type": "integer"
           },
           "prop_firm_eval": {
             "$ref": "#/components/schemas/PropFirmEvaluation"
@@ -3458,10 +3632,10 @@
             "type": "string"
           },
           "position_size": {
-            "default": 1.0,
-            "exclusiveMinimum": 0.0,
+            "default": 1,
+            "minimum": 1.0,
             "title": "Position Size",
-            "type": "number"
+            "type": "integer"
           },
           "prop_firm_eval": {
             "$ref": "#/components/schemas/PropFirmEvaluation"
@@ -3816,10 +3990,10 @@
             "type": "string"
           },
           "position_size": {
-            "default": 1.0,
-            "exclusiveMinimum": 0.0,
+            "default": 1,
+            "minimum": 1.0,
             "title": "Position Size",
-            "type": "number"
+            "type": "integer"
           },
           "prop_firm_eval": {
             "$ref": "#/components/schemas/PropFirmEvaluation"
@@ -6175,6 +6349,17 @@
             ],
             "title": "Exit Time"
           },
+          "initial_risk": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initial Risk"
+          },
           "pnl": {
             "title": "Pnl",
             "type": "number"
@@ -6189,6 +6374,33 @@
               }
             ],
             "title": "Quantity"
+          },
+          "r_multiple": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "R Multiple"
+          },
+          "risk_budget": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Budget"
+          },
+          "risk_exceeded": {
+            "default": false,
+            "title": "Risk Exceeded",
+            "type": "boolean"
           },
           "side": {
             "$ref": "#/components/schemas/OrderSide"
