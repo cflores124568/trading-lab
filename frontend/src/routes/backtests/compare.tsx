@@ -49,6 +49,13 @@ function formatMaybeTicks(value: number | null | undefined): string {
   return `${value}t`;
 }
 
+function formatMaybeNumber(value: number | null | undefined, suffix = ""): string {
+  if (value === null || value === undefined) {
+    return "off";
+  }
+  return `${value}${suffix}`;
+}
+
 type CompareBacktest = BacktestCompare["backtest_a"];
 
 export default function BacktestComparePage() {
@@ -166,6 +173,36 @@ export default function BacktestComparePage() {
                   label: "Take Profit",
                   valueA: formatMaybeTicks(a.run_config.take_profit_ticks),
                   valueB: formatMaybeTicks(b.run_config.take_profit_ticks),
+                },
+                {
+                  label: "Stop ATR",
+                  valueA: formatMaybeNumber(a.run_config.stop_loss_atr, "×"),
+                  valueB: formatMaybeNumber(b.run_config.stop_loss_atr, "×"),
+                },
+                {
+                  label: "Target ATR",
+                  valueA: formatMaybeNumber(a.run_config.take_profit_atr, "×"),
+                  valueB: formatMaybeNumber(b.run_config.take_profit_atr, "×"),
+                },
+                {
+                  label: "Trailing ATR",
+                  valueA: formatMaybeNumber(a.run_config.trailing_stop_atr, "×"),
+                  valueB: formatMaybeNumber(b.run_config.trailing_stop_atr, "×"),
+                },
+                {
+                  label: "Breakeven",
+                  valueA: formatMaybeNumber(a.run_config.breakeven_at_r, "R"),
+                  valueB: formatMaybeNumber(b.run_config.breakeven_at_r, "R"),
+                },
+                {
+                  label: "Time Stop",
+                  valueA: formatMaybeNumber(a.run_config.time_stop_bars, " bars"),
+                  valueB: formatMaybeNumber(b.run_config.time_stop_bars, " bars"),
+                },
+                {
+                  label: "Session Flat",
+                  valueA: a.run_config.exit_at_session_end ? "on" : "off",
+                  valueB: b.run_config.exit_at_session_end ? "on" : "off",
                 },
               ];
               const totalPnlWinner =

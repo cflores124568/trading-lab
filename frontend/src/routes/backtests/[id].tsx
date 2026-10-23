@@ -198,20 +198,29 @@ function formatRank(value?: number | null): string {
 function formatBracketConfig(runConfig?: {
   stop_loss_ticks?: number | null;
   take_profit_ticks?: number | null;
+  stop_loss_atr?: number | null;
+  take_profit_atr?: number | null;
+  trailing_stop_atr?: number | null;
+  trailing_stop_ticks?: number | null;
+  trailing_activation_r?: number | null;
+  breakeven_at_r?: number | null;
+  time_stop_bars?: number | null;
+  exit_at_session_end?: boolean | null;
 } | null): string {
-  const stopLoss = runConfig?.stop_loss_ticks;
-  const takeProfit = runConfig?.take_profit_ticks;
+  const parts = [
+    runConfig?.stop_loss_ticks != null ? `SL ${runConfig.stop_loss_ticks}t` : null,
+    runConfig?.stop_loss_atr != null ? `SL ${runConfig.stop_loss_atr}×ATR` : null,
+    runConfig?.take_profit_ticks != null ? `TP ${runConfig.take_profit_ticks}t` : null,
+    runConfig?.take_profit_atr != null ? `TP ${runConfig.take_profit_atr}×ATR` : null,
+    runConfig?.trailing_stop_atr != null ? `Trail ${runConfig.trailing_stop_atr}×ATR` : null,
+    runConfig?.trailing_stop_ticks != null ? `Trail ${runConfig.trailing_stop_ticks}t` : null,
+    runConfig?.trailing_activation_r != null ? `after ${runConfig.trailing_activation_r}R` : null,
+    runConfig?.breakeven_at_r != null ? `BE ${runConfig.breakeven_at_r}R` : null,
+    runConfig?.time_stop_bars != null ? `Time ${runConfig.time_stop_bars}b` : null,
+    runConfig?.exit_at_session_end ? "Session flat" : null,
+  ].filter(Boolean);
 
-  if (stopLoss == null && takeProfit == null) {
-    return "Brackets off";
-  }
-
-  return [
-    stopLoss != null ? `SL ${stopLoss}t` : null,
-    takeProfit != null ? `TP ${takeProfit}t` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  return parts.length > 0 ? parts.join(" · ") : "Signal exits only";
 }
 
 function formatExecutionMode(mode?: "bar" | "synthetic_quotes" | null): string {
@@ -262,6 +271,20 @@ function formatBreachTime(value?: string | null): string {
   if (!value) return "n/a";
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? value : new Date(parsed).toLocaleString();
+}
+
+function formatExitReason(reason?: string | null): string {
+  switch (reason) {
+    case "signal_flip": return "Signal flip";
+    case "stop_loss": return "Stop";
+    case "take_profit": return "Target";
+    case "trailing_stop": return "Trailing stop";
+    case "breakeven_stop": return "Breakeven";
+    case "time_stop": return "Time stop";
+    case "session_close": return "Session close";
+    case "end_of_data": return "End of data";
+    default: return "—";
+  }
 }
 
 function formatDuration(startIso: string, endIso?: string | null): string {
@@ -839,6 +862,7 @@ function TradesTable(props: {
             <th class="p-3 text-left">Entry Time</th>
             <th class="p-3 text-left">Exit Time</th>
             <th class="p-3 text-left">Duration</th>
+            <th class="p-3 text-left">Exit</th>
             <th class="p-3 text-right">Entry $</th>
             <th class="p-3 text-right">Exit $</th>
             <th class="p-3 text-right">PnL</th>
@@ -849,7 +873,7 @@ function TradesTable(props: {
             when={props.trades.length > 0}
             fallback={
               <tr class="border-t border-stone-800">
-                <td class="p-4 text-stone-500" colSpan={8}>
+                <td class="p-4 text-stone-500" colSpan={9}>
                   {props.emptyMessage ?? "No trades yet."}
                 </td>
               </tr>
@@ -869,6 +893,7 @@ function TradesTable(props: {
                   <td class="p-3 font-mono text-xs text-stone-400">{trade.entry_time}</td>
                   <td class="p-3 font-mono text-xs text-stone-400">{trade.exit_time}</td>
                   <td class="p-3 text-stone-400">{formatDuration(trade.entry_time, trade.exit_time)}</td>
+                  <td class="p-3 text-xs text-stone-400">{formatExitReason(trade.exit_reason)}</td>
                   <td class="p-3 text-right font-mono">{trade.entry_price.toFixed(2)}</td>
                   <td class="p-3 text-right font-mono">{(trade.exit_price ?? 0).toFixed(2)}</td>
                   <td

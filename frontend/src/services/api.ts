@@ -134,6 +134,7 @@ export interface Trade {
   tick_size?: number | null;
   tick_value?: number | null;
   slippage_ticks?: number | null;
+  exit_reason?: string | null;
 }
 
 //Performance statistics calculated from trades.
@@ -193,6 +194,14 @@ export interface BacktestCreateRequest {
   slippage_ticks: number;
   stop_loss_ticks?: number;
   take_profit_ticks?: number;
+  stop_loss_atr?: number;
+  take_profit_atr?: number;
+  trailing_stop_atr?: number;
+  trailing_stop_ticks?: number;
+  trailing_activation_r?: number;
+  breakeven_at_r?: number;
+  time_stop_bars?: number;
+  exit_at_session_end?: boolean;
   execution_mode?: "bar" | "synthetic_quotes";
   spread_ticks?: number;
   volatile_bar_threshold_ticks?: number;
@@ -222,6 +231,14 @@ export interface BacktestResult {
     slippage_ticks: number;
     stop_loss_ticks?: number | null;
     take_profit_ticks?: number | null;
+    stop_loss_atr?: number | null;
+    take_profit_atr?: number | null;
+    trailing_stop_atr?: number | null;
+    trailing_stop_ticks?: number | null;
+    trailing_activation_r?: number | null;
+    breakeven_at_r?: number | null;
+    time_stop_bars?: number | null;
+    exit_at_session_end?: boolean;
     execution_mode: "bar" | "synthetic_quotes";
     spread_ticks: number;
     volatile_bar_threshold_ticks: number;
@@ -350,6 +367,14 @@ export interface BacktestRobustnessResult {
     slippage_ticks: number;
     stop_loss_ticks?: number | null;
     take_profit_ticks?: number | null;
+    stop_loss_atr?: number | null;
+    take_profit_atr?: number | null;
+    trailing_stop_atr?: number | null;
+    trailing_stop_ticks?: number | null;
+    trailing_activation_r?: number | null;
+    breakeven_at_r?: number | null;
+    time_stop_bars?: number | null;
+    exit_at_session_end?: boolean;
     execution_mode: "bar" | "synthetic_quotes";
     spread_ticks: number;
     volatile_bar_threshold_ticks: number;

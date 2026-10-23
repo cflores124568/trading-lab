@@ -49,7 +49,7 @@ function findPresetByPropFirm(presets: PropFirmPreset[], propFirm: string): Prop
   );
 }
 
-function parseOptionalTickInput(raw: string, label: string): { value?: number; error?: string } {
+function parseOptionalPositiveInput(raw: string, label: string): { value?: number; error?: string } {
   const trimmed = raw.trim();
   if (!trimmed) {
     return {};
@@ -63,20 +63,40 @@ function parseOptionalTickInput(raw: string, label: string): { value?: number; e
   return { value };
 }
 
-function formatBracketSummary(stopLossTicks: string, takeProfitTicks: string): string {
-  const stopLoss = stopLossTicks.trim();
-  const takeProfit = takeProfitTicks.trim();
-
-  if (!stopLoss && !takeProfit) {
-    return "Bracket exits off";
+function parseOptionalIntegerInput(raw: string, label: string): { value?: number; error?: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return {};
   }
 
-  return [
-    stopLoss ? `SL ${stopLoss}t` : null,
-    takeProfit ? `TP ${takeProfit}t` : null,
-  ]
-    .filter(Boolean)
-    .join(" / ");
+  const value = Number(trimmed);
+  if (!Number.isInteger(value) || value <= 0) {
+    return { error: `${label} must be a whole number greater than 0.` };
+  }
+
+  return { value };
+}
+
+function formatBracketSummary(
+  stopLossTicks: string,
+  takeProfitTicks: string,
+  stopLossAtr: string,
+  takeProfitAtr: string,
+  trailingStopAtr: string,
+  timeStopBars: string,
+  exitAtSessionEnd: boolean,
+): string {
+  const parts = [
+    stopLossTicks.trim() ? `SL ${stopLossTicks.trim()}t` : null,
+    stopLossAtr.trim() ? `SL ${stopLossAtr.trim()}×ATR` : null,
+    takeProfitTicks.trim() ? `TP ${takeProfitTicks.trim()}t` : null,
+    takeProfitAtr.trim() ? `TP ${takeProfitAtr.trim()}×ATR` : null,
+    trailingStopAtr.trim() ? `Trail ${trailingStopAtr.trim()}×ATR` : null,
+    timeStopBars.trim() ? `Time ${timeStopBars.trim()}b` : null,
+    exitAtSessionEnd ? "Session flat" : null,
+  ].filter(Boolean);
+
+  return parts.length > 0 ? parts.join(" / ") : "Signal exits only";
 }
 
 function executionModeLabel(mode: "bar" | "synthetic_quotes"): string {
@@ -186,6 +206,13 @@ export default function BackTestConfigForm() {
   const [slippageTicks, setSlippageTicks] = createSignal(1);
   const [stopLossTicks, setStopLossTicks] = createSignal("");
   const [takeProfitTicks, setTakeProfitTicks] = createSignal("");
+  const [stopLossAtr, setStopLossAtr] = createSignal("");
+  const [takeProfitAtr, setTakeProfitAtr] = createSignal("");
+  const [trailingStopAtr, setTrailingStopAtr] = createSignal("");
+  const [trailingActivationR, setTrailingActivationR] = createSignal("");
+  const [breakevenAtR, setBreakevenAtR] = createSignal("");
+  const [timeStopBars, setTimeStopBars] = createSignal("");
+  const [exitAtSessionEnd, setExitAtSessionEnd] = createSignal(false);
   const [executionMode, setExecutionMode] = createSignal<"bar" | "synthetic_quotes">("bar");
   const [spreadTicks, setSpreadTicks] = createSignal(1);
   const [volatileBarThresholdTicks, setVolatileBarThresholdTicks] = createSignal(0);
@@ -206,7 +233,15 @@ export default function BackTestConfigForm() {
     ["Strategy", selectedStrategy().label],
     ["Preset", preset()?.name ?? "Choose a challenge"],
     ["Execution", executionModeLabel(executionMode())],
-    ["Brackets", formatBracketSummary(stopLossTicks(), takeProfitTicks())],
+    ["Exits", formatBracketSummary(
+      stopLossTicks(),
+      takeProfitTicks(),
+      stopLossAtr(),
+      takeProfitAtr(),
+      trailingStopAtr(),
+      timeStopBars(),
+      exitAtSessionEnd(),
+    )],
   ] as [string, string][]);
 
   // Seed market defaults from the active workspace, then fall back to first symbol.
@@ -304,8 +339,14 @@ export default function BackTestConfigForm() {
     }
     const sym = symbol();
     const pre = preset();
-    const stopLoss = parseOptionalTickInput(stopLossTicks(), "Stop loss");
-    const takeProfit = parseOptionalTickInput(takeProfitTicks(), "Take profit");
+    const stopLoss = parseOptionalPositiveInput(stopLossTicks(), "Stop loss");
+    const takeProfit = parseOptionalPositiveInput(takeProfitTicks(), "Take profit");
+    const stopLossAtrValue = parseOptionalPositiveInput(stopLossAtr(), "ATR stop");
+    const takeProfitAtrValue = parseOptionalPositiveInput(takeProfitAtr(), "ATR take profit");
+    const trailingAtr = parseOptionalPositiveInput(trailingStopAtr(), "Trailing stop");
+    const trailingActivation = parseOptionalPositiveInput(trailingActivationR(), "Trail activation");
+    const breakeven = parseOptionalPositiveInput(breakevenAtR(), "Breakeven");
+    const timeStop = parseOptionalIntegerInput(timeStopBars(), "Time stop");
     if(!sym){
         setError("Select a symbol.");
         return;
@@ -314,12 +355,26 @@ export default function BackTestConfigForm() {
         setError("Select a prop firm preset."); 
         return;
     }
-    if (stopLoss.error) {
-      setError(stopLoss.error);
+    for (const parsed of [stopLoss, takeProfit, stopLossAtrValue, takeProfitAtrValue, trailingAtr, trailingActivation, breakeven, timeStop]) {
+      if (parsed.error) {
+        setError(parsed.error);
+        return;
+      }
+    }
+    if (stopLoss.value != null && stopLossAtrValue.value != null) {
+      setError("Choose a stop in ticks or ATR, not both.");
       return;
     }
-    if (takeProfit.error) {
-      setError(takeProfit.error);
+    if (takeProfit.value != null && takeProfitAtrValue.value != null) {
+      setError("Choose a take profit in ticks or ATR, not both.");
+      return;
+    }
+    if (trailingActivation.value != null && trailingAtr.value == null) {
+      setError("Trail activation needs a trailing stop distance.");
+      return;
+    }
+    if (breakeven.value != null && stopLoss.value == null && stopLossAtrValue.value == null) {
+      setError("Breakeven needs an initial stop.");
       return;
     }
     
@@ -350,6 +405,13 @@ export default function BackTestConfigForm() {
         slippage_ticks: slippageTicks(),
         stop_loss_ticks: stopLoss.value,
         take_profit_ticks: takeProfit.value,
+        stop_loss_atr: stopLossAtrValue.value,
+        take_profit_atr: takeProfitAtrValue.value,
+        trailing_stop_atr: trailingAtr.value,
+        trailing_activation_r: trailingActivation.value,
+        breakeven_at_r: breakeven.value,
+        time_stop_bars: timeStop.value,
+        exit_at_session_end: exitAtSessionEnd() || undefined,
         execution_mode: executionMode(),
         spread_ticks: spreadTicks(),
         volatile_bar_threshold_ticks: volatileBarThresholdTicks(),
@@ -638,7 +700,10 @@ export default function BackTestConfigForm() {
                 step={0.25}
                 min={0.25}
                 placeholder="Off"
-                onChange={setStopLossTicks}
+                onChange={(raw) => {
+                  setStopLossTicks(raw);
+                  if (raw.trim()) setStopLossAtr("");
+                }}
               />
               <StepperInput
                 label="Take profit ticks (optional)"
@@ -646,13 +711,101 @@ export default function BackTestConfigForm() {
                 step={0.25}
                 min={0.25}
                 placeholder="Off"
-                onChange={setTakeProfitTicks}
+                onChange={(raw) => {
+                  setTakeProfitTicks(raw);
+                  if (raw.trim()) setTakeProfitAtr("");
+                }}
               />
             </div>
 
+            <div class="space-y-3 rounded-sm border border-stone-800 bg-stone-950/50 p-3">
+              <div>
+                <p class="text-xs font-medium uppercase tracking-[0.16em] text-stone-300">
+                  ATR &amp; dynamic exits
+                </p>
+                <p class="mt-1 text-xs text-stone-500">
+                  ATR distances use the strategy's ATR period (default 14). ATR and tick
+                  brackets are alternatives, not add-ons.
+                </p>
+              </div>
+
+              <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                <StepperInput
+                  label="Stop loss (ATR ×)"
+                  value={stopLossAtr()}
+                  step={0.25}
+                  min={0.25}
+                  placeholder="Off"
+                  onChange={(raw) => {
+                    setStopLossAtr(raw);
+                    if (raw.trim()) setStopLossTicks("");
+                  }}
+                />
+                <StepperInput
+                  label="Take profit (ATR ×)"
+                  value={takeProfitAtr()}
+                  step={0.25}
+                  min={0.25}
+                  placeholder="Off"
+                  onChange={(raw) => {
+                    setTakeProfitAtr(raw);
+                    if (raw.trim()) setTakeProfitTicks("");
+                  }}
+                />
+                <StepperInput
+                  label="Trailing stop (ATR ×)"
+                  value={trailingStopAtr()}
+                  step={0.25}
+                  min={0.25}
+                  placeholder="Off"
+                  onChange={setTrailingStopAtr}
+                />
+                <StepperInput
+                  label="Start trailing after (R)"
+                  value={trailingActivationR()}
+                  step={0.25}
+                  min={0.25}
+                  placeholder="Immediate"
+                  onChange={setTrailingActivationR}
+                />
+                <StepperInput
+                  label="Move stop to breakeven at (R)"
+                  value={breakevenAtR()}
+                  step={0.25}
+                  min={0.25}
+                  placeholder="Off"
+                  onChange={setBreakevenAtR}
+                />
+                <StepperInput
+                  label="Time stop (bars)"
+                  value={timeStopBars()}
+                  step={1}
+                  min={1}
+                  placeholder="Off"
+                  onChange={setTimeStopBars}
+                />
+              </div>
+
+              <label class="flex items-start gap-3 rounded-sm border border-stone-800 bg-stone-900/60 px-3 py-2">
+                <input
+                  type="checkbox"
+                  class="mt-0.5 h-4 w-4 rounded border-stone-600 bg-stone-950 text-cyan-500 focus:ring-cyan-500"
+                  checked={exitAtSessionEnd()}
+                  onChange={(e) => setExitAtSessionEnd(e.currentTarget.checked)}
+                />
+                <span>
+                  <span class="block text-sm text-stone-200">Flatten at session close</span>
+                  <span class="block text-xs text-stone-500">
+                    Market-on-close at the last bar of each 18:00 ET futures session. Intraday bars only.
+                  </span>
+                </span>
+              </label>
+            </div>
+
             <p class="text-xs text-stone-500">
-              Brackets are measured from entry in ticks. If one candle tags both the stop and
-              target, I treat it as stop-first so the sim stays conservative.
+              Brackets are measured from entry. If one candle tags both the stop and target,
+              I treat it as stop-first so the sim stays conservative. Trailing and breakeven
+              levels update after the bar closes and apply on the next bar.
             </p>
             <Show when={executionMode() === "synthetic_quotes"}>
               <p class="text-xs text-stone-500">
