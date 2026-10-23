@@ -198,7 +198,7 @@ function computePnl(
     side === "buy"
       ? (exitPrice - entryPrice) * positionSize * tickValue
       : (entryPrice - exitPrice) * positionSize * tickValue;
-  return round(raw - commission);
+  return round(raw - commission * positionSize);
 }
 
 function emptyMetrics(): ReplayMetrics {
@@ -524,7 +524,7 @@ export function simulateReplaySession(args: {
       exit_price: exitPrice,
       pnl,
       status: "closed",
-      commission,
+      commission: round(commission * position.quantity),
     });
     tradeId += 1;
     position = null;

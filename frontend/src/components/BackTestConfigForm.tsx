@@ -204,6 +204,10 @@ export default function BackTestConfigForm() {
   const [startDate, setStartDate] = createSignal("");
   const [endDate, setEndDate] = createSignal("");
   const [slippageTicks, setSlippageTicks] = createSignal(1);
+  const [positionSize, setPositionSize] = createSignal("1");
+  const [sizingMode, setSizingMode] = createSignal<"fixed" | "risk_percent">("fixed");
+  const [riskPerTradePct, setRiskPerTradePct] = createSignal("");
+  const [maxPositionSize, setMaxPositionSize] = createSignal("");
   const [stopLossTicks, setStopLossTicks] = createSignal("");
   const [takeProfitTicks, setTakeProfitTicks] = createSignal("");
   const [stopLossAtr, setStopLossAtr] = createSignal("");
@@ -233,6 +237,9 @@ export default function BackTestConfigForm() {
     ["Strategy", selectedStrategy().label],
     ["Preset", preset()?.name ?? "Choose a challenge"],
     ["Execution", executionModeLabel(executionMode())],
+    ["Sizing", sizingMode() === "risk_percent"
+      ? `Risk ${riskPerTradePct().trim() || "?"}%${maxPositionSize().trim() ? ` / max ${maxPositionSize().trim()}` : ""}`
+      : `${positionSize().trim() || "?"} contract${positionSize().trim() === "1" ? "" : "s"}`],
     ["Exits", formatBracketSummary(
       stopLossTicks(),
       takeProfitTicks(),
@@ -347,6 +354,9 @@ export default function BackTestConfigForm() {
     const trailingActivation = parseOptionalPositiveInput(trailingActivationR(), "Trail activation");
     const breakeven = parseOptionalPositiveInput(breakevenAtR(), "Breakeven");
     const timeStop = parseOptionalIntegerInput(timeStopBars(), "Time stop");
+    const positionSizeValue = parseOptionalIntegerInput(positionSize(), "Contracts");
+    const riskPct = parseOptionalPositiveInput(riskPerTradePct(), "Risk per trade");
+    const maxSize = parseOptionalIntegerInput(maxPositionSize(), "Max contracts");
     if(!sym){
         setError("Select a symbol.");
         return;
@@ -355,9 +365,36 @@ export default function BackTestConfigForm() {
         setError("Select a prop firm preset."); 
         return;
     }
-    for (const parsed of [stopLoss, takeProfit, stopLossAtrValue, takeProfitAtrValue, trailingAtr, trailingActivation, breakeven, timeStop]) {
+    const fieldsToValidate = [
+      stopLoss, takeProfit, stopLossAtrValue, takeProfitAtrValue,
+      trailingAtr, trailingActivation, breakeven, timeStop,
+    ];
+    if (sizingMode() === "fixed") {
+      fieldsToValidate.push(positionSizeValue);
+    } else {
+      fieldsToValidate.push(riskPct, maxSize);
+    }
+    for (const parsed of fieldsToValidate) {
       if (parsed.error) {
         setError(parsed.error);
+        return;
+      }
+    }
+    if (sizingMode() === "fixed" && positionSizeValue.value == null) {
+      setError("Contracts is required for fixed sizing.");
+      return;
+    }
+    if (sizingMode() === "risk_percent") {
+      if (riskPct.value == null) {
+        setError("Risk per trade is required for risk-based sizing.");
+        return;
+      }
+      if (riskPct.value > 100) {
+        setError("Risk per trade must be 100% or less.");
+        return;
+      }
+      if (stopLoss.value == null && stopLossAtrValue.value == null) {
+        setError("Risk-based sizing needs an initial stop loss.");
         return;
       }
     }
@@ -398,7 +435,10 @@ export default function BackTestConfigForm() {
         start_date: startDate() || undefined,
         end_date: endDate() || undefined,
         initial_balance: pre.account_size,
-        position_size: 1,
+        position_size: sizingMode() === "fixed" ? positionSizeValue.value! : 1,
+        sizing_mode: sizingMode(),
+        risk_per_trade_pct: sizingMode() === "risk_percent" ? riskPct.value : undefined,
+        max_position_size: sizingMode() === "risk_percent" ? maxSize.value : undefined,
         commission: 5,
         tick_size: sym.tick_size,
         tick_value: sym.tick_value,
@@ -631,9 +671,58 @@ export default function BackTestConfigForm() {
                 value={symbol() ? `$${symbol()!.tick_value.toFixed(2)}` : "—"}
                 mono
               />
-              <StatCard label="Commission" value="$5.00" mono />
+              <StatCard label="Commission" value="$5.00 / contract" mono />
               <StatCard label="Fill model" value={executionModeLabel(executionMode())} />
             </div>
+
+            <div class="grid gap-2 md:grid-cols-2">
+              <div>
+                <label class={label}>Position sizing</label>
+                <select
+                  class={field}
+                  value={sizingMode()}
+                  onChange={(e) => setSizingMode(e.currentTarget.value as "fixed" | "risk_percent")}
+                >
+                  <option value="fixed">Fixed contracts</option>
+                  <option value="risk_percent">Risk % of equity</option>
+                </select>
+              </div>
+              <Show when={sizingMode() === "fixed"}>
+                <StepperInput
+                  label="Contracts"
+                  value={positionSize()}
+                  step={1}
+                  min={1}
+                  onChange={(raw) => setPositionSize(raw)}
+                />
+              </Show>
+            </div>
+
+            <Show when={sizingMode() === "risk_percent"}>
+              <div class="grid gap-2 md:grid-cols-2">
+                <StepperInput
+                  label="Risk per trade (%)"
+                  value={riskPerTradePct()}
+                  step={0.25}
+                  min={0.01}
+                  placeholder="e.g. 1"
+                  onChange={(raw) => setRiskPerTradePct(raw)}
+                />
+                <StepperInput
+                  label="Max contracts (optional)"
+                  value={maxPositionSize()}
+                  step={1}
+                  min={1}
+                  placeholder="No cap"
+                  onChange={(raw) => setMaxPositionSize(raw)}
+                />
+              </div>
+              <p class="text-xs text-stone-500">
+                Rounds down to whole contracts and takes at least one, so a signal is never
+                silently skipped. Requires a stop loss in Exits; entries above the target risk
+                are flagged on the trade.
+              </p>
+            </Show>
 
             <div>
               <label class={label}>Execution mode</label>

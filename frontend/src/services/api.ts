@@ -131,6 +131,10 @@ export interface Trade {
   pnl: number;
   status: string;
   commission: number;
+  initial_risk?: number | null;
+  risk_budget?: number | null;
+  r_multiple?: number | null;
+  risk_exceeded?: boolean;
   tick_size?: number | null;
   tick_value?: number | null;
   slippage_ticks?: number | null;
@@ -150,6 +154,10 @@ export interface PerformanceMetrics {
   sharpe_ratio: number;
   sortino_ratio: number;
   sharpe_basis?: "daily" | "trade" | "insufficient" | "legacy";
+  avg_r_multiple?: number | null;
+  total_r?: number | null;
+  r_profit_factor?: number | null;
+  risk_budget_exceeded_trades?: number;
   avg_trade_duration: number;
   best_trade: number;
   worst_trade: number;
@@ -188,6 +196,9 @@ export interface BacktestCreateRequest {
   end_date?: string;
   initial_balance: number;
   position_size: number;
+  sizing_mode?: "fixed" | "risk_percent";
+  risk_per_trade_pct?: number;
+  max_position_size?: number;
   commission: number;
   tick_size: number;
   tick_value: number;
@@ -225,6 +236,9 @@ export interface BacktestResult {
   run_config: {
     initial_balance: number;
     position_size: number;
+    sizing_mode?: "fixed" | "risk_percent";
+    risk_per_trade_pct?: number | null;
+    max_position_size?: number | null;
     commission: number;
     tick_size: number;
     tick_value: number;
@@ -361,6 +375,9 @@ export interface BacktestRobustnessResult {
   run_config: {
     initial_balance: number;
     position_size: number;
+    sizing_mode?: "fixed" | "risk_percent";
+    risk_per_trade_pct?: number | null;
+    max_position_size?: number | null;
     commission: number;
     tick_size: number;
     tick_value: number;
@@ -572,6 +589,9 @@ export interface ExperimentCreateRequest {
   prop_firm_rules: PropFirmRules;
   initial_balance: number;
   position_size: number;
+  sizing_mode?: "fixed" | "risk_percent";
+  risk_per_trade_pct?: number;
+  max_position_size?: number;
   commission: number;
   slippage_ticks: number;
   execution_mode: "bar" | "synthetic_quotes";

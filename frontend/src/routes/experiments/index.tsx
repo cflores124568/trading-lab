@@ -792,8 +792,8 @@ export default function ExperimentsIndexPage() {
     if (initialBalance() <= 0) {
       return "Initial balance has to be above zero.";
     }
-    if (positionSize() <= 0) {
-      return "Position size has to be above zero.";
+    if (!Number.isInteger(positionSize()) || positionSize() < 1) {
+      return "Position size has to be a whole number of contracts (1 or more).";
     }
     if (commission() < 0) {
       return "Commission can't be negative.";
@@ -1498,18 +1498,18 @@ export default function ExperimentsIndexPage() {
                 />
               </div>
               <div>
-                <label for="experiment-field-6" class={label}>Position size</label>
+                <label for="experiment-field-6" class={label}>Position size (contracts)</label>
                 <input id="experiment-field-6"
                   type="number"
-                  min="0.01"
-                  step="0.01"
+                  min="1"
+                  step="1"
                   class={`${field} app-data`}
                   value={positionSize()}
                   onInput={(event) => setPositionSize(Number(event.currentTarget.value) || 0)}
                 />
               </div>
               <div>
-                <label for="experiment-field-7" class={label}>Commission</label>
+                <label for="experiment-field-7" class={label}>Commission / contract</label>
                 <input id="experiment-field-7"
                   type="number"
                   min="0"

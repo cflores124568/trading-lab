@@ -914,10 +914,13 @@ export default function ReplayLabPage() {
       endDate: end,
     });
     const sourceMeta = buildSourceBacktest(source);
-    const commission = source.trades[0]?.commission ?? 5;
+    const commission = source.run_config?.commission ?? 5;
     const tickValue =
       tickValueBySymbol[replaySymbol] ?? resolvedSymbol.tick_value ?? 1;
-    const sourcePositionSize = source.run_config?.position_size ?? 1;
+    const sourcePositionSize = Math.max(
+      1,
+      Math.floor(source.run_config?.position_size ?? 1),
+    );
     const executionDefaults = defaultExecutionConfigForSymbol(replaySymbol);
 
     batch(() => {
@@ -1643,8 +1646,8 @@ export default function ReplayLabPage() {
       setBannerError("Start date must be before end date.");
       return;
     }
-    if (!Number.isFinite(positionSize()) || positionSize() <= 0) {
-      setBannerError("Contracts needs to be a real positive number.");
+    if (!Number.isInteger(positionSize()) || positionSize() < 1) {
+      setBannerError("Contracts must be a whole number (1 or more).");
       return;
     }
 
@@ -2014,7 +2017,7 @@ export default function ReplayLabPage() {
                 disabled={!canEditSetup()}
                 onInput={(event) => {
                   const next = Number(event.currentTarget.value);
-                  setPositionSize(Number.isFinite(next) && next > 0 ? next : 1);
+                  setPositionSize(Number.isInteger(next) && next >= 1 ? next : 1);
                 }}
               />
             </div>
@@ -2231,7 +2234,7 @@ export default function ReplayLabPage() {
                           : "Trading a historical window forward-only."}
                       </p>
                       <p class="text-xs text-stone-500">
-                        <span class="app-data text-stone-300">${config().commission.toFixed(2)}</span> commission
+                        <span class="app-data text-stone-300">${config().commission.toFixed(2)}</span> commission / contract
                         <span class="mx-2 text-stone-700">·</span>
                         <span class="app-data text-stone-300">${config().tickValue.toFixed(2)}</span> tick value
                         <span class="mx-2 text-stone-700">·</span>

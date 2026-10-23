@@ -89,6 +89,21 @@ export default function BacktestComparePage() {
     },
     { label: "Sharpe Ratio", getValue: (bt: CompareBacktest) => bt.metrics.sharpe_ratio.toFixed(2) },
     { label: "Profit Factor", getValue: (bt: CompareBacktest) => formatProfitFactor(bt.metrics.profit_factor) },
+    {
+      label: "Avg R",
+      getValue: (bt: CompareBacktest) =>
+        bt.metrics.avg_r_multiple == null ? "—" : bt.metrics.avg_r_multiple.toFixed(2),
+    },
+    {
+      label: "Total R",
+      getValue: (bt: CompareBacktest) =>
+        bt.metrics.total_r == null ? "—" : bt.metrics.total_r.toFixed(2),
+    },
+    {
+      label: "R Profit Factor",
+      getValue: (bt: CompareBacktest) =>
+        bt.metrics.r_profit_factor == null ? "—" : formatProfitFactor(bt.metrics.r_profit_factor),
+    },
     { label: "Total Trades", getValue: (bt: CompareBacktest) => String(bt.metrics.total_trades ?? "—") },
     {
       label: "Best Trade",

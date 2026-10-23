@@ -231,12 +231,15 @@ function formatRunConfigSummary(runConfig: BacktestRobustnessResult["run_config"
   const positionSize = Number.isInteger(runConfig.position_size)
     ? runConfig.position_size.toFixed(0)
     : runConfig.position_size.toFixed(2);
+  const sizing = runConfig.sizing_mode === "risk_percent"
+    ? `Risk ${runConfig.risk_per_trade_pct ?? "?"}%${runConfig.max_position_size ? ` (max ${runConfig.max_position_size})` : ""}`
+    : `${positionSize} contract${positionSize === "1" ? "" : "s"}`;
 
   return [
     `Exec ${formatExecutionMode(runConfig.execution_mode)}`,
     `Balance ${formatCurrency(runConfig.initial_balance)}`,
-    `Size ${positionSize}`,
-    `Comm ${formatCurrency(runConfig.commission)}`,
+    `Size ${sizing}`,
+    `Comm ${formatCurrency(runConfig.commission)}/contract`,
     `Tick ${runConfig.tick_size} / ${formatCurrency(runConfig.tick_value)}`,
     `Slip ${runConfig.slippage_ticks}t`,
     runConfig.execution_mode === "synthetic_quotes"
@@ -866,6 +869,7 @@ function TradesTable(props: {
             <th class="p-3 text-right">Entry $</th>
             <th class="p-3 text-right">Exit $</th>
             <th class="p-3 text-right">PnL</th>
+            <th class="p-3 text-right">R</th>
           </tr>
         </thead>
         <tbody>
@@ -873,7 +877,7 @@ function TradesTable(props: {
             when={props.trades.length > 0}
             fallback={
               <tr class="border-t border-stone-800">
-                <td class="p-4 text-stone-500" colSpan={9}>
+                <td class="p-4 text-stone-500" colSpan={10}>
                   {props.emptyMessage ?? "No trades yet."}
                 </td>
               </tr>
@@ -902,6 +906,21 @@ function TradesTable(props: {
                     }`}
                   >
                     {formatCurrency(trade.pnl, { signed: true })}
+                  </td>
+                  <td
+                    class={`p-3 text-right font-mono font-semibold ${
+                      trade.r_multiple == null
+                        ? "text-stone-500"
+                        : trade.r_multiple >= 0 ? "text-green-400" : "text-red-400"
+                    }`}
+                    title={trade.initial_risk != null
+                      ? `Initial risk ${formatCurrency(trade.initial_risk)}${trade.risk_exceeded ? " — above target risk budget" : ""}`
+                      : undefined}
+                  >
+                    {trade.r_multiple == null ? "—" : trade.r_multiple.toFixed(2)}
+                    <Show when={trade.risk_exceeded}>
+                      <span class="ml-1 text-amber-300" aria-label="Risk budget exceeded">!</span>
+                    </Show>
                   </td>
                 </tr>
               )}
@@ -1395,6 +1414,8 @@ export default function BacktestDetail() {
             : "";
     const riskValue = (value: number) =>
       riskBasis === "insufficient" ? "—" : value.toFixed(2);
+    const rValue = (value?: number | null) =>
+      value == null ? "—" : value.toFixed(2);
 
     return [
       {
@@ -1404,6 +1425,27 @@ export default function BacktestDetail() {
       },
       { label: "Win Rate", value: formatPercent(backtest.metrics.win_rate) },
       { label: "Profit Factor", value: formatRatio(backtest.metrics.profit_factor) },
+      {
+        label: "Avg R",
+        value: rValue(backtest.metrics.avg_r_multiple),
+        tone: backtest.metrics.avg_r_multiple == null
+          ? undefined
+          : backtest.metrics.avg_r_multiple >= 0 ? "good" : "bad",
+        hint: "Average trade result in units of initial risk",
+      },
+      {
+        label: "Total R",
+        value: rValue(backtest.metrics.total_r),
+        tone: backtest.metrics.total_r == null
+          ? undefined
+          : backtest.metrics.total_r >= 0 ? "good" : "bad",
+      },
+      {
+        label: "R Profit Factor",
+        value: backtest.metrics.r_profit_factor == null
+          ? "—"
+          : formatRatio(backtest.metrics.r_profit_factor),
+      },
       { label: `Sharpe Ratio${riskBasisSuffix}`, value: riskValue(backtest.metrics.sharpe_ratio) },
       { label: `Sortino Ratio${riskBasisSuffix}`, value: riskValue(backtest.metrics.sortino_ratio) },
       { label: "Max Drawdown", value: formatPercent(backtest.metrics.max_drawdown, 2) },
@@ -1419,8 +1461,16 @@ export default function BacktestDetail() {
       {
         label: "Contracts Traded",
         value: formatCount(summary.total_contracts),
-        hint: "Current runs are fixed-size trades",
+        hint: "Whole contracts; risk sizing can vary the size by trade",
       },
+      ...(backtest.metrics.risk_budget_exceeded_trades
+        ? [{
+            label: "Risk Budget Warnings",
+            value: formatCount(backtest.metrics.risk_budget_exceeded_trades),
+            tone: "bad" as const,
+            hint: "Entries where the one-contract minimum exceeded the target risk",
+          }]
+        : []),
     ] as DashboardCard[];
   });
 
@@ -1661,7 +1711,7 @@ export default function BacktestDetail() {
                       </div>
                       <div class="grid gap-3 sm:grid-cols-2">
                         <div class="rounded-md border border-stone-800 bg-stone-950/60 px-4 py-3">
-                          <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Commission</p>
+                          <p class="text-xs uppercase tracking-[0.18em] text-stone-500">Commission / contract</p>
                           <p class="mt-2 font-mono text-lg font-semibold text-stone-100">
                             ${commission().toFixed(2)}
                           </p>

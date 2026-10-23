@@ -182,6 +182,11 @@ export default function AlphaLabCampaignPage() {
       setError("The explicit trial budget must allow at least one plan.");
       return;
     }
+    const size = Number(positionSize());
+    if (!Number.isInteger(size) || size < 1) {
+      setError("Position size must be a whole number of contracts (1 or more).");
+      return;
+    }
     setBusy(true);
     try {
       await queueResearchCampaign(params.id, {
@@ -442,8 +447,8 @@ export default function AlphaLabCampaignPage() {
                     <label><span class={labelClass}>Trial budget</span><input type="number" min="1" max="10000" class={inputClass} value={trialBudget()} onInput={(event) => setTrialBudget(event.currentTarget.value)} /></label>
                     <label><span class={labelClass}>Wall-clock budget (minutes)</span><input type="number" min="1" max="10080" class={inputClass} value={wallMinutes()} onInput={(event) => setWallMinutes(event.currentTarget.value)} /></label>
                     <label><span class={labelClass}>Initial balance</span><input type="number" min="1" class={inputClass} value={initialBalance()} onInput={(event) => setInitialBalance(event.currentTarget.value)} /></label>
-                    <label><span class={labelClass}>Position size</span><input type="number" min="0.0001" step="0.0001" class={inputClass} value={positionSize()} onInput={(event) => setPositionSize(event.currentTarget.value)} /></label>
-                    <label><span class={labelClass}>Commission</span><input type="number" min="0" step="0.01" class={inputClass} value={commission()} onInput={(event) => setCommission(event.currentTarget.value)} /></label>
+                    <label><span class={labelClass}>Position size (contracts)</span><input type="number" min="1" step="1" class={inputClass} value={positionSize()} onInput={(event) => setPositionSize(event.currentTarget.value)} /></label>
+                    <label><span class={labelClass}>Commission / contract</span><input type="number" min="0" step="0.01" class={inputClass} value={commission()} onInput={(event) => setCommission(event.currentTarget.value)} /></label>
                     <label><span class={labelClass}>Slippage ticks</span><input type="number" min="0" step="0.1" class={inputClass} value={slippageTicks()} onInput={(event) => setSlippageTicks(event.currentTarget.value)} /></label>
                     <label><span class={labelClass}>Tick size</span><input type="number" min="0.000001" step="0.01" class={inputClass} value={tickSize()} onInput={(event) => setTickSize(event.currentTarget.value)} /></label>
                     <label><span class={labelClass}>Tick value</span><input type="number" min="0.000001" step="0.01" class={inputClass} value={tickValue()} onInput={(event) => setTickValue(event.currentTarget.value)} /></label>
