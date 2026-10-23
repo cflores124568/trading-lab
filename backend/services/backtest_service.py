@@ -105,7 +105,7 @@ def complete_backtest_result(
         initial_balance=request.initial_balance,
         equity_timestamps=equity_timestamps,
     )
-    trades, equity_curve, prop_eval = _stop_backtest_at_first_breach(
+    trades, equity_curve, equity_timestamps, prop_eval = _stop_backtest_at_first_breach(
         trades=trades,
         equity_curve=equity_curve,
         equity_timestamps=equity_timestamps,
@@ -113,7 +113,12 @@ def complete_backtest_result(
         prop_rules=prop_rules,
         initial_balance=request.initial_balance,
     )
-    metrics = calculate_metrics(trades, equity_curve, request.initial_balance)
+    metrics = calculate_metrics(
+        trades,
+        equity_curve,
+        request.initial_balance,
+        equity_timestamps=equity_timestamps,
+    )
 
     return to_plain_data({
         "backtest_id": backtest_id or str(uuid.uuid4()),
@@ -153,13 +158,15 @@ def _stop_backtest_at_first_breach(
     prop_eval: dict,
     prop_rules: dict,
     initial_balance: float,
-) -> tuple[list[dict], list[float], dict]:
+) -> tuple[list[dict], list[float], list, dict]:
     """Freeze the saved run at the first prop breach instead of drifting past it.
 
     I still use the full run once to discover the first breach honestly. After
     that I slice the equity path there, drop any later closed trades from the
     saved report, and recalc prop-eval on the stopped view so the result shows
-    what the account looked like when it actually failed.
+    what the account looked like when it actually failed. The matching
+    timestamps come back too, so metrics are computed on the same stopped path
+    instead of the full dataset.
     """
     stopped = _build_stopped_run(
         trades=trades,
@@ -169,7 +176,7 @@ def _stop_backtest_at_first_breach(
         initial_balance=initial_balance,
     )
     if stopped is None:
-        return trades, equity_curve, prop_eval
+        return trades, equity_curve, equity_timestamps, prop_eval
 
     stopped_prop_eval = evaluate_prop_firm(
         rules=prop_rules,
@@ -179,7 +186,12 @@ def _stop_backtest_at_first_breach(
         equity_timestamps=stopped["equity_timestamps"],
     )
     stopped_prop_eval["details"].update(stopped["snapshot"])
-    return stopped["trades"], stopped["equity_curve"], stopped_prop_eval
+    return (
+        stopped["trades"],
+        stopped["equity_curve"],
+        stopped["equity_timestamps"],
+        stopped_prop_eval,
+    )
 
 
 def _build_stopped_run(

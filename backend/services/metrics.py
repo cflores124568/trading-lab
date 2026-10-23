@@ -1,7 +1,18 @@
 import numpy as np
-from typing import List
+import pandas as pd
+from typing import List, Optional, Sequence
 
-def calculate_metrics(trades: List[dict], equity_curve: List[float], initial_balance: float) -> dict:
+
+ANNUALIZATION_DAYS = 252
+
+
+def calculate_metrics(
+    trades: List[dict],
+    equity_curve: List[float],
+    initial_balance: float,
+    *,
+    equity_timestamps: Optional[Sequence] = None,
+) -> dict:
     """Compute the saved stats from closed trades and the visible equity path.
 
     Most runs end with every trade closed, so trade PnL and end equity tell the
@@ -9,13 +20,42 @@ def calculate_metrics(trades: List[dict], equity_curve: List[float], initial_bal
     still want `total_pnl` and drawdown to reflect that frozen equity snapshot
     instead of pretending nothing happened just because the trade never got an
     exit fill.
+
+    Risk ratios use end-of-day equity returns whenever timestamps are
+    available. That matters because a strategy can take ten trades in one
+    session; annualizing a per-trade series with sqrt(252) treats each of those
+    ten trades as its own day and inflates the result. When there are no
+    timestamps (for example a live paper session with only a marked equity
+    list), the fallback is a per-trade ratio and `sharpe_basis` says so
+    explicitly.
     """
     final_balance = float(equity_curve[-1]) if equity_curve else float(initial_balance)
     total_pnl = final_balance - float(initial_balance)
     max_dd = _max_drawdown(equity_curve)
 
+    daily_returns = _daily_equity_returns(equity_curve, equity_timestamps)
+    if len(daily_returns) >= 2:
+        sharpe = _annualized_sharpe(daily_returns)
+        sortino = _annualized_sortino(daily_returns)
+        sharpe_basis = "daily"
+    elif len(trades) >= 2:
+        pnls = np.array([t["pnl"] for t in trades], dtype=float)
+        sharpe = _trade_sharpe(pnls)
+        sortino = _trade_sortino(pnls)
+        sharpe_basis = "trade"
+    else:
+        sharpe = 0.0
+        sortino = 0.0
+        sharpe_basis = "insufficient"
+
     if not trades:
-        return _empty_metrics(total_pnl=total_pnl, max_drawdown=max_dd)
+        return _empty_metrics(
+            total_pnl=total_pnl,
+            max_drawdown=max_dd,
+            sharpe=sharpe,
+            sortino=sortino,
+            sharpe_basis=sharpe_basis,
+        )
 
     pnls = np.array([t["pnl"] for t in trades], dtype=float)
     total_trades   = len(trades)
@@ -32,8 +72,6 @@ def calculate_metrics(trades: List[dict], equity_curve: List[float], initial_bal
         profit_factor = round(gross_wins, 4) if gross_wins > 0 else 0.0
     else:
         profit_factor = round(gross_wins / gross_losses, 4)
-    sharpe  = _sharpe_ratio(pnls)
-    sortino = _sortino_ratio(pnls)
     avg_duration = _avg_duration_minutes(trades)
 
     return {
@@ -47,18 +85,27 @@ def calculate_metrics(trades: List[dict], equity_curve: List[float], initial_bal
         "max_drawdown":       round(max_dd, 4),
         "sharpe_ratio":       sharpe,
         "sortino_ratio":      sortino,
+        "sharpe_basis":       sharpe_basis,
         "avg_trade_duration": round(avg_duration, 2),
         "best_trade":         round(float(np.max(pnls)), 2),
         "worst_trade":        round(float(np.min(pnls)), 2),
     }
 
 #Helpers
-def _empty_metrics(*, total_pnl: float = 0.0, max_drawdown: float = 0.0) -> dict:
+def _empty_metrics(
+    *,
+    total_pnl: float = 0.0,
+    max_drawdown: float = 0.0,
+    sharpe: float = 0.0,
+    sortino: float = 0.0,
+    sharpe_basis: str = "insufficient",
+) -> dict:
     return {
         "total_trades": 0, "winning_trades": 0, "losing_trades": 0,
         "win_rate": 0.0, "total_pnl": round(total_pnl, 2), "average_pnl": 0.0,
-        "profit_factor": 0.0, "max_drawdown": round(max_drawdown, 4), "sharpe_ratio": 0.0,
-        "sortino_ratio": 0.0, "avg_trade_duration": 0.0,
+        "profit_factor": 0.0, "max_drawdown": round(max_drawdown, 4),
+        "sharpe_ratio": sharpe, "sortino_ratio": sortino,
+        "sharpe_basis": sharpe_basis, "avg_trade_duration": 0.0,
         "best_trade": 0.0, "worst_trade": 0.0,
     }
 
@@ -70,24 +117,90 @@ def _max_drawdown(equity_curve: List[float]) -> float:
     dd   = (peak - eq) / peak
     return float(np.max(dd))
 
-def _sharpe_ratio(pnls: np.ndarray, risk_free: float = 0.0) -> float:
-    if len(pnls) < 2:
+def _daily_equity_returns(
+    equity_curve: List[float],
+    equity_timestamps: Optional[Sequence],
+) -> np.ndarray:
+    """Collapse the equity path to one point per calendar day, then diff it."""
+    if (
+        equity_timestamps is None
+        or len(equity_timestamps) == 0
+        or len(equity_timestamps) != len(equity_curve)
+        or len(equity_curve) < 2
+    ):
+        return np.array([], dtype=float)
+
+    try:
+        index = pd.to_datetime(list(equity_timestamps), errors="coerce")
+    except (TypeError, ValueError, OverflowError):
+        return np.array([], dtype=float)
+
+    if not isinstance(index, pd.DatetimeIndex) or index.isna().any():
+        return np.array([], dtype=float)
+
+    # Aware timestamps are grouped by New York trading date so an evening UTC
+    # bar does not land on the wrong day. Naive timestamps are taken as-is,
+    # matching the rest of the backend's "naive means UTC" convention.
+    if index.tz is not None:
+        index = index.tz_convert("America/New_York")
+
+    frame = pd.DataFrame(
+        {"equity": np.asarray(equity_curve, dtype=float)},
+        index=index,
+    )
+    end_of_day = frame.groupby(frame.index.date)["equity"].last().sort_index()
+    values = end_of_day.to_numpy(dtype=float)
+
+    if len(values) < 2:
+        return np.array([], dtype=float)
+
+    previous = values[:-1]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        returns = np.where(previous != 0, (values[1:] - previous) / previous, np.nan)
+    return returns[np.isfinite(returns)]
+
+def _annualized_sharpe(returns: np.ndarray) -> float:
+    if len(returns) < 2:
         return 0.0
-    excess = pnls - risk_free
-    std    = np.std(excess, ddof=1)
+    std = np.std(returns, ddof=1)
     if std == 0:
         return 0.0
-    return round(float(np.mean(excess) / std * np.sqrt(252)), 4)
+    return round(float(np.mean(returns) / std * np.sqrt(ANNUALIZATION_DAYS)), 4)
 
-def _sortino_ratio(pnls: np.ndarray, risk_free: float = 0.0) -> float:
-    if len(pnls) < 2:
+def _annualized_sortino(returns: np.ndarray) -> float:
+    if len(returns) < 2:
         return 0.0
-    excess      = pnls - risk_free
-    downside    = excess[excess < 0]
-    down_std    = np.std(downside, ddof=1) if len(downside) > 1 else 0.0
+    # Downside deviation across every observation; zero for returns that never
+    # fall below the target. That ratio is undefined, so report 0.0 rather than
+    # sending Infinity through JSON.
+    downside = np.minimum(returns, 0.0)
+    down_std = float(np.sqrt(np.mean(np.square(downside))))
     if down_std == 0:
         return 0.0
-    return round(float(np.mean(excess) / down_std * np.sqrt(252)), 4)
+    return round(float(np.mean(returns) / down_std * np.sqrt(ANNUALIZATION_DAYS)), 4)
+
+def _trade_sharpe(pnls: np.ndarray) -> float:
+    """Fallback ratio, deliberately not annualized.
+
+    Without timestamps there is no honest way to know how many trades make a
+    year, so this stays a per-trade signal-to-noise number and the caller
+    labels it as such.
+    """
+    if len(pnls) < 2:
+        return 0.0
+    std = np.std(pnls, ddof=1)
+    if std == 0:
+        return 0.0
+    return round(float(np.mean(pnls) / std), 4)
+
+def _trade_sortino(pnls: np.ndarray) -> float:
+    if len(pnls) < 2:
+        return 0.0
+    downside = np.minimum(pnls, 0.0)
+    down_std = float(np.sqrt(np.mean(np.square(downside))))
+    if down_std == 0:
+        return 0.0
+    return round(float(np.mean(pnls) / down_std), 4)
 
 def _avg_duration_minutes(trades: List[dict]) -> float:
     from datetime import datetime

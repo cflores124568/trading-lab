@@ -2465,6 +2465,17 @@
             ],
             "title": "Profit Factor"
           },
+          "sharpe_basis": {
+            "default": "legacy",
+            "enum": [
+              "daily",
+              "trade",
+              "insufficient",
+              "legacy"
+            ],
+            "title": "Sharpe Basis",
+            "type": "string"
+          },
           "sharpe_ratio": {
             "title": "Sharpe Ratio",
             "type": "number"

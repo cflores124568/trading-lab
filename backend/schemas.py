@@ -100,6 +100,7 @@ class PerformanceMetrics(BaseModel):
     max_drawdown: float
     sharpe_ratio: float
     sortino_ratio: float
+    sharpe_basis: Literal["daily", "trade", "insufficient", "legacy"] = "legacy"
     avg_trade_duration: float
     best_trade: float
     worst_trade: float
