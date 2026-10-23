@@ -20,10 +20,11 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from schemas import BacktestRequest, Strategy
+from schemas import BacktestRequest, ExperimentCreate, Strategy
 from services import experiment_service
 from services.backtest_service import build_backtest_result
-from services.experiment_service import run_experiment
+from services.experiment_repo import _row_to_experiment
+from services.experiment_service import create_experiment_record, run_experiment
 
 TICK = 0.25
 N_BARS = 2000
@@ -72,6 +73,63 @@ def _experiment() -> dict:
 
 
 class ExperimentBatchTests(unittest.TestCase):
+    def test_experiment_create_preserves_risk_and_exit_fields(self):
+        request = ExperimentCreate(
+            name="risk sizing persistence",
+            symbols=["MES"],
+            intervals=["1m"],
+            strategy_type="ema_crossover",
+            parameter_space={"fast_period": [5], "slow_period": [15]},
+            prop_firm_rules={"name": "Test Firm"},
+            initial_balance=50_000,
+            position_size=1,
+            sizing_mode="risk_percent",
+            risk_per_trade_pct=1.5,
+            max_position_size=3,
+            stop_loss_ticks=8,
+            take_profit_ticks=16,
+            trailing_stop_ticks=4,
+            trailing_activation_r=1.0,
+            breakeven_at_r=1.0,
+            time_stop_bars=10,
+            exit_at_session_end=True,
+            commission=2.5,
+        )
+
+        with patch.object(experiment_service, "_db_required", return_value=False):
+            created = create_experiment_record(request)
+
+        for key in (
+            "sizing_mode",
+            "risk_per_trade_pct",
+            "max_position_size",
+            "stop_loss_ticks",
+            "take_profit_ticks",
+            "trailing_stop_ticks",
+            "trailing_activation_r",
+            "breakeven_at_r",
+            "time_stop_bars",
+            "exit_at_session_end",
+        ):
+            self.assertEqual(created[key], getattr(request, key))
+
+        # The DB row mapper has to round-trip those same fields, including
+        # null optional columns coming back as pandas NaN.
+        hydrated = _row_to_experiment(created)
+        for key in (
+            "sizing_mode",
+            "risk_per_trade_pct",
+            "max_position_size",
+            "stop_loss_ticks",
+            "take_profit_ticks",
+            "trailing_stop_ticks",
+            "trailing_activation_r",
+            "breakeven_at_r",
+            "time_stop_bars",
+            "exit_at_session_end",
+        ):
+            self.assertEqual(hydrated[key], created[key])
+
     def _run_patched(self, experiment: dict):
         dataset = _dataset()
         dataset_info = {"dataset_id": "ds-batch-test", "tick_size": TICK, "tick_value": 1.25}

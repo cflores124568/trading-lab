@@ -41,6 +41,16 @@ def _ensure_experiments_schema(conn) -> None:
                     sizing_mode      TEXT NOT NULL DEFAULT 'fixed',
                     risk_per_trade_pct DOUBLE PRECISION,
                     max_position_size INTEGER,
+                    stop_loss_ticks  DOUBLE PRECISION,
+                    take_profit_ticks DOUBLE PRECISION,
+                    stop_loss_atr    DOUBLE PRECISION,
+                    take_profit_atr  DOUBLE PRECISION,
+                    trailing_stop_atr DOUBLE PRECISION,
+                    trailing_stop_ticks DOUBLE PRECISION,
+                    trailing_activation_r DOUBLE PRECISION,
+                    breakeven_at_r   DOUBLE PRECISION,
+                    time_stop_bars   INTEGER,
+                    exit_at_session_end BOOLEAN NOT NULL DEFAULT FALSE,
                     commission       DOUBLE PRECISION NOT NULL DEFAULT 5,
                     slippage_ticks   DOUBLE PRECISION NOT NULL DEFAULT 1,
                     execution_mode   TEXT NOT NULL DEFAULT 'bar',
@@ -103,6 +113,36 @@ def _ensure_experiments_schema(conn) -> None:
                 "ALTER TABLE experiments ADD COLUMN IF NOT EXISTS max_position_size INTEGER"
             )
             cur.execute(
+                "ALTER TABLE experiments ADD COLUMN IF NOT EXISTS stop_loss_ticks DOUBLE PRECISION"
+            )
+            cur.execute(
+                "ALTER TABLE experiments ADD COLUMN IF NOT EXISTS take_profit_ticks DOUBLE PRECISION"
+            )
+            cur.execute(
+                "ALTER TABLE experiments ADD COLUMN IF NOT EXISTS stop_loss_atr DOUBLE PRECISION"
+            )
+            cur.execute(
+                "ALTER TABLE experiments ADD COLUMN IF NOT EXISTS take_profit_atr DOUBLE PRECISION"
+            )
+            cur.execute(
+                "ALTER TABLE experiments ADD COLUMN IF NOT EXISTS trailing_stop_atr DOUBLE PRECISION"
+            )
+            cur.execute(
+                "ALTER TABLE experiments ADD COLUMN IF NOT EXISTS trailing_stop_ticks DOUBLE PRECISION"
+            )
+            cur.execute(
+                "ALTER TABLE experiments ADD COLUMN IF NOT EXISTS trailing_activation_r DOUBLE PRECISION"
+            )
+            cur.execute(
+                "ALTER TABLE experiments ADD COLUMN IF NOT EXISTS breakeven_at_r DOUBLE PRECISION"
+            )
+            cur.execute(
+                "ALTER TABLE experiments ADD COLUMN IF NOT EXISTS time_stop_bars INTEGER"
+            )
+            cur.execute(
+                "ALTER TABLE experiments ADD COLUMN IF NOT EXISTS exit_at_session_end BOOLEAN NOT NULL DEFAULT FALSE"
+            )
+            cur.execute(
                 "ALTER TABLE experiments ADD COLUMN IF NOT EXISTS execution_mode TEXT NOT NULL DEFAULT 'bar'"
             )
             cur.execute(
@@ -147,6 +187,9 @@ def save_experiment(experiment: dict) -> None:
             experiment_id, name, symbols, intervals, strategy_type, parameter_space,
             start_date, end_date, prop_firm_rules, initial_balance, position_size,
             sizing_mode, risk_per_trade_pct, max_position_size,
+            stop_loss_ticks, take_profit_ticks, stop_loss_atr, take_profit_atr,
+            trailing_stop_atr, trailing_stop_ticks, trailing_activation_r,
+            breakeven_at_r, time_stop_bars, exit_at_session_end,
             commission, slippage_ticks, execution_mode, spread_ticks,
             volatile_bar_threshold_ticks, volatile_bar_extra_ticks, scoring_rule,
             status, total_runs, completed_runs, failed_runs,
@@ -155,6 +198,7 @@ def save_experiment(experiment: dict) -> None:
         VALUES (
             %s, %s, %s::jsonb, %s::jsonb, %s, %s::jsonb, %s, %s, %s::jsonb, %s, %s,
             %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
         )
         ON CONFLICT (experiment_id) DO UPDATE SET
@@ -171,6 +215,16 @@ def save_experiment(experiment: dict) -> None:
             sizing_mode      = EXCLUDED.sizing_mode,
             risk_per_trade_pct = EXCLUDED.risk_per_trade_pct,
             max_position_size  = EXCLUDED.max_position_size,
+            stop_loss_ticks  = EXCLUDED.stop_loss_ticks,
+            take_profit_ticks = EXCLUDED.take_profit_ticks,
+            stop_loss_atr    = EXCLUDED.stop_loss_atr,
+            take_profit_atr  = EXCLUDED.take_profit_atr,
+            trailing_stop_atr = EXCLUDED.trailing_stop_atr,
+            trailing_stop_ticks = EXCLUDED.trailing_stop_ticks,
+            trailing_activation_r = EXCLUDED.trailing_activation_r,
+            breakeven_at_r   = EXCLUDED.breakeven_at_r,
+            time_stop_bars   = EXCLUDED.time_stop_bars,
+            exit_at_session_end = EXCLUDED.exit_at_session_end,
             commission       = EXCLUDED.commission,
             slippage_ticks   = EXCLUDED.slippage_ticks,
             execution_mode   = EXCLUDED.execution_mode,
@@ -208,6 +262,16 @@ def save_experiment(experiment: dict) -> None:
                     experiment.get("sizing_mode") or "fixed",
                     experiment.get("risk_per_trade_pct"),
                     experiment.get("max_position_size"),
+                    experiment.get("stop_loss_ticks"),
+                    experiment.get("take_profit_ticks"),
+                    experiment.get("stop_loss_atr"),
+                    experiment.get("take_profit_atr"),
+                    experiment.get("trailing_stop_atr"),
+                    experiment.get("trailing_stop_ticks"),
+                    experiment.get("trailing_activation_r"),
+                    experiment.get("breakeven_at_r"),
+                    experiment.get("time_stop_bars"),
+                    experiment.get("exit_at_session_end", False),
                     experiment["commission"],
                     experiment.get("slippage_ticks", 1.0),
                     experiment.get("execution_mode", "bar"),
@@ -338,16 +402,18 @@ def _row_to_experiment(row) -> dict:
         "initial_balance": float(row["initial_balance"]),
         "position_size": max(1, int(row["position_size"])),
         "sizing_mode": str(row.get("sizing_mode") or "fixed") if hasattr(row, "get") else "fixed",
-        "risk_per_trade_pct": (
-            float(row.get("risk_per_trade_pct"))
-            if hasattr(row, "get") and row.get("risk_per_trade_pct") is not None
-            else None
-        ),
-        "max_position_size": (
-            int(row.get("max_position_size"))
-            if hasattr(row, "get") and row.get("max_position_size") is not None
-            else None
-        ),
+        "risk_per_trade_pct": _maybe_float(row.get("risk_per_trade_pct")),
+        "max_position_size": _maybe_int(row.get("max_position_size")),
+        "stop_loss_ticks": _maybe_float(row.get("stop_loss_ticks")),
+        "take_profit_ticks": _maybe_float(row.get("take_profit_ticks")),
+        "stop_loss_atr": _maybe_float(row.get("stop_loss_atr")),
+        "take_profit_atr": _maybe_float(row.get("take_profit_atr")),
+        "trailing_stop_atr": _maybe_float(row.get("trailing_stop_atr")),
+        "trailing_stop_ticks": _maybe_float(row.get("trailing_stop_ticks")),
+        "trailing_activation_r": _maybe_float(row.get("trailing_activation_r")),
+        "breakeven_at_r": _maybe_float(row.get("breakeven_at_r")),
+        "time_stop_bars": _maybe_int(row.get("time_stop_bars")),
+        "exit_at_session_end": _maybe_bool(row.get("exit_at_session_end")),
         "commission": float(row["commission"]),
         "slippage_ticks": float(row.get("slippage_ticks") or 1.0) if hasattr(row, "get") else float(row["slippage_ticks"]),
         "execution_mode": str(row.get("execution_mode") or "bar") if hasattr(row, "get") else str(row["execution_mode"]),
@@ -414,12 +480,18 @@ def _maybe_iso(value: Any) -> str | None:
 
 
 def _maybe_float(value: Any) -> float | None:
-    if value is None:
+    if value is None or pd.isna(value):
         return None
     return float(value)
 
 
 def _maybe_int(value: Any) -> int | None:
-    if value is None:
+    if value is None or pd.isna(value):
         return None
     return int(value)
+
+
+def _maybe_bool(value: Any, default: bool = False) -> bool:
+    if value is None or pd.isna(value):
+        return default
+    return bool(value)
