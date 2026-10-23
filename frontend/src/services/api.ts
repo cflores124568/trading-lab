@@ -148,6 +148,7 @@ export interface PerformanceMetrics {
   max_drawdown: number;
   sharpe_ratio: number;
   sortino_ratio: number;
+  sharpe_basis?: "daily" | "trade" | "insufficient" | "legacy";
   avg_trade_duration: number;
   best_trade: number;
   worst_trade: number;

@@ -1359,6 +1359,18 @@ export default function BacktestDetail() {
       return [];
     }
 
+    const riskBasis = backtest.metrics.sharpe_basis;
+    const riskBasisSuffix =
+      riskBasis === "daily"
+        ? " (daily)"
+        : riskBasis === "trade"
+          ? " (per trade)"
+          : riskBasis === "legacy"
+            ? " (legacy)"
+            : "";
+    const riskValue = (value: number) =>
+      riskBasis === "insufficient" ? "—" : value.toFixed(2);
+
     return [
       {
         label: "Net PnL",
@@ -1367,8 +1379,8 @@ export default function BacktestDetail() {
       },
       { label: "Win Rate", value: formatPercent(backtest.metrics.win_rate) },
       { label: "Profit Factor", value: formatRatio(backtest.metrics.profit_factor) },
-      { label: "Sharpe Ratio", value: backtest.metrics.sharpe_ratio.toFixed(2) },
-      { label: "Sortino Ratio", value: backtest.metrics.sortino_ratio.toFixed(2) },
+      { label: `Sharpe Ratio${riskBasisSuffix}`, value: riskValue(backtest.metrics.sharpe_ratio) },
+      { label: `Sortino Ratio${riskBasisSuffix}`, value: riskValue(backtest.metrics.sortino_ratio) },
       { label: "Max Drawdown", value: formatPercent(backtest.metrics.max_drawdown, 2) },
       {
         label: "Best / Worst Trade",
