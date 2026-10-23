@@ -592,6 +592,7 @@ export interface ExperimentCreateRequest {
   sizing_mode?: "fixed" | "risk_percent";
   risk_per_trade_pct?: number;
   max_position_size?: number;
+  stop_loss_ticks?: number;
   commission: number;
   slippage_ticks: number;
   execution_mode: "bar" | "synthetic_quotes";

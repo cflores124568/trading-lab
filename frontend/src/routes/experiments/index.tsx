@@ -493,6 +493,10 @@ export default function ExperimentsIndexPage() {
   const [scoringRule, setScoringRule] = createSignal<ExperimentScoringRule>("prop_score_v1");
   const [initialBalance, setInitialBalance] = createSignal(100_000);
   const [positionSize, setPositionSize] = createSignal(1);
+  const [sizingMode, setSizingMode] = createSignal<"fixed" | "risk_percent">("fixed");
+  const [riskPerTradePct, setRiskPerTradePct] = createSignal(1);
+  const [maxPositionSize, setMaxPositionSize] = createSignal(0);
+  const [stopLossTicks, setStopLossTicks] = createSignal(0);
   const [commission, setCommission] = createSignal(5);
   const [slippageTicks, setSlippageTicks] = createSignal(1);
   const [executionMode, setExecutionMode] = createSignal<"bar" | "synthetic_quotes">("bar");
@@ -609,6 +613,10 @@ export default function ExperimentsIndexPage() {
       scoringRule: scoringRule(),
       initialBalance: initialBalance(),
       positionSize: positionSize(),
+      sizingMode: sizingMode(),
+      riskPerTradePct: riskPerTradePct(),
+      maxPositionSize: maxPositionSize(),
+      stopLossTicks: stopLossTicks(),
       commission: commission(),
       slippageTicks: slippageTicks(),
       executionMode: executionMode(),
@@ -792,8 +800,26 @@ export default function ExperimentsIndexPage() {
     if (initialBalance() <= 0) {
       return "Initial balance has to be above zero.";
     }
-    if (!Number.isInteger(positionSize()) || positionSize() < 1) {
+    if (sizingMode() === "fixed" && (!Number.isInteger(positionSize()) || positionSize() < 1)) {
       return "Position size has to be a whole number of contracts (1 or more).";
+    }
+    if (sizingMode() === "risk_percent") {
+      if (
+        !Number.isFinite(riskPerTradePct()) ||
+        riskPerTradePct() <= 0 ||
+        riskPerTradePct() > 100
+      ) {
+        return "Risk per trade has to be above 0% and at most 100%.";
+      }
+      if (!Number.isFinite(stopLossTicks()) || stopLossTicks() <= 0) {
+        return "Risk-based sizing requires a stop loss in ticks.";
+      }
+      if (
+        maxPositionSize() !== 0 &&
+        (!Number.isInteger(maxPositionSize()) || maxPositionSize() < 1)
+      ) {
+        return "Max contracts has to be a whole number of 1 or more, or 0 for no cap.";
+      }
     }
     if (commission() < 0) {
       return "Commission can't be negative.";
@@ -839,6 +865,10 @@ export default function ExperimentsIndexPage() {
       setScoringRule(request.scoring_rule);
       setInitialBalance(request.initial_balance);
       setPositionSize(request.position_size);
+      setSizingMode(request.sizing_mode ?? "fixed");
+      setRiskPerTradePct(request.risk_per_trade_pct ?? 1);
+      setMaxPositionSize(request.max_position_size ?? 0);
+      setStopLossTicks(request.stop_loss_ticks ?? 0);
       setCommission(request.commission);
       setSlippageTicks(request.slippage_ticks ?? 1);
       setExecutionMode(request.execution_mode ?? "bar");
@@ -863,6 +893,10 @@ export default function ExperimentsIndexPage() {
         prop_firm_rules: experiment.prop_firm_rules,
         initial_balance: experiment.initial_balance,
         position_size: experiment.position_size,
+        sizing_mode: experiment.sizing_mode,
+        risk_per_trade_pct: experiment.risk_per_trade_pct,
+        max_position_size: experiment.max_position_size,
+        stop_loss_ticks: experiment.stop_loss_ticks,
         commission: experiment.commission,
         slippage_ticks: experiment.slippage_ticks,
         execution_mode: experiment.execution_mode,
@@ -899,7 +933,17 @@ export default function ExperimentsIndexPage() {
       end_date: endDate() || undefined,
       prop_firm_rules: preset,
       initial_balance: initialBalance(),
-      position_size: positionSize(),
+      position_size: sizingMode() === "fixed" ? positionSize() : 1,
+      sizing_mode: sizingMode(),
+      risk_per_trade_pct: sizingMode() === "risk_percent" ? riskPerTradePct() : undefined,
+      max_position_size:
+        sizingMode() === "risk_percent" && maxPositionSize() > 0
+          ? maxPositionSize()
+          : undefined,
+      stop_loss_ticks:
+        sizingMode() === "risk_percent" && stopLossTicks() > 0
+          ? stopLossTicks()
+          : undefined,
       commission: commission(),
       slippage_ticks: slippageTicks(),
       execution_mode: executionMode(),
@@ -1498,15 +1542,17 @@ export default function ExperimentsIndexPage() {
                 />
               </div>
               <div>
-                <label for="experiment-field-6" class={label}>Position size (contracts)</label>
-                <input id="experiment-field-6"
-                  type="number"
-                  min="1"
-                  step="1"
-                  class={`${field} app-data`}
-                  value={positionSize()}
-                  onInput={(event) => setPositionSize(Number(event.currentTarget.value) || 0)}
-                />
+                <label for="experiment-field-6" class={label}>Position sizing</label>
+                <select id="experiment-field-6"
+                  class={field}
+                  value={sizingMode()}
+                  onChange={(event) =>
+                    setSizingMode(event.currentTarget.value as "fixed" | "risk_percent")
+                  }
+                >
+                  <option value="fixed">Fixed contracts</option>
+                  <option value="risk_percent">Risk % of equity</option>
+                </select>
               </div>
               <div>
                 <label for="experiment-field-7" class={label}>Commission / contract</label>
@@ -1520,6 +1566,65 @@ export default function ExperimentsIndexPage() {
                 />
               </div>
             </div>
+
+            <Show when={sizingMode() === "fixed"}>
+              <div class="grid gap-3 md:grid-cols-3">
+                <div>
+                  <label for="experiment-field-6a" class={label}>Position size (contracts)</label>
+                  <input id="experiment-field-6a"
+                    type="number"
+                    min="1"
+                    step="1"
+                    class={`${field} app-data`}
+                    value={positionSize()}
+                    onInput={(event) => setPositionSize(Number(event.currentTarget.value) || 0)}
+                  />
+                </div>
+              </div>
+            </Show>
+
+            <Show when={sizingMode() === "risk_percent"}>
+              <div class="grid gap-3 md:grid-cols-3">
+                <div>
+                  <label for="experiment-field-6b" class={label}>Risk per trade (%)</label>
+                  <input id="experiment-field-6b"
+                    type="number"
+                    min="0.01"
+                    max="100"
+                    step="0.25"
+                    class={`${field} app-data`}
+                    value={riskPerTradePct()}
+                    onInput={(event) => setRiskPerTradePct(Number(event.currentTarget.value) || 0)}
+                  />
+                </div>
+                <div>
+                  <label for="experiment-field-6c" class={label}>Max contracts (0 = no cap)</label>
+                  <input id="experiment-field-6c"
+                    type="number"
+                    min="0"
+                    step="1"
+                    class={`${field} app-data`}
+                    value={maxPositionSize()}
+                    onInput={(event) => setMaxPositionSize(Number(event.currentTarget.value) || 0)}
+                  />
+                </div>
+                <div>
+                  <label for="experiment-field-6d" class={label}>Stop loss (ticks)</label>
+                  <input id="experiment-field-6d"
+                    type="number"
+                    min="0"
+                    step="1"
+                    class={`${field} app-data`}
+                    value={stopLossTicks()}
+                    onInput={(event) => setStopLossTicks(Number(event.currentTarget.value) || 0)}
+                  />
+                </div>
+              </div>
+              <p class="text-xs text-stone-500">
+                Contracts round down to whole numbers with a one-contract floor. Entries above
+                the target risk are flagged, and risk sizing requires a stop loss.
+              </p>
+            </Show>
 
             <div class="grid gap-3 md:grid-cols-2">
               <div>

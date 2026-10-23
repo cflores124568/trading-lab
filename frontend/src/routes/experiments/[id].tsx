@@ -339,6 +339,9 @@ export default function ExperimentDetailPage() {
                           }`}
                     </p>
                     <p>Commission: ${batchResult().commission.toFixed(2)} / contract</p>
+                    <Show when={batchResult().stop_loss_ticks}>
+                      <p>Stop loss: {batchResult().stop_loss_ticks}t</p>
+                    </Show>
                     <p>Slippage: {batchResult().slippage_ticks.toFixed(2)} ticks</p>
                     <p>Execution: {formatExecutionMode(batchResult().execution_mode)}</p>
                     <Show when={batchResult().execution_mode === "synthetic_quotes"}>
