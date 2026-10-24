@@ -1,4 +1,5 @@
 import json
+import math
 from threading import Lock
 from typing import Any, Optional
 
@@ -32,6 +33,12 @@ def _ensure_replay_sessions_schema(conn) -> None:
                     tick_value        DOUBLE PRECISION NOT NULL,
                     tick_size         DOUBLE PRECISION NOT NULL DEFAULT 0.25,
                     position_size     INTEGER NOT NULL DEFAULT 1,
+                    sizing_mode       TEXT NOT NULL DEFAULT 'fixed',
+                    risk_per_trade_pct DOUBLE PRECISION,
+                    max_position_size INTEGER,
+                    stop_loss_ticks   DOUBLE PRECISION,
+                    stop_loss_atr     DOUBLE PRECISION,
+                    atr_period        INTEGER NOT NULL DEFAULT 14,
                     spread_ticks      INTEGER NOT NULL DEFAULT 1,
                     volatile_bar_threshold_ticks INTEGER NOT NULL DEFAULT 0,
                     volatile_bar_extra_ticks     INTEGER NOT NULL DEFAULT 0,
@@ -57,6 +64,24 @@ def _ensure_replay_sessions_schema(conn) -> None:
             )
             cur.execute(
                 "ALTER TABLE replay_sessions ADD COLUMN IF NOT EXISTS position_size DOUBLE PRECISION NOT NULL DEFAULT 1"
+            )
+            cur.execute(
+                "ALTER TABLE replay_sessions ADD COLUMN IF NOT EXISTS sizing_mode TEXT NOT NULL DEFAULT 'fixed'"
+            )
+            cur.execute(
+                "ALTER TABLE replay_sessions ADD COLUMN IF NOT EXISTS risk_per_trade_pct DOUBLE PRECISION"
+            )
+            cur.execute(
+                "ALTER TABLE replay_sessions ADD COLUMN IF NOT EXISTS max_position_size INTEGER"
+            )
+            cur.execute(
+                "ALTER TABLE replay_sessions ADD COLUMN IF NOT EXISTS stop_loss_ticks DOUBLE PRECISION"
+            )
+            cur.execute(
+                "ALTER TABLE replay_sessions ADD COLUMN IF NOT EXISTS stop_loss_atr DOUBLE PRECISION"
+            )
+            cur.execute(
+                "ALTER TABLE replay_sessions ADD COLUMN IF NOT EXISTS atr_period INTEGER NOT NULL DEFAULT 14"
             )
             cur.execute(
                 "ALTER TABLE replay_sessions ADD COLUMN IF NOT EXISTS spread_ticks INTEGER NOT NULL DEFAULT 1"
@@ -94,15 +119,18 @@ def save_replay_session(result: dict) -> None:
         INSERT INTO replay_sessions (
             replay_session_id, name, symbol, interval, start_date, end_date,
             source_backtest, prop_firm_rules, commission, tick_value,
-            tick_size, position_size, spread_ticks, volatile_bar_threshold_ticks,
+            tick_size, position_size, sizing_mode, risk_per_trade_pct,
+            max_position_size, stop_loss_ticks, stop_loss_atr, atr_period,
+            spread_ticks, volatile_bar_threshold_ticks,
             volatile_bar_extra_ticks, resting_fill_mode, current_bar_index, status, actions,
             active_order, active_orders, execution_events, trades, metrics, prop_firm_eval,
             equity_curve, created_at, updated_at
         )
         VALUES (
             %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s,
-            %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
-            %s::jsonb, %s::jsonb, %s, %s, %s
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb,
+            %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
+            %s::jsonb, %s, %s
         )
         ON CONFLICT (replay_session_id) DO UPDATE SET
             name              = EXCLUDED.name,
@@ -116,6 +144,12 @@ def save_replay_session(result: dict) -> None:
             tick_value        = EXCLUDED.tick_value,
             tick_size         = EXCLUDED.tick_size,
             position_size     = EXCLUDED.position_size,
+            sizing_mode       = EXCLUDED.sizing_mode,
+            risk_per_trade_pct = EXCLUDED.risk_per_trade_pct,
+            max_position_size = EXCLUDED.max_position_size,
+            stop_loss_ticks   = EXCLUDED.stop_loss_ticks,
+            stop_loss_atr     = EXCLUDED.stop_loss_atr,
+            atr_period        = EXCLUDED.atr_period,
             spread_ticks      = EXCLUDED.spread_ticks,
             volatile_bar_threshold_ticks = EXCLUDED.volatile_bar_threshold_ticks,
             volatile_bar_extra_ticks     = EXCLUDED.volatile_bar_extra_ticks,
@@ -151,6 +185,12 @@ def save_replay_session(result: dict) -> None:
                     result["tick_value"],
                     result.get("tick_size", 0.25),
                     result.get("position_size", 1),
+                    result.get("sizing_mode", "fixed"),
+                    result.get("risk_per_trade_pct"),
+                    result.get("max_position_size"),
+                    result.get("stop_loss_ticks"),
+                    result.get("stop_loss_atr"),
+                    result.get("atr_period", 14),
                     result.get("spread_ticks", 1),
                     result.get("volatile_bar_threshold_ticks", 0),
                     result.get("volatile_bar_extra_ticks", 0),
@@ -211,6 +251,12 @@ def _row_to_result(row) -> dict:
         "tick_value": float(row["tick_value"]),
         "tick_size": float(row.get("tick_size") or 0.25),
         "position_size": max(1, int(row.get("position_size") or 1)),
+        "sizing_mode": _optional_sizing_mode(row.get("sizing_mode")),
+        "risk_per_trade_pct": _optional_float(row.get("risk_per_trade_pct")),
+        "max_position_size": _optional_int(row.get("max_position_size")),
+        "stop_loss_ticks": _optional_float(row.get("stop_loss_ticks")),
+        "stop_loss_atr": _optional_float(row.get("stop_loss_atr")),
+        "atr_period": _optional_int(row.get("atr_period")) or 14,
         "spread_ticks": int(row.get("spread_ticks") or 1),
         "volatile_bar_threshold_ticks": int(row.get("volatile_bar_threshold_ticks") or 0),
         "volatile_bar_extra_ticks": int(row.get("volatile_bar_extra_ticks") or 0),
@@ -219,8 +265,8 @@ def _row_to_result(row) -> dict:
         "status": row["status"],
         "actions": _maybe_json(row["actions"]),
         "active_order": _maybe_json(row.get("active_order")) if hasattr(row, "get") else None,
-        "active_orders": _maybe_json(row.get("active_orders")) if hasattr(row, "get") else [],
-        "execution_events": _maybe_json(row.get("execution_events")) if hasattr(row, "get") else [],
+        "active_orders": _maybe_json(row.get("active_orders")) or [],
+        "execution_events": _maybe_json(row.get("execution_events")) or [],
         "trades": _maybe_json(row["trades"]),
         "metrics": _maybe_json(row["metrics"]),
         "prop_firm_eval": _maybe_json(row["prop_firm_eval"]),
@@ -236,6 +282,25 @@ def _row_to_result(row) -> dict:
             else str(row["updated_at"])
         ),
     }
+
+
+def _optional_sizing_mode(value: Any) -> str:
+    return value if value in {"fixed", "risk_percent"} else "fixed"
+
+
+def _optional_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if math.isfinite(parsed) else None
+
+
+def _optional_int(value: Any) -> Optional[int]:
+    parsed = _optional_float(value)
+    return int(parsed) if parsed is not None else None
 
 
 def _maybe_json(value: Any) -> Any:

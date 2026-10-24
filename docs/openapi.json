@@ -3404,6 +3404,12 @@
             "title": "Active Orders",
             "type": "array"
           },
+          "atr_period": {
+            "default": 14,
+            "minimum": 1.0,
+            "title": "Atr Period",
+            "type": "integer"
+          },
           "commission": {
             "default": 5.0,
             "minimum": 0.0,
@@ -3446,6 +3452,18 @@
             "title": "Interval",
             "type": "string"
           },
+          "max_position_size": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Position Size"
+          },
           "metrics": {
             "$ref": "#/components/schemas/PerformanceMetrics"
           },
@@ -3468,6 +3486,28 @@
           "resting_fill_mode": {
             "default": "touch",
             "title": "Resting Fill Mode",
+            "type": "string"
+          },
+          "risk_per_trade_pct": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 100.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Per Trade Pct"
+          },
+          "sizing_mode": {
+            "default": "fixed",
+            "enum": [
+              "fixed",
+              "risk_percent"
+            ],
+            "title": "Sizing Mode",
             "type": "string"
           },
           "source_backtest": {
@@ -3502,6 +3542,30 @@
             "title": "Status",
             "type": "string"
           },
+          "stop_loss_atr": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Loss Atr"
+          },
+          "stop_loss_ticks": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Loss Ticks"
+          },
           "symbol": {
             "title": "Symbol",
             "type": "string"
@@ -3514,6 +3578,7 @@
           },
           "tick_value": {
             "default": 1.0,
+            "description": "Replay dollars per full price point. Multiply by tick_size for dollars per tick.",
             "exclusiveMinimum": 0.0,
             "title": "Tick Value",
             "type": "number"
@@ -3578,6 +3643,12 @@
             "title": "Active Orders",
             "type": "array"
           },
+          "atr_period": {
+            "default": 14,
+            "minimum": 1.0,
+            "title": "Atr Period",
+            "type": "integer"
+          },
           "commission": {
             "default": 5.0,
             "minimum": 0.0,
@@ -3624,6 +3695,18 @@
             "title": "Interval",
             "type": "string"
           },
+          "max_position_size": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Position Size"
+          },
           "metrics": {
             "$ref": "#/components/schemas/PerformanceMetrics"
           },
@@ -3650,6 +3733,28 @@
           "resting_fill_mode": {
             "default": "touch",
             "title": "Resting Fill Mode",
+            "type": "string"
+          },
+          "risk_per_trade_pct": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 100.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Per Trade Pct"
+          },
+          "sizing_mode": {
+            "default": "fixed",
+            "enum": [
+              "fixed",
+              "risk_percent"
+            ],
+            "title": "Sizing Mode",
             "type": "string"
           },
           "source_backtest": {
@@ -3684,6 +3789,30 @@
             "title": "Status",
             "type": "string"
           },
+          "stop_loss_atr": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Loss Atr"
+          },
+          "stop_loss_ticks": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Loss Ticks"
+          },
           "symbol": {
             "title": "Symbol",
             "type": "string"
@@ -3696,6 +3825,7 @@
           },
           "tick_value": {
             "default": 1.0,
+            "description": "Replay dollars per full price point. Multiply by tick_size for dollars per tick.",
             "exclusiveMinimum": 0.0,
             "title": "Tick Value",
             "type": "number"
@@ -3940,6 +4070,12 @@
             "title": "Active Orders",
             "type": "array"
           },
+          "atr_period": {
+            "default": 14,
+            "minimum": 1.0,
+            "title": "Atr Period",
+            "type": "integer"
+          },
           "commission": {
             "default": 5.0,
             "minimum": 0.0,
@@ -3982,6 +4118,18 @@
             "title": "Interval",
             "type": "string"
           },
+          "max_position_size": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Position Size"
+          },
           "metrics": {
             "$ref": "#/components/schemas/PerformanceMetrics"
           },
@@ -4004,6 +4152,28 @@
           "resting_fill_mode": {
             "default": "touch",
             "title": "Resting Fill Mode",
+            "type": "string"
+          },
+          "risk_per_trade_pct": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 100.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Per Trade Pct"
+          },
+          "sizing_mode": {
+            "default": "fixed",
+            "enum": [
+              "fixed",
+              "risk_percent"
+            ],
+            "title": "Sizing Mode",
             "type": "string"
           },
           "source_backtest": {
@@ -4038,6 +4208,30 @@
             "title": "Status",
             "type": "string"
           },
+          "stop_loss_atr": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Loss Atr"
+          },
+          "stop_loss_ticks": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Loss Ticks"
+          },
           "symbol": {
             "title": "Symbol",
             "type": "string"
@@ -4050,6 +4244,7 @@
           },
           "tick_value": {
             "default": 1.0,
+            "description": "Replay dollars per full price point. Multiply by tick_size for dollars per tick.",
             "exclusiveMinimum": 0.0,
             "title": "Tick Value",
             "type": "number"

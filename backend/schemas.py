@@ -193,9 +193,15 @@ class ReplaySessionBase(BaseModel):
     source_backtest: Optional[ReplaySessionSourceBacktest] = None
     prop_firm_rules: PropFirmRules
     commission: float = Field(default=5.0, ge=0)
-    tick_value: float = Field(default=1.0, gt=0)
+    tick_value: float = Field(default=1.0, gt=0, description="Replay dollars per full price point. Multiply by tick_size for dollars per tick.")
     tick_size: float = Field(default=0.25, gt=0)
     position_size: int = Field(default=1, ge=1)
+    sizing_mode: Literal["fixed", "risk_percent"] = "fixed"
+    risk_per_trade_pct: Optional[float] = Field(default=None, gt=0, le=100)
+    max_position_size: Optional[int] = Field(default=None, ge=1)
+    stop_loss_ticks: Optional[float] = Field(default=None, gt=0)
+    stop_loss_atr: Optional[float] = Field(default=None, gt=0)
+    atr_period: int = Field(default=14, ge=1)
     spread_ticks: int = Field(default=1, ge=1)
     volatile_bar_threshold_ticks: int = Field(default=0, ge=0)
     volatile_bar_extra_ticks: int = Field(default=0, ge=0)
@@ -210,6 +216,23 @@ class ReplaySessionBase(BaseModel):
     metrics: PerformanceMetrics
     prop_firm_eval: PropFirmEvaluation
     equity_curve: List[float] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_replay_sizing(self):
+        if self.stop_loss_ticks is not None and self.stop_loss_atr is not None:
+            raise ValueError("Choose stop_loss_ticks or stop_loss_atr, not both.")
+
+        if self.sizing_mode == "risk_percent":
+            if self.risk_per_trade_pct is None:
+                raise ValueError("risk_per_trade_pct is required for risk-based sizing.")
+            if self.stop_loss_ticks is None and self.stop_loss_atr is None:
+                raise ValueError("Risk-based sizing requires an initial stop (ticks or ATR).")
+        else:
+            if self.risk_per_trade_pct is not None:
+                raise ValueError("risk_per_trade_pct requires sizing_mode='risk_percent'.")
+            if self.max_position_size is not None:
+                raise ValueError("max_position_size requires sizing_mode='risk_percent'.")
+        return self
 
 
 class ReplaySessionCreate(ReplaySessionBase):
