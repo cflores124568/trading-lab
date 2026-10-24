@@ -78,6 +78,7 @@ import {
   sanitizeReplayMetrics,
   simulateReplaySession,
   type ReplayAction,
+  type ReplaySizingMode,
 } from "../services/replaySimulator";
 import { getReplaySessionStatus } from "../services/replaySessionState";
 import {
@@ -118,6 +119,12 @@ type ReplayLaunchConfig = {
   tickValue: number;
   tickSize: number;
   positionSize: number;
+  sizingMode: ReplaySizingMode;
+  riskPerTradePct?: number | null;
+  maxPositionSize?: number | null;
+  stopLossTicks?: number | null;
+  stopLossAtr?: number | null;
+  atrPeriod: number;
   spreadTicks: number;
   volatileBarThresholdTicks: number;
   volatileBarExtraTicks: number;
@@ -718,6 +725,22 @@ export default function ReplayLabPage() {
   const [startDate, setStartDate] = createSignal("");
   const [endDate, setEndDate] = createSignal("");
   const [positionSize, setPositionSize] = createSignal(1);
+  const [sizingMode, setSizingMode] = createSignal<ReplaySizingMode>("fixed");
+  const [riskPerTradePct, setRiskPerTradePct] = createSignal(1);
+  const [maxPositionSize, setMaxPositionSize] = createSignal("");
+  const [stopBasis, setStopBasis] = createSignal<"none" | "ticks" | "atr">("none");
+  const [stopValue, setStopValue] = createSignal("8");
+  const [atrPeriod, setAtrPeriod] = createSignal(14);
+  const hydrateSizingControls = (config: Pick<ReplayLaunchConfig,
+    "sizingMode" | "riskPerTradePct" | "maxPositionSize" | "stopLossTicks" | "stopLossAtr" | "atrPeriod"
+  >) => {
+    setSizingMode(config.sizingMode);
+    setRiskPerTradePct(config.riskPerTradePct ?? 1);
+    setMaxPositionSize(config.maxPositionSize == null ? "" : String(config.maxPositionSize));
+    setStopBasis(config.stopLossTicks != null ? "ticks" : config.stopLossAtr != null ? "atr" : "none");
+    setStopValue(String(config.stopLossTicks ?? config.stopLossAtr ?? 8));
+    setAtrPeriod(config.atrPeriod);
+  };
   const [bannerError, setBannerError] = createSignal<string | null>(null);
   const [bannerNotice, setBannerNotice] = createSignal<string | null>(null);
   const [workspaceSeedNotice, setWorkspaceSeedNotice] = createSignal<string | null>(null);
@@ -836,6 +859,14 @@ export default function ReplayLabPage() {
     const resolvedInterval = findInterval(existing.interval);
     const sourceBacktest = existing.source_backtest;
     const executionDefaults = defaultExecutionConfigForSymbol(existing.symbol);
+    const savedSizing = {
+      sizingMode: existing.sizing_mode ?? "fixed",
+      riskPerTradePct: existing.risk_per_trade_pct,
+      maxPositionSize: existing.max_position_size,
+      stopLossTicks: existing.stop_loss_ticks,
+      stopLossAtr: existing.stop_loss_atr,
+      atrPeriod: existing.atr_period ?? 14,
+    };
 
     hydratedSessionId = existing.replay_session_id;
     batch(() => {
@@ -847,6 +878,7 @@ export default function ReplayLabPage() {
       setStartDate(existing.start_date ?? "");
       setEndDate(existing.end_date ?? "");
       setPositionSize(existing.position_size ?? 1);
+      hydrateSizingControls(savedSizing);
       setSpeed(8);
       setIsReplayActive(false);
       setIsReviewMode(existing.status === "review");
@@ -875,6 +907,7 @@ export default function ReplayLabPage() {
         tickValue: existing.tick_value,
         tickSize: existing.tick_size ?? matchedSymbol.tick_size ?? 0.25,
         positionSize: existing.position_size ?? 1,
+        ...savedSizing,
         spreadTicks: existing.spread_ticks ?? executionDefaults.spreadTicks,
         volatileBarThresholdTicks:
           existing.volatile_bar_threshold_ticks ?? 0,
@@ -915,13 +948,23 @@ export default function ReplayLabPage() {
     });
     const sourceMeta = buildSourceBacktest(source);
     const commission = source.run_config?.commission ?? 5;
-    const tickValue =
-      tickValueBySymbol[replaySymbol] ?? resolvedSymbol.tick_value ?? 1;
+    const sourceTickSize = source.run_config?.tick_size ?? resolvedSymbol.tick_size ?? 0.25;
+    const tickValue = source.run_config?.tick_value != null
+      ? source.run_config.tick_value / sourceTickSize
+      : tickValueBySymbol[replaySymbol] ?? resolvedSymbol.tick_value ?? 1;
     const sourcePositionSize = Math.max(
       1,
       Math.floor(source.run_config?.position_size ?? 1),
     );
     const executionDefaults = defaultExecutionConfigForSymbol(replaySymbol);
+    const sourceSizing = {
+      sizingMode: source.run_config?.sizing_mode ?? "fixed",
+      riskPerTradePct: source.run_config?.risk_per_trade_pct,
+      maxPositionSize: source.run_config?.max_position_size,
+      stopLossTicks: source.run_config?.stop_loss_ticks,
+      stopLossAtr: source.run_config?.stop_loss_atr,
+      atrPeriod: Number(source.strategy.params.atr_period) || 14,
+    };
 
     batch(() => {
       setSessionId(null);
@@ -936,8 +979,9 @@ export default function ReplayLabPage() {
           endDate: end,
           commission,
           tickValue,
-          tickSize: source.run_config?.tick_size ?? resolvedSymbol.tick_size ?? 0.25,
+          tickSize: sourceTickSize,
           positionSize: sourcePositionSize,
+          ...sourceSizing,
           spreadTicks: executionDefaults.spreadTicks,
           volatileBarThresholdTicks: executionDefaults.volatileBarThresholdTicks,
           volatileBarExtraTicks: executionDefaults.volatileBarExtraTicks,
@@ -949,6 +993,8 @@ export default function ReplayLabPage() {
       setSymbol(resolvedSymbol);
       setInterval(resolvedInterval);
       setPreset(source.prop_firm_rules);
+      setPositionSize(sourcePositionSize);
+      hydrateSizingControls(sourceSizing);
       setStartDate(start ?? "");
       setEndDate(end ?? "");
       setIsReplayActive(false);
@@ -965,8 +1011,9 @@ export default function ReplayLabPage() {
         endDate: end,
         commission,
         tickValue,
-        tickSize: source.run_config?.tick_size ?? resolvedSymbol.tick_size ?? 0.25,
+        tickSize: sourceTickSize,
         positionSize: sourcePositionSize,
+        ...sourceSizing,
         spreadTicks: executionDefaults.spreadTicks,
         volatileBarThresholdTicks: executionDefaults.volatileBarThresholdTicks,
         volatileBarExtraTicks: executionDefaults.volatileBarExtraTicks,
@@ -1044,6 +1091,12 @@ export default function ReplayLabPage() {
       tickValue: config.tickValue,
       tickSize: config.tickSize,
       positionSize: config.positionSize,
+      sizingMode: config.sizingMode,
+      riskPerTradePct: config.riskPerTradePct,
+      maxPositionSize: config.maxPositionSize,
+      stopLossTicks: config.stopLossTicks,
+      stopLossAtr: config.stopLossAtr,
+      atrPeriod: config.atrPeriod,
       spreadTicks: config.spreadTicks,
       volatileBarThresholdTicks: config.volatileBarThresholdTicks,
       volatileBarExtraTicks: config.volatileBarExtraTicks,
@@ -1182,7 +1235,9 @@ export default function ReplayLabPage() {
       ["Source", config.sourceBacktest ? `Backtest ${config.sourceBacktest.backtest_id.slice(0, 8)}` : "Standalone"],
       ["Symbol", config.symbol.symbol],
       ["Interval", config.interval.label],
-      ["Contracts", String(config.positionSize)],
+      ["Sizing", config.sizingMode === "risk_percent"
+        ? `${config.riskPerTradePct}% risk${config.maxPositionSize ? ` · max ${config.maxPositionSize} contracts` : ""}`
+        : `${config.positionSize} contracts`],
       [
         "Range",
         config.startDate || config.endDate
@@ -1245,6 +1300,11 @@ export default function ReplayLabPage() {
         label: "Balance",
         value: `$${session.balance.toFixed(2)}`,
       },
+      { label: "Average R", value: session.metrics.avg_r_multiple == null ? "—" : `${session.metrics.avg_r_multiple.toFixed(2)}R` },
+      { label: "Total R", value: session.metrics.total_r == null ? "—" : `${session.metrics.total_r.toFixed(2)}R` },
+      { label: "R Profit Factor", value: session.metrics.r_profit_factor == null ? "—" : session.metrics.r_profit_factor.toFixed(2) },
+      { label: "Over Budget", value: String(session.metrics.risk_budget_exceeded_trades),
+        tone: session.metrics.risk_budget_exceeded_trades > 0 ? ("bad" as const) : ("default" as const) },
     ];
   });
 
@@ -1651,6 +1711,36 @@ export default function ReplayLabPage() {
       return;
     }
 
+    if (sizingMode() === "risk_percent") {
+      if (!Number.isFinite(riskPerTradePct()) || riskPerTradePct() <= 0 || riskPerTradePct() > 100) {
+        setBannerError("Risk per trade must be greater than zero and at most 100%.");
+        return;
+      }
+      if (stopBasis() === "none") {
+        setBannerError("Risk sizing requires an initial stop in ticks or ATR.");
+        return;
+      }
+      if (maxPositionSize().trim() && (!Number.isInteger(Number(maxPositionSize())) || Number(maxPositionSize()) < 1)) {
+        setBannerError("Maximum contracts must be a whole number (1 or more).");
+        return;
+      }
+    }
+    if (stopBasis() !== "none" && (!Number.isFinite(Number(stopValue())) || Number(stopValue()) <= 0)) {
+      setBannerError("Initial stop must be greater than zero.");
+      return;
+    }
+    if (!Number.isInteger(atrPeriod()) || atrPeriod() < 1) {
+      setBannerError("ATR period must be a whole number (1 or more).");
+      return;
+    }
+    const sizing = {
+      sizingMode: sizingMode(),
+      riskPerTradePct: sizingMode() === "risk_percent" ? riskPerTradePct() : undefined,
+      maxPositionSize: sizingMode() === "risk_percent" && maxPositionSize().trim() ? Number(maxPositionSize()) : undefined,
+      stopLossTicks: stopBasis() === "ticks" ? Number(stopValue()) : undefined,
+      stopLossAtr: stopBasis() === "atr" ? Number(stopValue()) : undefined,
+      atrPeriod: atrPeriod(),
+    };
     setBannerError(null);
     setBannerNotice(null);
     batch(() => {
@@ -1671,6 +1761,7 @@ export default function ReplayLabPage() {
         tickValue: tickValueBySymbol[selectedSymbol.symbol] ?? selectedSymbol.tick_value ?? 1,
         tickSize: selectedSymbol.tick_size || 0.25,
         positionSize: positionSize(),
+        ...sizing,
         spreadTicks: executionDefaults.spreadTicks,
         volatileBarThresholdTicks: executionDefaults.volatileBarThresholdTicks,
         volatileBarExtraTicks: executionDefaults.volatileBarExtraTicks,
@@ -1689,6 +1780,7 @@ export default function ReplayLabPage() {
         tickValue: tickValueBySymbol[selectedSymbol.symbol] ?? selectedSymbol.tick_value ?? 1,
         tickSize: selectedSymbol.tick_size || 0.25,
         positionSize: positionSize(),
+        ...sizing,
         spreadTicks: executionDefaults.spreadTicks,
         volatileBarThresholdTicks: executionDefaults.volatileBarThresholdTicks,
         volatileBarExtraTicks: executionDefaults.volatileBarExtraTicks,
@@ -1718,6 +1810,12 @@ export default function ReplayLabPage() {
       tick_value: config.tickValue,
       tick_size: config.tickSize,
       position_size: config.positionSize,
+      sizing_mode: config.sizingMode,
+      risk_per_trade_pct: config.riskPerTradePct,
+      max_position_size: config.maxPositionSize,
+      stop_loss_ticks: config.stopLossTicks,
+      stop_loss_atr: config.stopLossAtr,
+      atr_period: config.atrPeriod,
       spread_ticks: config.spreadTicks,
       volatile_bar_threshold_ticks: config.volatileBarThresholdTicks,
       volatile_bar_extra_ticks: config.volatileBarExtraTicks,
@@ -2006,21 +2104,76 @@ export default function ReplayLabPage() {
               </div>
             </div>
 
-            <div class="w-40">
-              <label class={label}>Contracts</label>
-              <input
-                type="number"
-                min="1"
-                step="1"
-                class={field}
-                value={positionSize()}
-                disabled={!canEditSetup()}
-                onInput={(event) => {
-                  const next = Number(event.currentTarget.value);
-                  setPositionSize(Number.isInteger(next) && next >= 1 ? next : 1);
-                }}
-              />
+            <div class="grid gap-3 md:grid-cols-3">
+              <div>
+                <label class={label}>Sizing</label>
+                <select class={field} value={sizingMode()} disabled={!canEditSetup()}
+                  onChange={(event) => setSizingMode(event.currentTarget.value as ReplaySizingMode)}>
+                  <option value="fixed">Fixed contracts</option>
+                  <option value="risk_percent">Risk % of equity</option>
+                </select>
+              </div>
+              <Show when={sizingMode() === "risk_percent"}>
+                <div>
+                  <label class={label}>Risk per trade (%)</label>
+                  <input type="number" min="0.01" max="100" step="0.1" class={field}
+                    value={riskPerTradePct()} disabled={!canEditSetup()}
+                    onInput={(event) => setRiskPerTradePct(Number(event.currentTarget.value))} />
+                </div>
+                <div>
+                  <label class={label}>Maximum contracts (optional)</label>
+                  <input type="number" min="1" step="1" class={field} placeholder="No cap"
+                    value={maxPositionSize()} disabled={!canEditSetup()}
+                    onInput={(event) => setMaxPositionSize(event.currentTarget.value)} />
+                </div>
+              </Show>
+              <Show when={sizingMode() === "fixed"}>
+                <div>
+                  <label class={label}>Contracts</label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    class={field}
+                    value={positionSize()}
+                    disabled={!canEditSetup()}
+                    onInput={(event) => {
+                      const next = Number(event.currentTarget.value);
+                      setPositionSize(next);
+                    }}
+                  />
+                </div>
+              </Show>
+              <div>
+                <label class={label}>Initial stop</label>
+                <select class={field} value={stopBasis()} disabled={!canEditSetup()}
+                  onChange={(event) => setStopBasis(event.currentTarget.value as "none" | "ticks" | "atr")}>
+                  <option value="none">None</option>
+                  <option value="ticks">Ticks</option>
+                  <option value="atr">ATR multiple</option>
+                </select>
+              </div>
+              <Show when={stopBasis() !== "none"}>
+                <div>
+                  <label class={label}>{stopBasis() === "atr" ? "Stop ATR multiple" : "Stop ticks"}</label>
+                  <input type="number" min="0.01" step="any" class={field}
+                    value={stopValue()} disabled={!canEditSetup()}
+                    onInput={(event) => setStopValue(event.currentTarget.value)} />
+                </div>
+              </Show>
+              <Show when={stopBasis() === "atr"}>
+                <div>
+                  <label class={label}>ATR period</label>
+                  <input type="number" min="1" step="1" class={field}
+                    value={atrPeriod()} disabled={!canEditSetup()}
+                    onInput={(event) => setAtrPeriod(Number(event.currentTarget.value))} />
+                </div>
+              </Show>
             </div>
+            <p class="text-xs text-stone-500">
+              Round-trip commission: ${(launchConfig()?.commission ?? 5).toFixed(2)} per contract. Risk sizing floors at one contract and flags entries above budget.
+              Configured stops become live orders from the next bar; ATR uses completed bars.
+            </p>
 
             <div class="rounded-2xl border border-stone-800 bg-stone-950/60 px-4 py-3">
               <p class="text-sm text-stone-400">
@@ -2220,6 +2373,12 @@ export default function ReplayLabPage() {
         <Show when={launchConfig()}>
           {(config) => (
             <>
+              <Show when={replaySession()?.position?.risk_exceeded}>
+                <p role="status" class="rounded-lg border border-amber-800 bg-amber-950/30 px-4 py-3 text-sm text-amber-300">
+                  This position exceeds its risk budget: ${replaySession()!.position!.initial_risk?.toFixed(2)} initial risk
+                  versus ${replaySession()!.position!.risk_budget?.toFixed(2)} budget. The one-contract minimum applies.
+                </p>
+              </Show>
               <section id="replay" class="app-panel app-panel-section scroll-mt-24">
                 <div class="space-y-6">
                   <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
@@ -2234,11 +2393,13 @@ export default function ReplayLabPage() {
                           : "Trading a historical window forward-only."}
                       </p>
                       <p class="text-xs text-stone-500">
-                        <span class="app-data text-stone-300">${config().commission.toFixed(2)}</span> commission / contract
+                        <span class="app-data text-stone-300">${config().commission.toFixed(2)}</span> round-trip commission / contract
                         <span class="mx-2 text-stone-700">·</span>
-                        <span class="app-data text-stone-300">${config().tickValue.toFixed(2)}</span> tick value
+                        <span class="app-data text-stone-300">${(config().tickValue * config().tickSize).toFixed(2)}</span> tick value
                         <span class="mx-2 text-stone-700">·</span>
-                        <span class="app-data text-stone-300">{config().positionSize}</span> contracts
+                        <span class="app-data text-stone-300">{config().sizingMode === "risk_percent"
+                          ? `${config().riskPerTradePct}% risk${config().maxPositionSize ? ` · max ${config().maxPositionSize}` : ""}`
+                          : `${config().positionSize} contracts`}</span>
                         <span class="mx-2 text-stone-700">·</span>
                         <Show
                           when={firmLogoSrc(config().propFirmRules.name)}
@@ -2762,6 +2923,8 @@ export default function ReplayLabPage() {
                             <th class="text-right">Entry $</th>
                             <th class="text-right">Exit $</th>
                             <th class="text-right">PnL</th>
+                            <th class="text-right">Initial Risk</th>
+                            <th class="text-right">R</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2769,7 +2932,7 @@ export default function ReplayLabPage() {
                             when={session().trades.length > 0}
                             fallback={
                               <tr>
-                                <td class="px-3 py-3 text-stone-500" colSpan={7}>
+                                <td class="px-3 py-3 text-stone-500" colSpan={9}>
                                   No replay trades yet. Use the controls above to place manual
                                   decisions.
                                 </td>
@@ -2806,6 +2969,13 @@ export default function ReplayLabPage() {
                                   >
                                     {trade.pnl >= 0 ? "+" : ""}${trade.pnl.toFixed(2)}
                                   </td>
+                                  <td class="app-data text-right">
+                                    {trade.initial_risk == null ? "—" : `$${trade.initial_risk.toFixed(2)}`}
+                                    <Show when={trade.risk_exceeded}>
+                                      <span class="ml-1 text-amber-400" title="Initial risk exceeds the target risk budget">Over budget</span>
+                                    </Show>
+                                  </td>
+                                  <td class="app-data text-right">{trade.r_multiple == null ? "—" : `${trade.r_multiple.toFixed(2)}R`}</td>
                                 </tr>
                               )}
                             </For>

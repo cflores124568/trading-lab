@@ -1009,6 +1009,12 @@ export interface ReplaySessionPayload {
   tick_value: number;
   tick_size?: number;
   position_size?: number;
+  sizing_mode?: "fixed" | "risk_percent";
+  risk_per_trade_pct?: number | null;
+  max_position_size?: number | null;
+  stop_loss_ticks?: number | null;
+  stop_loss_atr?: number | null;
+  atr_period?: number;
   spread_ticks?: number;
   volatile_bar_threshold_ticks?: number;
   volatile_bar_extra_ticks?: number;

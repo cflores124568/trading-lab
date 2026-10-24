@@ -883,3 +883,231 @@ test("replay passes minimum trading days after enough closed trade dates", () =>
   assert.equal(session.propEvaluation.profit_target_hit, true);
   assert.equal(session.propEvaluation.passed, true);
 });
+
+const riskReplay = {
+  candles: makeCandles(6),
+  currentIndex: 2,
+  actions: [
+    { id: "entry", barIndex: 0, type: "lift_ask", createdAt: 1 },
+    { id: "exit", barIndex: 2, type: "flatten", createdAt: 2 },
+  ] as ReplayAction[],
+  initialBalance: 100_000,
+  positionSize: 1,
+  sizingMode: "risk_percent" as const,
+  riskPerTradePct: 1,
+  stopLossTicks: 8,
+  commission: 5,
+  tickValue: 50, // ES dollars per point; one tick is $12.50.
+  tickSize: 0.25,
+  propFirmRules: rules,
+};
+
+test("risk sizing floors whole contracts and includes round-trip commission in R", () => {
+  const session = simulateReplaySession(riskReplay);
+  const trade = session.trades[0];
+  assert.equal(trade.quantity, 9); // floor($1,000 / ($100 + $5))
+  assert.equal(trade.commission, 45);
+  assert.equal(trade.initial_risk, 945);
+  assert.equal(trade.risk_budget, 1_000);
+  assert.equal(trade.risk_exceeded, false);
+  assert.equal(trade.pnl, 742.5);
+  assert.equal(trade.r_multiple, 0.7857);
+  assert.equal(session.metrics.avg_r_multiple, 0.7857);
+  assert.equal(session.metrics.total_r, 0.7857);
+  assert.equal(session.metrics.r_profit_factor, 0.7857);
+  assert.equal(session.metrics.risk_budget_exceeded_trades, 0);
+  assert.equal(sanitizeReplayMetrics(session.metrics).total_r, 0.7857);
+});
+
+test("ES and MES retain their own contract values without changing instruments", () => {
+  const es = simulateReplaySession(riskReplay).trades[0];
+  const mes = simulateReplaySession({ ...riskReplay, tickValue: 5 }).trades[0];
+  assert.equal(es.quantity, 9);
+  assert.equal(es.initial_risk, 945);
+  assert.equal(mes.quantity, 66); // floor($1,000 / ($10 + $5))
+  assert.equal(mes.initial_risk, 990);
+});
+
+test("the one-contract minimum flags open and closed positions over budget", () => {
+  const config = { ...riskReplay, riskPerTradePct: 0.001 };
+  const open = simulateReplaySession({ ...config, currentIndex: 0 });
+  assert.equal(open.position?.quantity, 1);
+  assert.equal(open.position?.initial_risk, 105);
+  assert.equal(open.position?.risk_budget, 1);
+  assert.equal(open.position?.risk_exceeded, true);
+  const closed = simulateReplaySession(config);
+  assert.equal(closed.trades[0].quantity, 1);
+  assert.equal(closed.trades[0].risk_exceeded, true);
+  assert.equal(closed.metrics.risk_budget_exceeded_trades, 1);
+});
+
+test("risk sizing honors an optional whole-contract cap", () => {
+  const trade = simulateReplaySession({ ...riskReplay, maxPositionSize: 3 }).trades[0];
+  assert.equal(trade.quantity, 3);
+  assert.equal(trade.initial_risk, 315);
+  assert.equal(trade.risk_exceeded, false);
+});
+
+test("fixed sizing reports R only when a usable initial stop exists", () => {
+  const fixed = { ...riskReplay, sizingMode: "fixed" as const, riskPerTradePct: null, positionSize: 3 };
+  const withStop = simulateReplaySession(fixed).trades[0];
+  assert.equal(withStop.quantity, 3);
+  assert.equal(withStop.initial_risk, 315);
+  assert.equal(withStop.risk_budget, undefined);
+  assert.equal(withStop.risk_exceeded, false);
+  assert.equal(withStop.r_multiple, 0.7857);
+  const without = simulateReplaySession({ ...fixed, stopLossTicks: null });
+  assert.equal(without.trades[0].initial_risk, undefined);
+  assert.equal(without.metrics.total_r, null);
+  assert.equal(without.metrics.avg_r_multiple, null);
+  assert.equal(without.metrics.r_profit_factor, null);
+});
+
+test("fractional contracts and invalid risk configuration are rejected", () => {
+  for (const positionSize of [0, -1, 1.5, NaN, Infinity]) {
+    assert.throws(() => simulateReplaySession({ ...riskReplay, positionSize }), /whole number/);
+  }
+  for (const maxPositionSize of [0, 1.5, Infinity]) {
+    assert.throws(() => simulateReplaySession({ ...riskReplay, maxPositionSize }), /whole number/);
+  }
+  for (const riskPerTradePct of [0, -1, 101, NaN, Infinity]) {
+    assert.throws(() => simulateReplaySession({ ...riskReplay, riskPerTradePct }), /Risk per trade/);
+  }
+  assert.throws(() => simulateReplaySession({ ...riskReplay, stopLossTicks: null }), /initial stop/);
+  assert.throws(() => simulateReplaySession({ ...riskReplay, stopLossAtr: 2 }), /not both/);
+});
+
+test("reversals size from equity after closing the prior trade", () => {
+  const session = simulateReplaySession({
+    ...riskReplay,
+    initialBalance: 1_000,
+    riskPerTradePct: 100,
+    actions: [
+      { id: "long", barIndex: 0, type: "lift_ask", createdAt: 1 },
+      { id: "reverse", barIndex: 2, type: "hit_bid", createdAt: 2 },
+    ],
+  });
+  assert.equal(session.trades[0].quantity, 9);
+  assert.equal(session.balance, 1_742.5);
+  assert.equal(session.position?.side, "sell");
+  assert.equal(session.position?.quantity, 16);
+  assert.equal(session.position?.risk_budget, 1_742.5);
+  assert.equal(session.activeOrders.length, 1);
+  assert.equal(session.activeOrder?.side, "buy");
+  assert.equal(session.activeOrder?.quantity, 16);
+});
+
+test("configured long and short stops execute at approximately minus one R", () => {
+  for (const type of ["lift_ask", "hit_bid"] as const) {
+    const session = simulateReplaySession({
+      ...riskReplay,
+      currentIndex: 1,
+      candles: [
+        ...makeCandles(1),
+        { ...makeCandles(2)[1], high: 103, low: 98 },
+      ],
+      actions: [{ id: "entry", barIndex: 0, type, createdAt: 1 }],
+    });
+    assert.equal(session.trades.length, 1);
+    assert.equal(session.trades[0].pnl, -945);
+    assert.equal(session.trades[0].r_multiple, -1);
+    assert.equal(session.position, null);
+    assert.equal(session.activeOrders.length, 0);
+    assert.equal(session.metrics.r_profit_factor, 0);
+  }
+});
+
+test("moving a bracket does not rewrite initial risk or the R denominator", () => {
+  const session = simulateReplaySession({
+    ...riskReplay,
+    candles: [makeCandles(1)[0], makeCandles(2)[1], { ...makeCandles(3)[2], low: 98 }],
+    actions: [
+      { id: "entry", barIndex: 0, type: "lift_ask", createdAt: 1 },
+      { id: "move", barIndex: 1, type: "attach_bracket", stopPrice: 99, targetPrice: 110, createdAt: 2 },
+    ],
+  });
+  assert.equal(session.trades[0].exit_price, 99);
+  assert.equal(session.trades[0].initial_risk, 945);
+  assert.equal(session.trades[0].r_multiple, -0.6429);
+});
+
+test("ATR warmup blocks early entries and ignores future candle ranges", () => {
+  const candles = makeCandles(7);
+  const args = {
+    ...riskReplay, candles, currentIndex: 3, stopLossTicks: null, stopLossAtr: 1, atrPeriod: 2,
+    actions: [
+      { id: "too-early", barIndex: 1, type: "lift_ask", createdAt: 1 },
+      { id: "ready", barIndex: 3, type: "lift_ask", createdAt: 2 },
+    ] as ReplayAction[],
+  };
+  const session = simulateReplaySession(args);
+  assert.equal(session.executionEvents.filter((event) => event.type === "ignored").length, 1);
+  assert.equal(session.position?.entry_bar_index, 3);
+  assert.equal(session.position?.quantity, 9);
+  assert.equal(session.position?.initial_risk, 945);
+  const futureChanged = candles.map((candle, index) => index > 3 ? { ...candle, high: 10_000, low: 1 } : candle);
+  assert.deepEqual(simulateReplaySession({ ...args, candles: futureChanged }), session);
+});
+
+test("resting ATR entries keep their submitted size and stop basis until filled", () => {
+  const candles = makeCandles(5);
+  // The fill bar is volatile; its range must not alter the submitted stop basis.
+  candles[4] = { ...candles[4], low: 102.5, high: 130 };
+  const args = {
+    ...riskReplay, candles, currentIndex: 4, stopLossTicks: null, stopLossAtr: 1, atrPeriod: 2,
+    actions: [{ id: "maker", barIndex: 3, type: "join_bid", createdAt: 1 }] as ReplayAction[],
+  };
+  const pending = simulateReplaySession({ ...args, currentIndex: 3 });
+  assert.equal(pending.activeOrder?.quantity, 9);
+  const filled = simulateReplaySession(args);
+  assert.equal(filled.position?.quantity, 9);
+  assert.equal(filled.position?.initial_risk, 945);
+  assert.equal(filled.activeOrder?.price, 101);
+  assert.equal(filled.activeOrder?.bracket_role, "stop");
+  assert.deepEqual(simulateReplaySession(JSON.parse(JSON.stringify(args))), filled);
+});
+
+test("fixed ATR entries also wait for a usable protective stop", () => {
+  const session = simulateReplaySession({
+    ...riskReplay, sizingMode: "fixed", riskPerTradePct: null,
+    stopLossTicks: null, stopLossAtr: 1, atrPeriod: 2, currentIndex: 1,
+    actions: [{ id: "warmup", barIndex: 1, type: "lift_ask", createdAt: 1 }],
+  });
+  assert.equal(session.position, null);
+  assert.equal(session.executionEvents[0].type, "ignored");
+});
+
+test("replacing a resting risk entry recalculates size from the new ATR basis", () => {
+  const candles = makeCandles(7);
+  // ATR at index 3 is 6 instead of 2, so the replacement risks $305 per contract.
+  candles[3] = { ...candles[3], high: 108, low: 98 };
+  candles[4] = { ...candles[4], low: 103.25 };
+  const session = simulateReplaySession({
+    ...riskReplay, candles, currentIndex: 4,
+    stopLossTicks: null, stopLossAtr: 1, atrPeriod: 2,
+    actions: [
+      { id: "maker", barIndex: 3, type: "join_bid", createdAt: 1 },
+      { id: "new-price", barIndex: 4, type: "replace", createdAt: 2 },
+    ],
+  });
+  // Bar 4's low is above the original bid, so only a replacement is submitted.
+  assert.equal(session.position, null);
+  assert.equal(session.activeOrder?.id, "new-price");
+  assert.equal(session.activeOrder?.quantity, 3);
+});
+
+test("mixed replay results aggregate R gains and losses independently of dollar size", () => {
+  const session = simulateReplaySession({
+    ...riskReplay, currentIndex: 3,
+    actions: [
+      { id: "long", barIndex: 0, type: "lift_ask", createdAt: 1 },
+      { id: "short", barIndex: 2, type: "hit_bid", createdAt: 2 },
+    ],
+  });
+  assert.equal(session.trades.length, 2);
+  assert.equal(session.trades[0].r_multiple, 0.7857);
+  assert.equal(session.trades[1].r_multiple, -1);
+  assert.equal(session.metrics.total_r, -0.2143);
+  assert.equal(session.metrics.avg_r_multiple, -0.1072);
+  assert.equal(session.metrics.r_profit_factor, 0.7857);
+});

@@ -8,6 +8,7 @@ import {
   replaceRestingOrder,
   restingOrderPriority,
   restingOrderFillUpdate,
+  roundToTick,
   sameBracketGroup,
   syntheticQuoteForCandle,
   type ExecutionConfig,
@@ -17,6 +18,8 @@ import {
   type RestingOrder,
   type SyntheticQuote,
 } from "./executionModel.ts";
+
+export type ReplaySizingMode = "fixed" | "risk_percent";
 
 export type ReplayActionType =
   | LegacyExecutionActionType
@@ -53,6 +56,10 @@ export interface ReplayMetrics {
   max_drawdown: number;
   sharpe_ratio: number;
   sortino_ratio: number;
+  avg_r_multiple: number | null;
+  total_r: number | null;
+  r_profit_factor: number | null;
+  risk_budget_exceeded_trades: number;
   avg_trade_duration: number;
   best_trade: number;
   worst_trade: number;
@@ -76,6 +83,19 @@ export function sanitizeReplayMetrics(metrics: ReplayMetrics): PerformanceMetric
     max_drawdown: Number.isFinite(metrics.max_drawdown) ? metrics.max_drawdown : 0,
     sharpe_ratio: Number.isFinite(metrics.sharpe_ratio) ? metrics.sharpe_ratio : 0,
     sortino_ratio: Number.isFinite(metrics.sortino_ratio) ? metrics.sortino_ratio : 0,
+    avg_r_multiple:
+      metrics.avg_r_multiple != null && Number.isFinite(metrics.avg_r_multiple)
+        ? metrics.avg_r_multiple
+        : null,
+    total_r:
+      metrics.total_r != null && Number.isFinite(metrics.total_r) ? metrics.total_r : null,
+    r_profit_factor:
+      metrics.r_profit_factor != null && Number.isFinite(metrics.r_profit_factor)
+        ? metrics.r_profit_factor
+        : null,
+    risk_budget_exceeded_trades: Number.isFinite(metrics.risk_budget_exceeded_trades)
+      ? metrics.risk_budget_exceeded_trades
+      : 0,
     avg_trade_duration: Number.isFinite(metrics.avg_trade_duration) ? metrics.avg_trade_duration : 0,
     best_trade: Number.isFinite(metrics.best_trade) ? metrics.best_trade : 0,
     worst_trade: Number.isFinite(metrics.worst_trade) ? metrics.worst_trade : 0,
@@ -91,6 +111,9 @@ export interface ReplayPosition {
   current_price: number;
   current_time: string;
   unrealized_pnl: number;
+  initial_risk?: number;
+  risk_budget?: number | null;
+  risk_exceeded?: boolean;
 }
 
 export interface ReplaySession {
@@ -116,6 +139,18 @@ interface OpenReplayPosition {
   entryPrice: number;
   entryTime: string;
   entryBarIndex: number;
+  initialStopPrice?: number;
+  initialRisk?: number;
+  riskBudget?: number | null;
+  riskExceeded: boolean;
+}
+
+interface EntrySizing {
+  quantity: number;
+  initialStopPrice?: number;
+  initialRisk?: number;
+  riskBudget?: number | null;
+  riskExceeded: boolean;
 }
 
 function round(value: number, digits = 2): number {
@@ -213,6 +248,10 @@ function emptyMetrics(): ReplayMetrics {
     max_drawdown: 0,
     sharpe_ratio: 0,
     sortino_ratio: 0,
+    avg_r_multiple: null,
+    total_r: null,
+    r_profit_factor: null,
+    risk_budget_exceeded_trades: 0,
     avg_trade_duration: 0,
     best_trade: 0,
     worst_trade: 0,
@@ -233,6 +272,13 @@ function calculateMetrics(trades: Trade[], equityCurve: number[]): ReplayMetrics
   const grossLosses = Math.abs(
     pnls.filter((pnl) => pnl < 0).reduce((sum, pnl) => sum + pnl, 0),
   );
+  const rValues = trades
+    .map((trade) => trade.r_multiple)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  const grossRWins = rValues.filter((value) => value > 0).reduce((sum, value) => sum + value, 0);
+  const grossRLosses = Math.abs(
+    rValues.filter((value) => value < 0).reduce((sum, value) => sum + value, 0),
+  );
 
   return {
     total_trades: totalTrades,
@@ -245,6 +291,21 @@ function calculateMetrics(trades: Trade[], equityCurve: number[]): ReplayMetrics
     max_drawdown: round(maxDrawdown(equityCurve), 4),
     sharpe_ratio: sharpeRatio(pnls),
     sortino_ratio: sortinoRatio(pnls),
+    avg_r_multiple:
+      rValues.length === 0
+        ? null
+        : round(rValues.reduce((sum, value) => sum + value, 0) / rValues.length, 4),
+    total_r:
+      rValues.length === 0
+        ? null
+        : round(rValues.reduce((sum, value) => sum + value, 0), 4),
+    r_profit_factor:
+      rValues.length === 0
+        ? null
+        : grossRLosses === 0
+          ? round(grossRWins, 4)
+          : round(grossRWins / grossRLosses, 4),
+    risk_budget_exceeded_trades: trades.filter((trade) => trade.risk_exceeded).length,
     avg_trade_duration: round(avgDurationMinutes(trades)),
     best_trade: round(Math.max(...pnls)),
     worst_trade: round(Math.min(...pnls)),
@@ -418,12 +479,50 @@ function getReplayDrawdown(
   return max;
 }
 
+function buildAtrSeries(candles: Candle[], period: number): number[] {
+  const values = new Array<number>(candles.length).fill(Number.NaN);
+  if (period <= 0 || candles.length < period + 1) {
+    return values;
+  }
+
+  const trueRanges = new Array<number>(candles.length).fill(Number.NaN);
+  for (let i = 1; i < candles.length; i += 1) {
+    const high = candles[i].high;
+    const low = candles[i].low;
+    const previousClose = candles[i - 1].close;
+    trueRanges[i] = Math.max(
+      high - low,
+      Math.abs(high - previousClose),
+      Math.abs(low - previousClose),
+    );
+  }
+
+  let seed = 0;
+  for (let i = 1; i <= period; i += 1) {
+    seed += trueRanges[i];
+  }
+  values[period] = seed / period;
+
+  const alpha = 1 / period;
+  for (let i = period + 1; i < candles.length; i += 1) {
+    values[i] = alpha * trueRanges[i] + (1 - alpha) * values[i - 1];
+  }
+
+  return values;
+}
+
 export function simulateReplaySession(args: {
   candles: Candle[];
   currentIndex: number;
   actions: ReplayAction[];
   initialBalance: number;
   positionSize?: number;
+  sizingMode?: ReplaySizingMode;
+  riskPerTradePct?: number | null;
+  maxPositionSize?: number | null;
+  stopLossTicks?: number | null;
+  stopLossAtr?: number | null;
+  atrPeriod?: number;
   commission?: number;
   tickValue?: number;
   tickSize?: number;
@@ -439,6 +538,12 @@ export function simulateReplaySession(args: {
     actions,
     initialBalance,
     positionSize = 1,
+    sizingMode = "fixed",
+    riskPerTradePct = null,
+    maxPositionSize = null,
+    stopLossTicks = null,
+    stopLossAtr = null,
+    atrPeriod = 14,
     commission = 5,
     tickValue = 1,
     tickSize = DEFAULT_EXECUTION_CONFIG.tickSize,
@@ -456,6 +561,43 @@ export function simulateReplaySession(args: {
     volatileBarExtraTicks,
     restingFillMode,
   };
+
+  // The replay simulator prices PnL off points, not ticks: tickValue is dollars
+  // per full point (for example $50 for ES, $5 for MES).
+  const safeTickSize = tickSize > 0 ? tickSize : DEFAULT_EXECUTION_CONFIG.tickSize;
+  const riskSizing = sizingMode === "risk_percent";
+  const requireContracts = (value: number, name: string) => {
+    if (!Number.isInteger(value) || value < 1) {
+      throw new Error(`${name} must be a whole number (1 or more).`);
+    }
+    return value;
+  };
+  const normalizedPositionSize = requireContracts(positionSize, "Contracts");
+  const normalizedMaxPositionSize = maxPositionSize == null
+    ? null : requireContracts(maxPositionSize, "Maximum contracts");
+  const normalizedAtrPeriod = requireContracts(atrPeriod, "ATR period");
+  if (sizingMode !== "fixed" && sizingMode !== "risk_percent") {
+    throw new Error("Unknown sizing mode.");
+  }
+  if (stopLossTicks != null && stopLossAtr != null) {
+    throw new Error("Choose a tick stop or an ATR stop, not both.");
+  }
+  for (const stop of [stopLossTicks, stopLossAtr]) {
+    if (stop != null && (!Number.isFinite(stop) || stop <= 0)) {
+      throw new Error("Initial stops must be greater than zero.");
+    }
+  }
+  if (riskSizing) {
+    if (riskPerTradePct == null || !Number.isFinite(riskPerTradePct) || riskPerTradePct <= 0 || riskPerTradePct > 100) {
+      throw new Error("Risk per trade must be greater than zero and at most 100%.");
+    }
+    if (stopLossTicks == null && stopLossAtr == null) {
+      throw new Error("Risk sizing requires an initial stop.");
+    }
+  } else if (riskPerTradePct != null || maxPositionSize != null) {
+    throw new Error("Risk percent and maximum contracts require risk sizing.");
+  }
+  const atrValues = stopLossAtr != null ? buildAtrSeries(candles, normalizedAtrPeriod) : null;
 
   if (candles.length === 0) {
     const equityCurve = [initialBalance];
@@ -486,6 +628,111 @@ export function simulateReplaySession(args: {
   let balance = initialBalance;
   let position: OpenReplayPosition | null = null;
   const getPosition = (): OpenReplayPosition | null => position;
+
+  const stopTicksForEntry = (
+    side: "buy" | "sell",
+    entryPrice: number,
+    entryIndex: number,
+  ): number | null => {
+    const atr = entryIndex > 0 && atrValues ? atrValues[entryIndex - 1] : null;
+    const stopDistance =
+      stopLossTicks != null
+        ? stopLossTicks * safeTickSize
+        : stopLossAtr != null && atr != null && Number.isFinite(atr) && atr > 0
+          ? stopLossAtr * atr
+          : null;
+
+    if (stopDistance == null || !Number.isFinite(stopDistance) || stopDistance <= 0) {
+      return null;
+    }
+
+    const rawStop = side === "buy" ? entryPrice - stopDistance : entryPrice + stopDistance;
+    const stopPrice = roundToTick(rawStop, safeTickSize);
+    const stopTicks = Math.abs(entryPrice - stopPrice) / safeTickSize;
+    return Number.isFinite(stopTicks) && stopTicks > 0 ? stopTicks : null;
+  };
+
+  const riskForQuantity = (
+    side: "buy" | "sell",
+    entryPrice: number,
+    entryIndex: number,
+    quantity: number,
+  ): Omit<EntrySizing, "quantity"> => {
+    const stopTicks = stopTicksForEntry(side, entryPrice, entryIndex);
+    if (stopTicks == null) {
+      return {
+        initialRisk: undefined,
+        riskBudget: riskSizing ? null : undefined,
+        riskExceeded: false,
+      };
+    }
+
+    const riskPerContract = stopTicks * safeTickSize * tickValue + commission;
+    const initialRisk = quantity * riskPerContract;
+    const initialStopPrice = roundToTick(
+      side === "buy" ? entryPrice - stopTicks * safeTickSize : entryPrice + stopTicks * safeTickSize,
+      safeTickSize,
+    );
+
+    if (!riskSizing) {
+      return { initialStopPrice, initialRisk, riskBudget: undefined, riskExceeded: false };
+    }
+
+    const riskBudget =
+      riskPerTradePct != null && riskPerTradePct > 0
+        ? (balance * riskPerTradePct) / 100
+        : null;
+    return {
+      initialStopPrice,
+      initialRisk,
+      riskBudget,
+      riskExceeded: riskBudget == null ? true : initialRisk > riskBudget,
+    };
+  };
+
+  const quantityForEntry = (
+    side: "buy" | "sell",
+    entryPrice: number,
+    entryIndex: number,
+  ): EntrySizing | null => {
+    if ((stopLossTicks != null || stopLossAtr != null) && stopTicksForEntry(side, entryPrice, entryIndex) == null) {
+      return null;
+    }
+    if (!riskSizing) {
+      const quantity = normalizedPositionSize;
+      return {
+        quantity,
+        ...riskForQuantity(side, entryPrice, entryIndex, quantity),
+      };
+    }
+
+    if (riskPerTradePct == null || riskPerTradePct <= 0) {
+      return null;
+    }
+
+    const stopTicks = stopTicksForEntry(side, entryPrice, entryIndex);
+    if (stopTicks == null) {
+      return null;
+    }
+
+    const riskPerContract = stopTicks * safeTickSize * tickValue + commission;
+    if (!Number.isFinite(riskPerContract) || riskPerContract <= 0) {
+      return null;
+    }
+
+    const riskBudget = (balance * riskPerTradePct) / 100;
+    const rawContracts =
+      riskPerContract > 0 ? Math.floor(riskBudget / riskPerContract) : 1;
+    let quantity = Math.max(1, rawContracts);
+    if (normalizedMaxPositionSize != null) {
+      quantity = Math.min(quantity, normalizedMaxPositionSize);
+    }
+
+    return {
+      quantity,
+      ...riskForQuantity(side, entryPrice, entryIndex, quantity),
+    };
+  };
   let activeOrders: RestingOrder[] = [];
   let tradeId = 0;
   const trades: Trade[] = [];
@@ -514,6 +761,10 @@ export function simulateReplaySession(args: {
       commission,
     );
     balance = round(balance + pnl);
+    const rMultiple =
+      position.initialRisk != null && position.initialRisk > 0
+        ? round(pnl / position.initialRisk, 4)
+        : undefined;
     trades.push({
       trade_id: tradeId,
       entry_time: position.entryTime,
@@ -525,6 +776,12 @@ export function simulateReplaySession(args: {
       pnl,
       status: "closed",
       commission: round(commission * position.quantity),
+      initial_risk:
+        position.initialRisk != null ? round(position.initialRisk) : undefined,
+      risk_budget:
+        position.riskBudget != null ? round(position.riskBudget) : undefined,
+      r_multiple: rMultiple,
+      risk_exceeded: position.riskExceeded,
     });
     tradeId += 1;
     position = null;
@@ -535,15 +792,49 @@ export function simulateReplaySession(args: {
     price: number,
     candle: Candle,
     barIndex: number,
-    quantity: number = positionSize,
+    sizing: EntrySizing,
   ) => {
     position = {
       side,
-      quantity,
+      quantity: sizing.quantity,
       entryPrice: price,
       entryTime: getCandleTime(candle),
       entryBarIndex: barIndex,
+      initialStopPrice: sizing.initialStopPrice,
+      initialRisk: sizing.initialRisk,
+      riskBudget: sizing.riskBudget,
+      riskExceeded: sizing.riskExceeded,
     };
+  };
+
+  const placeInitialStop = (candle: Candle, barIndex: number) => {
+    const opened = getPosition();
+    if (opened?.initialStopPrice == null) return;
+    const stop: RestingOrder = {
+      id: `initial_${barIndex}_${tradeId}_stop`,
+      intent: "exit",
+      side: opened.side === "buy" ? "sell" : "buy",
+      price: opened.initialStopPrice,
+      quantity: opened.quantity,
+      submitted_at: getCandleTime(candle),
+      submitted_bar_index: barIndex,
+      type: "bracket_stop",
+      status: "pending",
+      reduce_only: true,
+      bracket_id: `initial_${barIndex}_${tradeId}`,
+      bracket_role: "stop",
+    };
+    activeOrders = [stop];
+    appendEvent({
+      type: "resting_submitted",
+      action: "bracket_stop",
+      side: stop.side,
+      price: stop.price,
+      bar_index: barIndex,
+      time: stop.submitted_at,
+      order_id: stop.id,
+      reason: "Configured initial stop.",
+    });
   };
 
   const primaryActiveOrder = (): RestingOrder | null => activeOrders[0] ?? null;
@@ -634,13 +925,12 @@ export function simulateReplaySession(args: {
         if (completedOrder.intent === "exit") {
           closePosition(candle, completedOrder.price);
         } else {
-          openPosition(
-            completedOrder.side,
-            completedOrder.price,
-            candle,
-            i,
-            completedOrder.quantity ?? positionSize,
-          );
+          const quantity = completedOrder.quantity ?? normalizedPositionSize;
+          openPosition(completedOrder.side, completedOrder.price, candle, i, {
+            quantity,
+            // A resting entry keeps the stop basis used when it was submitted.
+            ...riskForQuantity(completedOrder.side, completedOrder.price, completedOrder.submitted_bar_index, quantity),
+          });
         }
         appendEvent({
           type: "resting_filled",
@@ -671,6 +961,7 @@ export function simulateReplaySession(args: {
           }
           return [order];
         });
+        if (completedOrder.intent === "entry") placeInitialStop(candle, i);
       } else {
         activeOrders = updatedOrders;
       }
@@ -725,6 +1016,16 @@ export function simulateReplaySession(args: {
         const currentOrder = primaryActiveOrder();
         if (currentOrder && currentOrder.status === "pending" && activeOrders.length === 1) {
           const nextPrice = currentOrder.side === "buy" ? quote.bid : quote.ask;
+          const sizing = currentOrder.intent === "entry"
+            ? quantityForEntry(currentOrder.side, nextPrice, i) : null;
+          if (currentOrder.intent === "entry" && !sizing) {
+            appendEvent({
+              type: "ignored", action: action.type, bar_index: i,
+              time: getCandleTime(candle),
+              reason: "Risk sizing needs a usable initial stop before this entry can be replaced.",
+            });
+            continue;
+          }
           const replacement = replaceRestingOrder({
             order: currentOrder,
             newId: action.id,
@@ -732,6 +1033,7 @@ export function simulateReplaySession(args: {
             barIndex: i,
             time: getCandleTime(candle),
           });
+          if (sizing) replacement.nextOrder.quantity = sizing.quantity;
           appendEvent({
             type: "resting_replaced",
             action: action.type,
@@ -811,13 +1113,27 @@ export function simulateReplaySession(args: {
           continue;
         }
 
+        const entrySide = actionType === "join_bid" ? "buy" : "sell";
+        const entryPrice = entrySide === "buy" ? quote.bid : quote.ask;
+        const sizing = quantityForEntry(entrySide, entryPrice, i);
+        if (!sizing) {
+          appendEvent({
+            type: "ignored",
+            action: action.type,
+            bar_index: i,
+            time: getCandleTime(candle),
+            reason: "Risk sizing needs a usable initial stop before this entry can be placed.",
+          });
+          continue;
+        }
+
         const nextOrder = createRestingOrder({
           action: actionType,
           id: action.id,
           barIndex: i,
           time: getCandleTime(candle),
           quote,
-          quantity: positionSize,
+          quantity: sizing.quantity,
         });
         activeOrders = [nextOrder];
         appendEvent({
@@ -985,7 +1301,19 @@ export function simulateReplaySession(args: {
       }
 
       clearActiveOrders();
-      openPosition(nextSide, fillPrice, candle, i, positionSize);
+      const sizing = quantityForEntry(nextSide, fillPrice, i);
+      if (!sizing) {
+        appendEvent({
+          type: "ignored",
+          action: action.type,
+          bar_index: i,
+          time: getCandleTime(candle),
+          reason: "Risk sizing needs a usable initial stop before this entry can be placed.",
+        });
+        continue;
+      }
+      openPosition(nextSide, fillPrice, candle, i, sizing);
+      placeInitialStop(candle, i);
       appendEvent({
         type: "taker_fill",
         action: action.type,
@@ -1080,6 +1408,9 @@ export function simulateReplaySession(args: {
         current_price: currentCandle.close,
         current_time: getCandleTime(currentCandle),
         unrealized_pnl: finalUnrealizedPnl,
+        initial_risk: finalPosition.initialRisk,
+        risk_budget: finalPosition.riskBudget,
+        risk_exceeded: finalPosition.riskExceeded,
       }
     : null;
 
