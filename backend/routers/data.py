@@ -265,7 +265,7 @@ async def get_db_candles(
     
     df = df.reset_index()
     time_col = df.columns[0]
-    df[time_col] = pd.to_datetime(df[time_col])
+    df[time_col] = pd.to_datetime(df[time_col], utc=True)
 
     return [
         {

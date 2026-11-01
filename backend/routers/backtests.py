@@ -1,4 +1,5 @@
 import uuid
+from datetime import timezone
 from fastapi import APIRouter, HTTPException, Query
 from schemas import BacktestCompare, BacktestRequest, BacktestResult, BacktestRobustnessResult, BacktestSummary
 from services.backtest_repo import (
@@ -81,6 +82,8 @@ def _df_to_candles(df) -> list[dict]:
     candles = []
     for row in df.itertuples(index=False):
         ts = getattr(row, time_col)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
         candles.append({
             "time": int(ts.timestamp()),
             "open": round(float(row.open), 2),

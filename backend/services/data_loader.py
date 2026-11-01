@@ -201,7 +201,7 @@ def _normalise_loaded_frame(df: pd.DataFrame) -> pd.DataFrame:
         df.index.name = "date"
 
     if df.index.tz is not None:
-        df.index = df.index.tz_localize(None)
+        df.index = df.index.tz_convert("UTC").tz_localize(None)
 
     df.columns = df.columns.str.lower()
     ohlcv_cols = [c for c in ["open", "high", "low", "close", "volume"] if c in df.columns]
@@ -522,7 +522,7 @@ def get_candles(
     # Convert DatetimeIndex to unix seconds per Lightweight Charts needs
     df = df.reset_index()
     time_col = df.columns[0]                        # 'date' or 'ts_event'
-    df[time_col] = pd.to_datetime(df[time_col])
+    df[time_col] = pd.to_datetime(df[time_col], utc=True)
  
     records = []
     for row in df.itertuples(index=False):
