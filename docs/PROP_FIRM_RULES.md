@@ -42,6 +42,13 @@ just where trades happened to close.
 Older callers that don't pass equity timestamps still fall back to the old
 closed-trade-by-exit-date check so replay/session code doesn't randomly break.
 
+MFFU Builder presets instead use `daily_loss_mode: soft_pause`. The backtester
+and replay close at the observed bar close, block entries for the rest of that
+New York futures session, then resume at the next session. This is a bar-level
+approximation: intrabar triggering and the firm's exact liquidation mechanics
+cannot be reconstructed from OHLC bars. Builder uses the Python backtest path
+until the C++ kernel supports this behavior.
+
 ### Max Drawdown
 
 The evaluator also checks drawdown bar by bar and records the first breach time.
@@ -50,9 +57,27 @@ There are two modes right now:
 - `intraday`: drawdown is measured off the running peak of the equity curve
 - `eod`: drawdown is measured against `account_size` directly
 
-That `eod` version is intentionally simple right now. It uses the account size
-as the reference point instead of a full session-close trailing rule engine, so
-don't oversell it in a demo.
+The default `eod` behavior remains a fixed starting-balance floor for legacy
+snapshots. New MFFU trailing presets opt into `evaluation_model: mffu_eod`:
+the floor moves after an observed session close and stops at starting balance
+plus $100. Sessions roll at 18:00 New York time. MFFU's published regular-day
+[auto-liquidation time](https://help.myfundedfutures.com/en/articles/9558251-permitted-times-to-trade)
+is 16:10 Eastern; holidays can have different hours. When a subsequent session
+is present, evidence is incomplete unless a bar ends exactly at 16:10, and a
+position held across that cutoff is flagged. The final partial session is
+identified separately and does not by itself imply a breach. Missing bars,
+unparseable intervals, invalid OHLC and unordered time evidence are flagged.
+Holiday calendars and full missing trading days are not inferred.
+
+MFFU evaluation checks each simulated position against the candle's adverse
+high or low, not merely its close. If that envelope reaches a hard loss floor or
+a Builder soft-pause threshold, the outcome is **inconclusive**. OHLC does not
+establish whether the extreme happened before a stop, limit, or other fill, so
+the check does not manufacture a breach, pause, execution price or trade. An
+inconclusive result cannot be marked as a pass. Backtests, replay, and the
+backtest preset comparison use the same conservative interpretation. A confirmed
+bar-close breach remains a breach. More granular data and fill evidence are
+required to resolve an ambiguous bar.
 
 ### Profit Target
 
@@ -74,11 +99,12 @@ If that passes, consistency passes.
 
 ### Minimum Trading Days
 
-If `min_trading_days` is set, the evaluator counts distinct closed-trade dates
-and requires the run to meet or beat that number before it can pass.
+If `min_trading_days` is set, the evaluator counts distinct trading days and
+requires the run to meet or beat that number before it can pass.
 
-Important gotcha: this is based on days with closed trades, not just days where
-you opened something and left it hanging.
+For MFFU, entry and exit activity is grouped into New York futures sessions;
+closed-trade PnL is attributed to the exit session for consistency. Other
+legacy rule sets still use closed-trade calendar dates.
 
 ## What Is In The Presets
 
@@ -86,8 +112,12 @@ Preset families currently include:
 
 - Topstep
 - My Funded Futures Pro
+- My Funded Futures Pro One-Day (50k)
+- My Funded Futures Builder, including the 50k add-on
 - My Funded Futures Rapid
-- My Funded Futures Flex
+- My Funded Futures Rapid EOD (25k and 50k)
+- My Funded Futures Studio #001, #002 and #003
+- My Funded Futures Flex (legacy)
 - Lucid Trading `LucidPro` and `LucidFlex`
 
 They are exposed through `/api/prop-firms` and used by both backtests and the
@@ -106,6 +136,51 @@ One honest note still matters here:
 
 So the app already does real scoring, but it is still "clean internal rule
 model" territory, not a perfect clone of every prop-firm edge case.
+
+## MFFU rule review
+
+Reviewed against MyFundedFutures' published information on November 1, 2026.
+Account-specific and legacy terms may differ. These presets are approximations,
+not an authoritative pass/fail result for an actual evaluation account.
+
+- [Evaluation parameters](https://help.myfundedfutures.com/en/articles/11802636-traders-evaluation-simplified)
+  list Rapid EOD 25k and 50k with a 6% target, 4% EOD maximum loss, no
+  daily loss limit, 30% consistency and four minimum trading days. Pro's
+  50k one-day add-on has a $4,000 target; its separate
+  [add-on guide](https://help.myfundedfutures.com/en/articles/12879226-pro-plan-1day-addon)
+  states no consistency rule or daily loss limit and a one-day pass.
+- MFFU's
+  [EOD drawdown](https://help.myfundedfutures.com/en/articles/8348565-end-of-day-eod-drawdown-explained)
+  trails with qualifying session-end results and accounts for open losses;
+  new presets use a bar-based trailing approximation and identify incomplete
+  session evidence. News and inactivity are not enforced. MFFU's
+  [inactivity policy](https://help.myfundedfutures.com/en/articles/16596524-inactivity-rule-one-time-payment-model)
+  says an account could be closed after seven calendar days without a trade;
+  its applicability depends on account terms. The
+  [news policy](https://help.myfundedfutures.com/en/articles/8230009-news-trading-policy)
+  distinguishes evaluations from particular funded plans and contains
+  restrictions that bar prices alone cannot verify.
+- [Builder evaluations](https://help.myfundedfutures.com/en/articles/11802636-traders-evaluation-simplified)
+  have daily-loss **soft pauses**. Builder presets apply an approximate bar-close
+  pause and next-session resume in backtests, experiment batches, and replay.
+- [Studio plans](https://help.myfundedfutures.com/en/articles/17589665-studio-plans-a-comprehensive-guide)
+  have separate static-loss and micro-contract-only rules. All three are
+  available as approximate presets. Their micro-only restrictions and the
+  catalog's single-instrument contract limits are checked for supported mini
+  and micro symbols; unknown symbols fail closed. Risk-sized entries are capped.
+  [Flex](https://help.myfundedfutures.com/en/articles/13521620-flex-plan-the-path-forward-legacy)
+  is a legacy plan. MFFU also documents its
+  [25k legacy variant](https://help.myfundedfutures.com/en/articles/13536146-25k-flex-plan-legacy).
+- MFFU's [automated-trading policy](https://help.myfundedfutures.com/en/articles/8444599-fair-play-and-prohibited-trading-practices)
+  permits certain customized automated strategies subject to its restrictions,
+  including no high-frequency trading or exploitation of simulated fills.
+  That policy is not evaluated by these presets.
+
+The read-only `/api/prop-firms/mffu-catalog` endpoint and the comparison in
+backtest and replay setup list the reviewed evaluation variants and the published
+Flex legacy plans. The catalog includes source links, contract limits, and a
+review date. It does not encode funded-stage payouts or update itself when MFFU
+changes its terms.
 
 ## Pass/Fail Summary
 

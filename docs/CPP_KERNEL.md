@@ -138,6 +138,10 @@ around it. One dispatch edge: quote mode, brackets, trailing stops, and
 breakeven moves need `high`/`low` columns, so a dataset without them quietly
 takes the Python path instead.
 
+Builder soft-pause simulations also use the Python loop, including experiment
+batches, because the current C++ kernel cannot stop entries for the remainder
+of a session. This is a bar-close approximation and can be slower for sweeps.
+
 Rounding is deliberately Python-shaped: `nearbyint` (ties-to-even) instead of
 `std::round`, because Python's `round()` is banker's rounding and the parity
 test checks exact equality. Same reason the build stays away from

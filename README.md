@@ -249,6 +249,7 @@ Key routes:
 
 | Method | Endpoint | Description |
 |---|---|---|
+| GET | `/api/prop-firms/mffu-catalog` | Review published MFFU evaluation terms and simulator coverage |
 | GET | `/api/data/db/symbols` | List DB-backed symbols |
 | GET | `/api/data/db/{symbol}/candles` | Fetch OHLCV bars via TimescaleDB |
 | GET | `/api/data/db/{symbol}/info` | Fetch symbol metadata and date range |
