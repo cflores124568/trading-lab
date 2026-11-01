@@ -155,3 +155,10 @@ test("compareReplayToBacktest keeps pass delta flat when both outcomes match", (
   assert.equal(report.propComparison.passDelta, "same");
   assert.equal(report.propComparison.actualProfitPctDiff, 0.01);
 });
+
+test("compareReplayToBacktest does not call uncertain evidence a failed result", () => {
+  const uncertain = propEval({passed: false, actual_profit_pct: .02, actual_drawdown_pct: .01});
+  uncertain.details.mffu_evidence = {incomplete: true, reasons: ["missing_bars_within_session"]};
+  const report = compareReplayToBacktest({manualTrades: [], systemTrades: [], interval: "1min", manualPropEvaluation: uncertain, systemPropEvaluation: propEval({passed: true, actual_profit_pct: .03, actual_drawdown_pct: .01})});
+  assert.equal(report.propComparison.passDelta, "inconclusive");
+});

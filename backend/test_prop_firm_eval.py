@@ -21,6 +21,65 @@ def _trade(day: str, pnl: float) -> dict:
 
 
 class PropFirmEvalTests(unittest.TestCase):
+    def test_mffu_days_and_consistency_use_futures_session_not_utc_date(self):
+        rules = {"name": "MFFU", "account_size": 50_000, "daily_loss_limit": None,
+                 "max_drawdown": .04, "profit_target": .01, "consistency_rule": True,
+                 "consistency_threshold": .75, "min_trading_days": 2, "drawdown_type": "eod", "evaluation_model": "mffu_eod"}
+        trades = [
+            {"entry_time": "2026-01-05T20:29:00Z", "exit_time": "2026-01-05T20:30:00Z", "pnl": 1000},
+            {"entry_time": "2026-01-05T23:00:00Z", "exit_time": "2026-01-05T23:01:00Z", "pnl": 1000},
+        ]
+        times = ["2026-01-05T20:30:00Z", "2026-01-05T23:01:00Z"]
+        result = evaluate_prop_firm(rules, trades, [51_000, 52_000], 50_000, times)
+        self.assertEqual(result["details"]["trading_days_completed"], 2)
+        self.assertEqual(result["details"]["daily_pnls"], {"2026-01-05": 1000, "2026-01-06": 1000})
+        self.assertTrue(result["consistency_passed"])
+    def test_mffu_eod_floor_trails_only_after_observed_session_close(self):
+        rules = {"name": "MFFU", "account_size": 50_000, "daily_loss_limit": None,
+                 "max_drawdown": .04, "profit_target": .06, "consistency_rule": False,
+                 "min_trading_days": None, "drawdown_type": "eod", "evaluation_model": "mffu_eod"}
+        times = ["2026-01-05T19:00:00+00:00", "2026-01-05T20:00:00+00:00", "2026-01-06T00:00:00+00:00"]
+        result = evaluate_prop_firm(rules, [], [50_000, 51_000, 48_900], 50_000, times)
+        self.assertTrue(result["drawdown_breached"])
+        self.assertEqual(result["details"]["drawdown_floor"], 49_000)
+        self.assertEqual(result["details"]["drawdown_breach_time"], times[-1])
+
+    def test_mffu_eod_floor_caps_at_initial_balance_plus_100(self):
+        rules = {"name": "MFFU", "account_size": 50_000, "daily_loss_limit": None,
+                 "max_drawdown": .04, "profit_target": .06, "consistency_rule": False,
+                 "drawdown_type": "eod", "evaluation_model": "mffu_eod"}
+        times = ["2026-01-05T20:00:00+00:00", "2026-01-06T00:00:00+00:00"]
+        result = evaluate_prop_firm(rules, [], [53_000, 50_200], 50_000, times)
+        self.assertFalse(result["drawdown_breached"])
+        self.assertEqual(result["details"]["drawdown_floor"], 50_100)
+
+    def test_mffu_missing_timestamp_evidence_cannot_pass(self):
+        rules = {"name": "MFFU", "account_size": 50_000, "daily_loss_limit": None,
+                 "max_drawdown": .04, "profit_target": .06, "consistency_rule": False,
+                 "drawdown_type": "eod", "evaluation_model": "mffu_eod"}
+        result = evaluate_prop_firm(rules, [], [50_000, 54_000], 50_000)
+        self.assertTrue(result["details"]["drawdown_evidence_incomplete"])
+        self.assertFalse(result["passed"])
+
+    def test_builder_soft_pause_is_not_an_account_breach(self):
+        rules = {"name": "Builder", "account_size": 50_000, "daily_loss_limit": .02,
+                 "daily_loss_mode": "soft_pause", "max_drawdown": .04, "profit_target": .06,
+                 "consistency_rule": False, "drawdown_type": "eod", "evaluation_model": "mffu_eod"}
+        times = ["2026-01-05T19:00:00+00:00", "2026-01-05T20:00:00+00:00"]
+        result = evaluate_prop_firm(rules, [], [50_000, 48_900], 50_000, times)
+        self.assertFalse(result["daily_loss_breached"])
+        self.assertIsNone(result["details"]["first_breach_rule"])
+
+    def test_studio_static_floor_does_not_trail_and_requires_timestamps(self):
+        rules = {"name": "Studio", "account_size": 10_000, "daily_loss_limit": None,
+                 "max_drawdown": .05, "profit_target": .10, "consistency_rule": False,
+                 "drawdown_type": "eod", "evaluation_model": "mffu_static"}
+        times = ["2026-01-05T20:00:00+00:00", "2026-01-06T00:00:00+00:00"]
+        result = evaluate_prop_firm(rules, [], [11_000, 9_600], 10_000, times)
+        self.assertEqual(result["details"]["drawdown_floor"], 9_500)
+        self.assertFalse(result["drawdown_breached"])
+        self.assertTrue(evaluate_prop_firm(rules, [], [10_000, 11_000], 10_000)["details"]["drawdown_evidence_incomplete"])
+
     def test_daily_loss_uses_intraday_equity_when_timestamps_are_available(self):
         rules = {
             "name": "Replay Test",

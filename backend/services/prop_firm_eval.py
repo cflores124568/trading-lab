@@ -1,6 +1,7 @@
 from typing import Any, List
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import numpy as np
 from services.serialization import to_plain_data
@@ -28,8 +29,21 @@ def evaluate_prop_firm(
     consistency_threshold = rules.get("consistency_threshold", 0.30)
     min_trading_days = rules.get("min_trading_days")
 
-    daily_pnls = _daily_pnls_from_trades(trades)
-    trading_days_completed = len(daily_pnls)
+    mffu_model = rules.get("evaluation_model")
+    mffu_sessions = mffu_model in ("mffu_eod", "mffu_static")
+    daily_pnls = _daily_pnls_from_trades(trades, mffu_sessions=mffu_sessions)
+    if mffu_sessions:
+        traded_days = set()
+        for trade in trades:
+            for field in ("entry_time", "exit_time"):
+                if trade.get(field):
+                    try:
+                        traded_days.add(_mffu_session_key(str(trade[field])))
+                    except (ValueError, TypeError):
+                        pass
+        trading_days_completed = len(traded_days)
+    else:
+        trading_days_completed = len(daily_pnls)
     min_trading_days_passed = (
         min_trading_days is None or trading_days_completed >= min_trading_days
     )
@@ -42,16 +56,16 @@ def evaluate_prop_firm(
         if timeline
         else _check_daily_loss_legacy(daily_pnls, account_size, effective_daily_loss_limit)
     )
-    daily_loss_breached = daily_loss_report["breached"]
+    soft_pause = rules.get("daily_loss_mode") == "soft_pause"
+    daily_loss_breached = daily_loss_report["breached"] and not soft_pause
 
     drawdown_type = rules.get("drawdown_type", "intraday")
-    drawdown_report = _check_drawdown_path(
-        equity_curve,
-        account_size,
-        max_drawdown_limit,
-        drawdown_type,
-        timeline,
-    )
+    if mffu_model in ("mffu_eod", "mffu_static"):
+        drawdown_report = _check_mffu_eod_drawdown(timeline, equity_curve, account_size, max_drawdown_limit, static=mffu_model == "mffu_static")
+    else:
+        drawdown_report = _check_drawdown_path(
+            equity_curve, account_size, max_drawdown_limit, drawdown_type, timeline,
+        )
     drawdown_breached = drawdown_report["breached"]
     actual_drawdown = drawdown_report["actual_drawdown_pct"]
 
@@ -79,13 +93,15 @@ def evaluate_prop_firm(
 
     #Aggregate
     passed = (
+    not drawdown_report.get("incomplete", False)
+    and
     not daily_loss_breached
     and not drawdown_breached
     and profit_target_hit
     and consistency_passed
     and min_trading_days_passed
     )
-    first_breach = _first_breach(daily_loss_report, drawdown_report)
+    first_breach = _first_breach({} if soft_pause else daily_loss_report, drawdown_report)
 
     return to_plain_data({
         "passed":              passed,
@@ -97,12 +113,16 @@ def evaluate_prop_firm(
         "details": {
             "account_size":           account_size,
             "daily_loss_limit_pct":   daily_loss_limit,
+            "daily_loss_mode": rules.get("daily_loss_mode", "breach"),
             "daily_loss_limit_amount": None if not daily_loss_enabled else round(account_size * daily_loss_limit, 2),
             "daily_loss_actual_loss":  round(daily_loss_report["actual_loss_amount"], 2),
             "daily_loss_actual_loss_pct": round(daily_loss_report["actual_loss_pct"], 4),
-            "daily_loss_breach_time": daily_loss_report["breach_time"],
-            "daily_loss_breach_equity": daily_loss_report["breach_equity"],
+            "daily_loss_breach_time": None if soft_pause else daily_loss_report["breach_time"],
+            "daily_loss_breach_equity": None if soft_pause else daily_loss_report["breach_equity"],
             "drawdown_type": drawdown_type,
+            "evaluation_model": rules.get("evaluation_model", "legacy"),
+            "drawdown_evidence_incomplete": drawdown_report.get("incomplete", False),
+            "drawdown_floor": drawdown_report.get("floor"),
             "max_drawdown_limit_pct": max_drawdown_limit,
             "actual_drawdown_pct":    round(actual_drawdown, 4),
             "drawdown_breach_time": drawdown_report["breach_time"],
@@ -122,11 +142,63 @@ def evaluate_prop_firm(
         },
     })
 
-def _daily_pnls_from_trades(trades: List[dict]) -> dict:
+
+def _mffu_session_key(value: str):
+    """Group bar timestamps by the New York futures session (18:00 rollover)."""
+    timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    local = timestamp.astimezone(ZoneInfo("America/New_York"))
+    return local.date() + timedelta(days=1 if local.hour >= 18 else 0)
+
+
+def _check_mffu_eod_drawdown(timeline, equity_curve, account_size, limit_pct, *, static=False):
+    """Trail from observed session closes; a missing timestamp fails closed."""
+    if not timeline or len(timeline) != len(equity_curve):
+        return {**_empty_drawdown_report(), "incomplete": True, "floor": None}
+    try:
+        sessions = [_mffu_session_key(point["time"]) for point in timeline]
+        timestamps = [datetime.fromisoformat(point["time"].replace("Z", "+00:00")) for point in timeline]
+        normalized = [value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value for value in timestamps]
+        if any(right <= left for left, right in zip(normalized, normalized[1:])):
+            raise ValueError("timestamps must be strictly chronological")
+    except (ValueError, TypeError, OverflowError):
+        return {**_empty_drawdown_report(), "incomplete": True, "floor": None}
+
+    floor = account_size * (1 - limit_pct)
+    high_close = account_size
+    max_loss = 0.0
+    breach_time = breach_equity = peak_time = high_time = None
+    peak_equity = account_size
+    for index, point in enumerate(timeline):
+        if not static and index and sessions[index] != sessions[index - 1]:
+            previous = timeline[index - 1]
+            if previous["equity"] > high_close:
+                high_close = previous["equity"]
+                high_time = previous["time"]
+            floor = min(account_size + 100, max(floor, high_close - account_size * limit_pct))
+        equity = point["equity"]
+        loss = max(0.0, high_close - equity)
+        if loss > max_loss:
+            max_loss = loss
+            peak_equity = high_close
+            peak_time = high_time
+        if breach_time is None and equity < floor:
+            breach_time, breach_equity = point["time"], equity
+    return {
+        "breached": breach_time is not None,
+        "actual_drawdown_pct": max_loss / account_size,
+        "breach_time": breach_time,
+        "breach_equity": round(breach_equity, 2) if breach_equity is not None else None,
+        "peak_equity": round(peak_equity, 2), "peak_time": peak_time,
+        "floor": round(floor, 2), "incomplete": False,
+    }
+
+def _daily_pnls_from_trades(trades: List[dict], *, mffu_sessions=False) -> dict:
     daily_pnls: dict = defaultdict(float)
     for t in trades:
         try:
-            exit_date = datetime.fromisoformat(t["exit_time"]).strftime("%Y-%m-%d")
+            exit_date = (_mffu_session_key(t["exit_time"]).isoformat() if mffu_sessions else datetime.fromisoformat(t["exit_time"]).strftime("%Y-%m-%d"))
             daily_pnls[exit_date] += t["pnl"]
         except (TypeError, ValueError):
             continue

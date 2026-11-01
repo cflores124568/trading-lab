@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 sys.modules.setdefault("fastapi", SimpleNamespace(HTTPException=Exception))
 
 from schemas import BacktestRequest
-from services.backtest_service import build_backtest_result
+from services.backtest_service import build_backtest_result, complete_backtest_result
 
 
 def _rules(**overrides) -> dict:
@@ -77,6 +77,34 @@ def _dataset() -> dict:
 
 
 class BacktestServiceTests(unittest.TestCase):
+    def test_mffu_intrabar_loss_prevents_false_pass_without_inventing_a_breach(self):
+        index = pd.to_datetime(["2026-01-05T20:58:00Z", "2026-01-05T20:59:00Z"])
+        df = pd.DataFrame({"open": [5000, 5000], "high": [5000, 8000], "low": [5000, 2500], "close": [5000, 8000]}, index=index)
+        dataset = {"df": df, "info": {"symbol": "ES", "interval": "1min"}}
+        request = _request(initial_balance=50_000, commission=0, tick_size=1, tick_value=1,
+                           prop_firm_rules=_rules(name="MFFU", account_size=50_000, daily_loss_limit=None,
+                                                  max_drawdown=.04, profit_target=.05, evaluation_model="mffu_eod"))
+        trades = [{"trade_id": 0, "entry_time": index[0].isoformat(), "exit_time": index[1].isoformat(),
+                   "side": "buy", "quantity": 1, "entry_price": 5000, "exit_price": 8000,
+                   "pnl": 3000, "commission": 0, "status": "closed"}]
+        result = complete_backtest_result(df, {"trades": trades, "equity_curve": [50_000, 53_000]}, dataset, request)
+        evaluation = result["prop_firm_eval"]
+        self.assertFalse(evaluation["passed"])
+        self.assertFalse(evaluation["drawdown_breached"])
+        self.assertTrue(evaluation["details"]["mffu_evidence"]["possible_intrabar_limit"])
+        self.assertEqual(len(result["trades"]), 1)
+
+    def test_mffu_missing_session_close_cannot_be_reported_as_a_pass(self):
+        index = pd.to_datetime(["2026-01-05T21:08:00Z", "2026-01-05T23:00:00Z"])
+        df = pd.DataFrame({"open": [100, 100], "high": [100, 100], "low": [100, 100], "close": [100, 100]}, index=index)
+        dataset = {"df": df, "info": {"symbol": "ES", "interval": "1min"}}
+        request = _request(initial_balance=50_000, commission=0, tick_size=1, tick_value=1,
+                           prop_firm_rules=_rules(name="MFFU", account_size=50_000, daily_loss_limit=None,
+                                                  max_drawdown=.04, profit_target=.05, evaluation_model="mffu_eod"))
+        result = complete_backtest_result(df, {"trades": [], "equity_curve": [51_000, 53_000]}, dataset, request)
+        evidence = result["prop_firm_eval"]["details"]["mffu_evidence"]
+        self.assertFalse(result["prop_firm_eval"]["passed"])
+        self.assertIn("missing_or_unaligned_session_close", evidence["reasons"])
     @patch("services.backtest_service.run_backtest")
     @patch("services.backtest_service.generate_signals", side_effect=lambda df, *_args, **_kwargs: df)
     @patch("services.backtest_service.add_all_indicators", side_effect=lambda df, *_args, **_kwargs: df)

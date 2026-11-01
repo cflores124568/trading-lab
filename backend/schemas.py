@@ -88,11 +88,17 @@ class PropFirmRules(BaseModel):
     consistency_threshold: Optional[float] = Field(default=0.30, ge=0, le=1)
     drawdown_type: DrawdownType = Field(default=DrawdownType.EOD)
     min_trading_days: Optional[int] = Field(default=None, ge=1)
+    evaluation_model: Literal["legacy", "mffu_eod", "mffu_static"] = "legacy"
+    daily_loss_mode: Literal["breach", "soft_pause"] = "breach"
+    max_mini_contracts: Optional[int] = Field(default=None, ge=0)
+    max_micro_contracts: Optional[int] = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def _normalize_disabled_rules(self) -> "PropFirmRules":
         if self.daily_loss_limit == 0:
             self.daily_loss_limit = None
+        if self.daily_loss_mode == "soft_pause" and self.daily_loss_limit is None:
+            raise ValueError("soft_pause requires a daily loss limit.")
 
         if self.consistency_rule:
             if self.consistency_threshold is None or self.consistency_threshold <= 0:

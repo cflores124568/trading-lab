@@ -97,6 +97,9 @@ import {
 import { buildReplayExecutionAnalytics } from "../services/executionAnalytics";
 import { formatTradeLabel } from "../services/tradeFormatting";
 import PropPresetSelect from "../components/PropPresetSelect";
+import MffuCatalog from "../components/MffuCatalog";
+import { mffuContractLimit } from "../services/mffuContracts";
+import { evaluationStatus, evidenceSummary } from "../services/mffuEvidence";
 
 const field =
   "app-input w-full text-sm disabled:opacity-40";
@@ -182,7 +185,7 @@ function createReplayAction(
   };
 }
 
-type PropEvalAccountState = "breached" | "passed" | "needs_more_days" | "in_progress";
+type PropEvalAccountState = "breached" | "passed" | "needs_more_days" | "in_progress" | "inconclusive";
 
 function propEvalTone(state: PropEvalAccountState): string {
   if (state === "breached") {
@@ -193,7 +196,7 @@ function propEvalTone(state: PropEvalAccountState): string {
     return "border-green-600 bg-green-950/60";
   }
 
-  if (state === "needs_more_days") {
+  if (state === "needs_more_days" || state === "inconclusive") {
     return "border-amber-600/70 bg-amber-950/40";
   }
 
@@ -335,7 +338,7 @@ function formatDailyLossLimit(limit: number | null | undefined): string {
     return "Off";
   }
 
-  return `${(limit * 100).toFixed(0)}%`;
+  return `${Number((limit * 100).toFixed(2))}%`;
 }
 
 function buildSourceBacktest(backtest: BacktestResult): ReplaySessionSourceBacktest {
@@ -448,6 +451,7 @@ function PropEvalPanel(props: {
     if (breached()) {
       return "breached";
     }
+    if (evaluationStatus(props.evaluation) === "Inconclusive") return "inconclusive";
     if (props.evaluation.passed) {
       return "passed";
     }
@@ -459,6 +463,7 @@ function PropEvalPanel(props: {
   const stateLabel = () => {
     if (accountState() === "breached") return "Breached";
     if (accountState() === "passed") return "Passed";
+    if (accountState() === "inconclusive") return "Inconclusive";
     if (accountState() === "needs_more_days") return "Needs More Days";
     return "Account Alive";
   };
@@ -469,6 +474,7 @@ function PropEvalPanel(props: {
     if (accountState() === "passed") {
       return "Profit target, consistency, min days, and risk rules are all clean.";
     }
+    if (accountState() === "inconclusive") return evidenceSummary(props.evaluation);
     if (accountState() === "needs_more_days") {
       return "The account is still valid. Save it and keep trading until consistency and min days line up.";
     }
@@ -480,7 +486,7 @@ function PropEvalPanel(props: {
       <div class="mb-2 flex items-center gap-2">
         {accountState() === "breached" ? (
           <CircleX size={18} class="text-red-400" />
-        ) : accountState() === "needs_more_days" ? (
+        ) : accountState() === "needs_more_days" || accountState() === "inconclusive" ? (
           <TriangleAlert size={18} class="text-amber-300" />
         ) : (
           <CircleCheck size={18} class="text-green-400" />
@@ -490,6 +496,7 @@ function PropEvalPanel(props: {
             {props.title}: {stateLabel()}
           </p>
           <p class="text-xs text-stone-400">{stateDetail()}</p>
+          <Show when={accountState() !== "inconclusive" && evidenceSummary(props.evaluation)}>{(message) => <p class="text-xs text-amber-300">{message()}</p>}</Show>
         </div>
       </div>
 
@@ -537,14 +544,16 @@ function PropEvalPanel(props: {
         />
         <PropEvalProgressRow
           label="Drawdown used"
-          value={`${formatPct(drawdownPct())} / ${formatPct(drawdownLimitPct(), 0)}`}
+          value={accountState() === "inconclusive" ? "Unverified" : `${formatPct(drawdownPct())} / ${formatPct(drawdownLimitPct(), 0)}`}
           detail={
             props.evaluation.drawdown_breached
               ? "Max drawdown breached."
+              : accountState() === "inconclusive"
+                ? "The available bars cannot verify drawdown."
               : `${formatProgressPct(drawdownLimitPct() > 0 ? drawdownPct() / drawdownLimitPct() : 0)} of drawdown limit used.`
           }
-          progress={drawdownLimitPct() > 0 ? drawdownPct() / drawdownLimitPct() : 0}
-          tone={props.evaluation.drawdown_breached ? "bad" : "good"}
+          progress={accountState() === "inconclusive" ? 0 : drawdownLimitPct() > 0 ? drawdownPct() / drawdownLimitPct() : 0}
+          tone={props.evaluation.drawdown_breached ? "bad" : accountState() === "inconclusive" ? "warn" : "good"}
         />
       </ul>
 
@@ -1102,6 +1111,8 @@ export default function ReplayLabPage() {
       volatileBarExtraTicks: config.volatileBarExtraTicks,
       restingFillMode: config.restingFillMode,
       propFirmRules: config.propFirmRules,
+      symbol: config.symbol.symbol,
+      interval: getBackendInterval(config.interval),
     });
   });
   const replayEquityGuideLines = createMemo(() => {
@@ -1710,6 +1721,16 @@ export default function ReplayLabPage() {
       setBannerError("Contracts must be a whole number (1 or more).");
       return;
     }
+    try {
+      const limit = mffuContractLimit(selectedSymbol.symbol, selectedPreset);
+      if (sizingMode() === "fixed" && limit !== null && positionSize() > limit) {
+        setBannerError(`Requested ${positionSize()} contracts exceeds the account limit of ${limit} for ${selectedSymbol.symbol}.`);
+        return;
+      }
+    } catch (error) {
+      setBannerError(error instanceof Error ? error.message : "Could not verify the account contract limit.");
+      return;
+    }
 
     if (sizingMode() === "risk_percent") {
       if (!Number.isFinite(riskPerTradePct()) || riskPerTradePct() <= 0 || riskPerTradePct() > 100) {
@@ -2233,6 +2254,7 @@ export default function ReplayLabPage() {
                 />
               </div>
 
+              <MffuCatalog />
               <Show when={preset()}>
                 {(selectedPreset) => (
                   <div class="space-y-3">
@@ -2256,7 +2278,7 @@ export default function ReplayLabPage() {
                           DollarSign,
                         ],
                         [
-                          "Daily loss",
+                          selectedPreset().daily_loss_mode === "soft_pause" ? "Daily soft pause" : "Daily loss",
                           formatDailyLossLimit(selectedPreset().daily_loss_limit),
                           TrendingDown,
                         ],
@@ -2285,6 +2307,12 @@ export default function ReplayLabPage() {
                       )}
                     </div>
 
+                    <Show when={selectedPreset().name.startsWith("My Funded Futures") && !selectedPreset().name.includes("Studio #")}>
+                      <p class="rounded-xl border border-amber-900/60 bg-amber-950/20 px-3 py-3 text-xs text-amber-300">{selectedPreset().evaluation_model === "mffu_eod" ? "MFFU results use conservative candle checks. Use 1-, 5-, or 10-minute bars to align the regular 4:10 p.m. Eastern close. Missing bars and uncertain intrabar fills can make results inconclusive." : "This older saved rule set uses a fixed floor and does not include the MFFU candle checks."} Holidays, news and inactivity require separate review.{selectedPreset().max_mini_contracts == null ? " This saved rule set does not enforce account contract limits." : ""}</p>
+                    </Show>
+                    <Show when={selectedPreset().name.includes("My Funded Futures Studio #")}>
+                      <p class="rounded-xl border border-amber-900/60 bg-amber-950/20 px-3 py-3 text-xs text-amber-300">{selectedPreset().evaluation_model === "mffu_static" ? "Studio results use conservative candle checks. Use 1-, 5-, or 10-minute bars for the regular 4:10 p.m. Eastern close; missing bars and uncertain intrabar fills can make results inconclusive." : "This older saved rule set does not include the MFFU candle checks."} Holidays, news and inactivity require separate review.</p>
+                    </Show>
                     <Show
                       when={
                         selectedPreset().funded_account_label ||

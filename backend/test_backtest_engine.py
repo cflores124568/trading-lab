@@ -9,7 +9,7 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from services.backtest_engine import _session_end_flags, run_backtest
+from services.backtest_engine import _session_end_flags, run_backtest, run_backtest_batch
 
 
 def _bars(
@@ -537,6 +537,20 @@ class BacktestEngineDynamicExitTests(unittest.TestCase):
                 tick_value=1.0,
                 exit_at_session_end=True,
             )
+
+
+class SoftPauseTests(unittest.TestCase):
+    def test_pause_closes_position_skips_rest_of_session_and_resumes(self):
+        index = pd.to_datetime(["2026-01-05T19:00:00Z", "2026-01-05T19:01:00Z", "2026-01-05T19:02:00Z", "2026-01-05T19:03:00Z", "2026-01-06T00:00:00Z", "2026-01-06T00:01:00Z"])
+        frame = pd.DataFrame({"open": [100, 100, 100, 90, 90, 90], "close": [100, 100, 90, 90, 90, 90], "signal": [1] * 6}, index=index)
+        args = dict(initial_balance=1000, commission=0, tick_size=1, tick_value=1, slippage_ticks=0, daily_loss_soft_limit=5)
+        result = run_backtest(frame, **args)
+        self.assertEqual(len(result["trades"]), 2)
+        self.assertEqual(result["trades"][0]["exit_reason"], "daily_soft_pause")
+        self.assertEqual(result["trades"][0]["exit_time"], index[2].isoformat())
+        self.assertEqual(result["trades"][1]["entry_time"], index[4].isoformat())
+        batch = run_backtest_batch(frame, [frame["signal"].to_numpy()], **args)
+        self.assertEqual(batch[0], result)
 
 
 if __name__ == "__main__":

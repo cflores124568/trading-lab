@@ -1,4 +1,7 @@
 import type { Candle, PerformanceMetrics, PropFirmEvaluation, PropFirmRules, Trade } from "./api";
+import { getMffuDrawdown, mffuSession } from "./mffuDrawdown.ts";
+import { mffuContractLimit } from "./mffuContracts.ts";
+import { assessMffuEvidence, parseMffuTime } from "./mffuEvidence.ts";
 import {
   createBracketExitOrders,
   createRestingOrder,
@@ -371,6 +374,8 @@ function evaluatePropFirm(
   trades: Trade[],
   equityCurve: number[],
   initialBalance: number,
+  timestamps: number[] = [],
+  openEntryTime?: string,
 ): PropFirmEvaluation {
   const accountSize = rules.account_size ?? initialBalance;
   const dailyLossLimit = rules.daily_loss_limit ?? null;
@@ -387,21 +392,35 @@ function evaluatePropFirm(
     dailyLossEnabled && dailyLossLimit != null ? round(accountSize * dailyLossLimit) : null;
 
   const dailyPnls = new Map<string, number>();
+  const mffu = rules.evaluation_model === "mffu_eod" || rules.evaluation_model === "mffu_static";
+  const mffuTradingDays = new Set<string>();
   for (const trade of trades) {
+    if (mffu) {
+      for (const time of [trade.entry_time, trade.exit_time]) {
+        const parsed = time ? parseMffuTime(time) : NaN;
+        if (Number.isFinite(parsed)) mffuTradingDays.add(mffuSession(parsed));
+      }
+    }
     if (!trade.exit_time) continue;
-    const key = trade.exit_time.slice(0, 10);
+    const parsedExit = parseMffuTime(trade.exit_time);
+    if (mffu && !Number.isFinite(parsedExit)) continue;
+    const key = mffu ? mffuSession(parsedExit) : trade.exit_time.slice(0, 10);
     dailyPnls.set(key, (dailyPnls.get(key) ?? 0) + trade.pnl);
   }
-  const tradingDaysCompleted = dailyPnls.size;
+  if (mffu && openEntryTime && Number.isFinite(parseMffuTime(openEntryTime))) mffuTradingDays.add(mffuSession(parseMffuTime(openEntryTime)));
+  const tradingDaysCompleted = mffu ? mffuTradingDays.size : dailyPnls.size;
   const minTradingDaysPassed =
     minTradingDays === null || tradingDaysCompleted >= minTradingDays;
 
-  const dailyLossBreached = Array.from(dailyPnls.values()).some(
+  const dailyLossBreached = rules.daily_loss_mode !== "soft_pause" && Array.from(dailyPnls.values()).some(
     (pnl) => pnl < -(accountSize * effectiveDailyLossLimit),
   );
 
-  const actualDrawdown = getReplayDrawdown(equityCurve, accountSize, drawdownType);
-  const drawdownBreached = actualDrawdown > maxDrawdownLimit;
+  const mffuDrawdown = rules.evaluation_model === "mffu_eod" || rules.evaluation_model === "mffu_static"
+    ? getMffuDrawdown(equityCurve, timestamps, accountSize, maxDrawdownLimit, rules.evaluation_model === "mffu_static")
+    : null;
+  const actualDrawdown = mffuDrawdown?.actual ?? getReplayDrawdown(equityCurve, accountSize, drawdownType);
+  const drawdownBreached = mffuDrawdown ? mffuDrawdown.breached : actualDrawdown > maxDrawdownLimit;
 
   const finalBalance = equityCurve.length > 0 ? equityCurve[equityCurve.length - 1] : initialBalance;
   const totalProfitPct = accountSize === 0 ? 0 : (finalBalance - accountSize) / accountSize;
@@ -424,7 +443,7 @@ function evaluatePropFirm(
 
   return {
     passed:
-      !dailyLossBreached &&
+      !mffuDrawdown?.incomplete && !dailyLossBreached &&
       !drawdownBreached &&
       profitTargetHit &&
       consistencyPassed &&
@@ -437,8 +456,12 @@ function evaluatePropFirm(
     details: {
       account_size: accountSize,
       daily_loss_limit_pct: dailyLossLimitPct,
+      daily_loss_mode: rules.daily_loss_mode ?? "breach",
       daily_loss_limit_amount: dailyLossLimitAmount,
       drawdown_type: drawdownType,
+      evaluation_model: rules.evaluation_model ?? "legacy",
+      drawdown_evidence_incomplete: mffuDrawdown?.incomplete ?? false,
+      drawdown_floor: mffuDrawdown?.floor ?? null,
       max_drawdown_limit_pct: maxDrawdownLimit,
       actual_drawdown_pct: round(actualDrawdown, 4),
       profit_target_pct: profitTarget,
@@ -531,6 +554,8 @@ export function simulateReplaySession(args: {
   volatileBarExtraTicks?: number;
   restingFillMode?: RestingFillMode;
   propFirmRules: PropFirmRules;
+  symbol?: string;
+  interval?: string;
 }): ReplaySession {
   const {
     candles,
@@ -552,6 +577,8 @@ export function simulateReplaySession(args: {
     volatileBarExtraTicks = DEFAULT_EXECUTION_CONFIG.volatileBarExtraTicks,
     restingFillMode = DEFAULT_EXECUTION_CONFIG.restingFillMode,
     propFirmRules,
+    symbol,
+    interval,
   } = args;
 
   const executionConfig: ExecutionConfig = {
@@ -573,6 +600,10 @@ export function simulateReplaySession(args: {
     return value;
   };
   const normalizedPositionSize = requireContracts(positionSize, "Contracts");
+  const firmContractLimit = mffuContractLimit(symbol, propFirmRules);
+  if (!riskSizing && firmContractLimit !== null && normalizedPositionSize > firmContractLimit) {
+    throw new Error(`Requested ${normalizedPositionSize} contracts exceeds the account limit of ${firmContractLimit} for ${symbol}.`);
+  }
   const normalizedMaxPositionSize = maxPositionSize == null
     ? null : requireContracts(maxPositionSize, "Maximum contracts");
   const normalizedAtrPeriod = requireContracts(atrPeriod, "ATR period");
@@ -727,6 +758,7 @@ export function simulateReplaySession(args: {
     if (normalizedMaxPositionSize != null) {
       quantity = Math.min(quantity, normalizedMaxPositionSize);
     }
+    if (firmContractLimit !== null) quantity = Math.min(quantity, firmContractLimit);
 
     return {
       quantity,
@@ -739,6 +771,9 @@ export function simulateReplaySession(args: {
   const equityCurve: number[] = [];
   const executionEvents: ExecutionEvent[] = [];
   let firstPass: ReplayPassInfo | null = null;
+  let softSession = mffuSession(visibleCandles[0].time);
+  let sessionStartEquity = initialBalance;
+  let softPaused = false;
   let lastCandle = visibleCandles[0];
   let lastQuote = syntheticQuoteForCandle(lastCandle, executionConfig);
 
@@ -878,6 +913,20 @@ export function simulateReplaySession(args: {
     lastCandle = candle;
     lastQuote = quote;
     const actionsAtBar = visibleActions.filter((action) => action.barIndex === i);
+
+    if (propFirmRules.daily_loss_mode === "soft_pause") {
+      const currentSession = mffuSession(candle.time);
+      if (currentSession !== softSession) {
+        softSession = currentSession;
+        sessionStartEquity = equityCurve[equityCurve.length - 1] ?? initialBalance;
+        softPaused = false;
+      }
+      if (softPaused) {
+        for (const action of actionsAtBar) appendEvent({type: "ignored", action: action.type, bar_index: i, time: getCandleTime(candle), reason: "Trading paused after the daily soft loss limit."});
+        equityCurve.push(round(balance));
+        continue;
+      }
+    }
 
     const pendingOrders = activeOrders.filter(
       (order) => order.status === "pending" && i > order.submitted_bar_index,
@@ -1338,15 +1387,7 @@ export function simulateReplaySession(args: {
 
     equityCurve.push(round(balance + unrealizedPnl));
 
-    const currentEvaluation = evaluatePropFirm(propFirmRules, trades, equityCurve, initialBalance);
-    if (currentEvaluation.passed && !firstPass) {
-      firstPass = {
-        barIndex: i,
-        time: getCandleTime(candle),
-        equity: equityCurve[equityCurve.length - 1],
-      };
-    }
-
+    const currentEvaluation = evaluatePropFirm(propFirmRules, trades, equityCurve, initialBalance, visibleCandles.slice(0, equityCurve.length).map((item) => item.time), getPosition()?.entryTime);
     if (currentEvaluation.daily_loss_breached || currentEvaluation.drawdown_breached) {
       // Freeze the session right here so later candles can't sneak in extra fills.
       if (hasPendingOrders()) {
@@ -1382,6 +1423,30 @@ export function simulateReplaySession(args: {
 
       break;
     }
+
+    if (propFirmRules.daily_loss_mode === "soft_pause" && propFirmRules.daily_loss_limit != null &&
+        equityCurve[equityCurve.length - 1] <= sessionStartEquity - propFirmRules.account_size * propFirmRules.daily_loss_limit) {
+      for (const order of activeOrders.filter((candidate) => candidate.status === "pending")) {
+        appendEvent({type: "resting_canceled", action: "cancel", side: order.side, price: order.price,
+          bar_index: i, time: getCandleTime(candle), order_id: order.id, reason: "Daily soft pause canceled the order."});
+      }
+      clearActiveOrders();
+      const open = getPosition();
+      if (open) {
+        const exitPrice = open.side === "buy" ? quote.bid : quote.ask;
+        closePosition(candle, exitPrice);
+        appendEvent({type: "flatten", action: "flatten", price: exitPrice, bar_index: i,
+          time: getCandleTime(candle), reason: "Daily soft loss limit paused trading."});
+        equityCurve[equityCurve.length - 1] = balance;
+      }
+      softPaused = true;
+    }
+    const settledEvaluation = softPaused
+      ? evaluatePropFirm(propFirmRules, trades, equityCurve, initialBalance, visibleCandles.slice(0, equityCurve.length).map((item) => item.time), getPosition()?.entryTime)
+      : currentEvaluation;
+    if (settledEvaluation.passed && !firstPass) {
+      firstPass = {barIndex: i, time: getCandleTime(candle), equity: equityCurve[equityCurve.length - 1]};
+    }
   }
 
   const currentCandle = lastCandle;
@@ -1415,11 +1480,26 @@ export function simulateReplaySession(args: {
     : null;
 
   const metrics = calculateMetrics(trades, equityCurve);
+  const finalEvaluation = evaluatePropFirm(propFirmRules, trades, equityCurve, initialBalance, visibleCandles.slice(0, equityCurve.length).map((item) => item.time), finalPosition?.entryTime);
+  if (propFirmRules.evaluation_model === "mffu_eod" || propFirmRules.evaluation_model === "mffu_static") {
+    const openTrade: Trade[] = finalPosition ? [{
+      trade_id: tradeId, entry_time: finalPosition.entryTime, exit_time: getCandleTime(currentCandle),
+      side: finalPosition.side, quantity: finalPosition.quantity, entry_price: finalPosition.entryPrice,
+      exit_price: currentCandle.close, pnl: finalUnrealizedPnl, status: "closed",
+      commission: commission * finalPosition.quantity,
+    }] : [];
+    const evidence = assessMffuEvidence(visibleCandles.slice(0, equityCurve.length), [...trades, ...openTrade], equityCurve, initialBalance, propFirmRules, interval, tickValue);
+    finalEvaluation.details.mffu_evidence = evidence;
+    if (evidence.incomplete || evidence.possible_intrabar_limit) {
+      finalEvaluation.passed = false;
+      firstPass = null;
+    }
+  }
   return {
     trades,
     metrics,
     equityCurve,
-    propEvaluation: evaluatePropFirm(propFirmRules, trades, equityCurve, initialBalance),
+    propEvaluation: finalEvaluation,
     firstPass,
     position: replayPosition,
     activeOrder: primaryActiveOrder(),

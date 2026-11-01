@@ -3,7 +3,10 @@ import type {
   PropFirmPreset,
   PropFirmRules,
   Trade,
+  Candle,
 } from "./api";
+import { getMffuDrawdown, mffuSession } from "./mffuDrawdown";
+import { assessMffuEvidence, parseMffuTime } from "./mffuEvidence";
 
 export interface DailyPnlEntry {
   date: string;
@@ -139,6 +142,9 @@ export function evaluatePropFirmRules(
   equityCurve: number[],
   initialBalance: number,
   equityTimes: (number | string)[] = [],
+  candles: Candle[] = [],
+  interval?: string,
+  dollarsPerPoint = 0,
 ): PropFirmEvaluation {
   const accountSize = rules.account_size ?? initialBalance;
   const dailyLossLimit = rules.daily_loss_limit ?? null;
@@ -155,13 +161,23 @@ export function evaluatePropFirmRules(
     dailyLossEnabled && dailyLossLimit != null ? round(accountSize * dailyLossLimit) : null;
 
   const dailyPnls = new Map<string, number>();
+  const mffuModel = rules.evaluation_model === "mffu_eod" || rules.evaluation_model === "mffu_static";
+  const mffuDays = new Set<string>();
   for (const trade of trades) {
+    if (mffuModel) {
+      for (const value of [trade.entry_time, trade.exit_time]) {
+        const timestamp = value ? parseMffuTime(value) : NaN;
+        if (Number.isFinite(timestamp)) mffuDays.add(mffuSession(timestamp));
+      }
+    }
     if (!trade.exit_time) continue;
-    const key = trade.exit_time.slice(0, 10);
+    const timestamp = parseMffuTime(trade.exit_time);
+    if (mffuModel && !Number.isFinite(timestamp)) continue;
+    const key = mffuModel ? mffuSession(timestamp) : trade.exit_time.slice(0, 10);
     dailyPnls.set(key, (dailyPnls.get(key) ?? 0) + trade.pnl);
   }
 
-  const tradingDaysCompleted = dailyPnls.size;
+  const tradingDaysCompleted = mffuModel ? mffuDays.size : dailyPnls.size;
   const minTradingDaysPassed =
     minTradingDays === null || tradingDaysCompleted >= minTradingDays;
 
@@ -170,16 +186,19 @@ export function evaluatePropFirmRules(
       ? getPathDailyLoss(equityCurve, equityTimes, accountSize, effectiveDailyLossLimit)
       : getTradeDailyLoss(dailyPnls, accountSize, effectiveDailyLossLimit);
 
-  const drawdownReport = getPathDrawdown(
-    equityCurve,
-    equityTimes,
-    accountSize,
-    maxDrawdownLimit,
-    drawdownType,
-  );
+  const mffu = rules.evaluation_model === "mffu_eod" || rules.evaluation_model === "mffu_static"
+    ? getMffuDrawdown(equityCurve, equityTimes.slice(0, equityCurve.length).map((time) => typeof time === "number" ? time : Date.parse(time) / 1000), accountSize, maxDrawdownLimit, rules.evaluation_model === "mffu_static")
+    : null;
+  const drawdownReport = mffu ? {
+    breached: mffu.breached, actual_drawdown_pct: mffu.actual,
+    breach_time: mffu.breachIndex === null ? null : normalizeEquityTime(equityTimes[mffu.breachIndex]),
+    breach_equity: mffu.breachIndex === null ? null : equityCurve[mffu.breachIndex],
+    peak_equity: mffu.peak, peak_time: mffu.peakIndex === null ? null : normalizeEquityTime(equityTimes[mffu.peakIndex]),
+  } : getPathDrawdown(equityCurve, equityTimes, accountSize, maxDrawdownLimit, drawdownType);
   const actualDrawdown = drawdownReport.actual_drawdown_pct;
   const drawdownBreached = drawdownReport.breached;
-  const firstBreach = getFirstBreach(dailyLossReport, drawdownReport);
+  const softPause = rules.daily_loss_mode === "soft_pause";
+  const firstBreach = getFirstBreach(softPause ? {breach_time: null} : dailyLossReport, drawdownReport);
 
   const finalBalance =
     equityCurve.length > 0 ? equityCurve[equityCurve.length - 1] : initialBalance;
@@ -201,14 +220,15 @@ export function evaluatePropFirmRules(
     }
   }
 
+  const evidence = mffu ? assessMffuEvidence(candles.slice(0, equityCurve.length), trades, equityCurve, initialBalance, rules, interval, dollarsPerPoint) : null;
   return {
     passed:
-      !dailyLossReport.breached &&
+      !mffu?.incomplete && !evidence?.incomplete && !evidence?.possible_intrabar_limit && (softPause || !dailyLossReport.breached) &&
       !drawdownBreached &&
       profitTargetHit &&
       consistencyPassed &&
       minTradingDaysPassed,
-    daily_loss_breached: dailyLossReport.breached,
+    daily_loss_breached: !softPause && dailyLossReport.breached,
     drawdown_breached: drawdownBreached,
     profit_target_hit: profitTargetHit,
     consistency_passed: consistencyPassed,
@@ -219,9 +239,13 @@ export function evaluatePropFirmRules(
       daily_loss_limit_amount: dailyLossLimitAmount,
       daily_loss_actual_loss: round(dailyLossReport.actual_loss_amount),
       daily_loss_actual_loss_pct: round(dailyLossReport.actual_loss_pct, 4),
-      daily_loss_breach_time: dailyLossReport.breach_time,
-      daily_loss_breach_equity: dailyLossReport.breach_equity,
+      daily_loss_breach_time: softPause ? null : dailyLossReport.breach_time,
+      daily_loss_breach_equity: softPause ? null : dailyLossReport.breach_equity,
       drawdown_type: drawdownType,
+      evaluation_model: rules.evaluation_model ?? "legacy",
+      drawdown_evidence_incomplete: mffu?.incomplete ?? false,
+      drawdown_floor: mffu?.floor ?? null,
+      ...(evidence ? {mffu_evidence: evidence} : {}),
       max_drawdown_limit_pct: maxDrawdownLimit,
       actual_drawdown_pct: round(actualDrawdown, 4),
       drawdown_breach_time: drawdownReport.breach_time,
@@ -415,6 +439,10 @@ export function findMatchingPresetKey(
     preset.consistency_rule === rules.consistency_rule &&
     normalizeDisabledValue(preset.consistency_threshold) === normalizeDisabledValue(rules.consistency_threshold) &&
     preset.drawdown_type === rules.drawdown_type &&
+    (preset.evaluation_model ?? "legacy") === (rules.evaluation_model ?? "legacy") &&
+    (preset.daily_loss_mode ?? "breach") === (rules.daily_loss_mode ?? "breach") &&
+    (preset.max_mini_contracts ?? null) === (rules.max_mini_contracts ?? null) &&
+    (preset.max_micro_contracts ?? null) === (rules.max_micro_contracts ?? null) &&
     preset.min_trading_days === rules.min_trading_days;
 
   const found = presets.find(
@@ -427,7 +455,11 @@ export function findMatchingPresetKey(
     return found.key;
   }
 
-  const exactNameMatch = presets.find((preset) => preset.name === rules.name);
+  const exactNameMatch = presets.find((preset) => preset.name === rules.name &&
+    (preset.evaluation_model ?? "legacy") === (rules.evaluation_model ?? "legacy") &&
+    (preset.daily_loss_mode ?? "breach") === (rules.daily_loss_mode ?? "breach") &&
+    (preset.max_mini_contracts ?? null) === (rules.max_mini_contracts ?? null) &&
+    (preset.max_micro_contracts ?? null) === (rules.max_micro_contracts ?? null));
   if (exactNameMatch) {
     return exactNameMatch.key;
   }

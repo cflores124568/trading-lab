@@ -13,6 +13,7 @@ from services.execution_model import (
     normalize_backtest_execution_mode,
     synthetic_quote_for_bar,
 )
+from services.prop_firm_eval import _mffu_session_key
 
 #Try to import compiled C++ kernel
 try:
@@ -54,6 +55,7 @@ def run_backtest(
     sizing_mode: str = "fixed",
     risk_per_trade_pct: float | None = None,
     max_position_size: int | None = None,
+    daily_loss_soft_limit: float | None = None,
 ) -> dict:
     """Run a next-bar futures backtest from completed-bar signals.
 
@@ -100,7 +102,7 @@ def run_backtest(
     # and it's what the parity test checks the kernel against.
     has_ohlc_range = {"high", "low"} <= set(df.columns)
     needs_ohlc_range = uses_bar_extremes or uses_synthetic_quotes
-    if _CPP_AVAILABLE and (has_ohlc_range or not needs_ohlc_range):
+    if daily_loss_soft_limit is None and _CPP_AVAILABLE and (has_ohlc_range or not needs_ohlc_range):
         try:
             return _run_cpp(
                 df,
@@ -145,6 +147,7 @@ def run_backtest(
         sizing_mode=sizing_mode,
         risk_per_trade_pct=risk_per_trade_pct,
         max_position_size=max_position_size,
+        daily_loss_soft_limit=daily_loss_soft_limit,
     )
 
 def run_backtest_batch(
@@ -176,6 +179,7 @@ def run_backtest_batch(
     sizing_mode: str = "fixed",
     risk_per_trade_pct: float | None = None,
     max_position_size: int | None = None,
+    daily_loss_soft_limit: float | None = None,
 ) -> list[dict]:
     """Run many signal variants over one shared OHLC frame.
 
@@ -227,7 +231,7 @@ def run_backtest_batch(
 
     has_ohlc_range = {"high", "low"} <= set(df.columns)
     needs_ohlc_range = uses_bar_extremes or uses_synthetic_quotes
-    if _CPP_BATCH_AVAILABLE and (has_ohlc_range or not needs_ohlc_range):
+    if daily_loss_soft_limit is None and _CPP_BATCH_AVAILABLE and (has_ohlc_range or not needs_ohlc_range):
         closes = df["close"].to_numpy(dtype=np.float64)
         try:
             raw_results = _core.run_backtest_batch(
@@ -298,6 +302,7 @@ def run_backtest_batch(
             sizing_mode=sizing_mode,
             risk_per_trade_pct=risk_per_trade_pct,
             max_position_size=max_position_size,
+            daily_loss_soft_limit=daily_loss_soft_limit,
         )
         for signals in signal_arrays
     ]
@@ -516,6 +521,7 @@ def _run_python(
     sizing_mode: str = "fixed",
     risk_per_trade_pct: float | None = None,
     max_position_size: int | None = None,
+    daily_loss_soft_limit: float | None = None,
 ) -> dict:
     if tick_size <= 0:
         raise ValueError("tick_size must be greater than zero.")
@@ -546,6 +552,11 @@ def _run_python(
     trades:      List[dict]   = []
     trade_id     = 0
     position: dict | None = None
+    if daily_loss_soft_limit is not None and daily_loss_soft_limit <= 0:
+        raise ValueError("daily_loss_soft_limit must be positive.")
+    session_key = _mffu_session_key(_iso(df.index[0])) if daily_loss_soft_limit is not None else None
+    session_start_equity = initial_balance
+    soft_paused = False
 
     def close_position(exit_time, exit_price: float, reason: str) -> None:
         nonlocal balance, trade_id, position
@@ -608,6 +619,21 @@ def _run_python(
 
     for i in range(1, len(df)):
         bar = df.iloc[i]
+        if daily_loss_soft_limit is not None:
+            previous_bar = df.iloc[i - 1]
+            if not soft_paused and equity_curve[-1] <= session_start_equity - daily_loss_soft_limit:
+                if position is not None:
+                    close_at_bar_close(previous_bar, "daily_soft_pause")
+                    equity_curve[-1] = round(balance, 2)
+                soft_paused = True
+            current_session = _mffu_session_key(_iso(bar.name))
+            if current_session != session_key:
+                session_key = current_session
+                session_start_equity = equity_curve[-1]
+                soft_paused = False
+            if soft_paused:
+                equity_curve.append(round(balance, 2))
+                continue
         signal = int(df.iloc[i - 1].get("signal", 0))
         quote = None
         execution_base = _round_to_tick(float(bar["open"]), tick_size)

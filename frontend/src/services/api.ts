@@ -184,6 +184,10 @@ export interface PropFirmRules {
   consistency_threshold: number | null;
   drawdown_type: "intraday" | "eod";
   min_trading_days: number | null;
+  evaluation_model?: "legacy" | "mffu_eod" | "mffu_static";
+  daily_loss_mode?: "breach" | "soft_pause";
+  max_mini_contracts?: number | null;
+  max_micro_contracts?: number | null;
   funded_account_label?: string | null;
   funded_account_notes?: string[];
 }
@@ -433,10 +437,37 @@ export interface PropFirmPreset {
   consistency_threshold: number | null;
   drawdown_type: "intraday" | "eod";
   min_trading_days: number | null;
+  evaluation_model?: "legacy" | "mffu_eod" | "mffu_static";
+  daily_loss_mode?: "breach" | "soft_pause";
+  max_mini_contracts?: number | null;
+  max_micro_contracts?: number | null;
   rules_scope?: "evaluation";
   funded_account_label?: string | null;
   funded_account_notes?: string[];
   match_names?: string[];
+}
+
+export interface MffuEvaluationPlan {
+  key: string;
+  name: string;
+  account_size: number;
+  profit_target: number;
+  max_loss: number;
+  daily_soft_pause: number | null;
+  max_mini_contracts: number;
+  max_micro_contracts: number;
+  consistency_threshold: number | null;
+  min_trading_days: number | null;
+  drawdown: "static" | "eod_trailing";
+  preset_key: string | null;
+  simulation_status: "approximate" | "reference_only";
+  source_url: string;
+}
+
+export interface MffuEvaluationCatalog {
+  reviewed_on: string;
+  stage: "evaluation";
+  plans: MffuEvaluationPlan[];
 }
 
 export type ExperimentScoringRule =
@@ -1499,6 +1530,9 @@ export const compareBacktests = async (
 export const fetchPropPresets = async (): Promise<PropFirmPreset[]> => {
   return api<PropFirmPreset[]>(API_ROUTES.propFirms);
 };
+
+export const fetchMffuCatalog = async (): Promise<MffuEvaluationCatalog> =>
+  api<MffuEvaluationCatalog>(`${API_ROUTES.propFirms}/mffu-catalog`);
 
 export const fetchSymbols = async (): Promise<SymbolInfo[]> => {
   return api<SymbolInfo[]>(API_ROUTES.symbols);

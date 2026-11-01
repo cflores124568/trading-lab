@@ -9,6 +9,8 @@ from services.backtest_repo import save_backtest
 from services.backtest_store import add_backtest, delete_backtest
 from services.indicators import add_all_indicators
 from services.metrics import calculate_metrics
+from services.mffu_contracts import effective_max_contracts
+from services.mffu_evidence import assess_mffu_evidence
 from services.prop_firm_eval import evaluate_prop_firm
 from services.serialization import to_plain_data
 from services.strategy import generate_signals
@@ -54,7 +56,12 @@ def build_backtest_result(
         atr_period=int(request.strategy.params.get("atr_period") or 14),
         sizing_mode=request.sizing_mode,
         risk_per_trade_pct=request.risk_per_trade_pct,
-        max_position_size=request.max_position_size,
+        max_position_size=effective_max_contracts(dataset["info"].get("symbol", ""), request),
+        daily_loss_soft_limit=(
+            request.prop_firm_rules.account_size * request.prop_firm_rules.daily_loss_limit
+            if request.prop_firm_rules.daily_loss_mode == "soft_pause" and request.prop_firm_rules.daily_loss_limit is not None
+            else None
+        ),
     )
 
     return complete_backtest_result(
@@ -74,6 +81,7 @@ def prepare_backtest_frame(dataset: dict, request: BacktestRequest):
     every plan's signals first, hand them to the C++ batch engine in one go,
     and still share this exact pipeline with single runs.
     """
+    effective_max_contracts(dataset["info"].get("symbol", ""), request)
     df = dataset["df"].copy()
 
     if request.start_date:
@@ -125,6 +133,18 @@ def complete_backtest_result(
         prop_rules=prop_rules,
         initial_balance=request.initial_balance,
     )
+    if prop_rules.get("evaluation_model") in ("mffu_eod", "mffu_static"):
+        observed = df.iloc[:len(equity_curve)]
+        bars = [{"time": index, "open": opening, "high": high, "low": low, "close": close}
+                for index, opening, high, low, close in observed.reindex(columns=["open", "high", "low", "close"]).itertuples()]
+        evidence = assess_mffu_evidence(
+            bars=bars, trades=trades, equity=equity_curve,
+            initial_balance=request.initial_balance, rules=prop_rules,
+            interval=dataset["info"].get("interval"), tick_size=request.tick_size, tick_value=request.tick_value,
+        )
+        prop_eval["details"]["mffu_evidence"] = evidence
+        if evidence["incomplete"] or evidence["possible_intrabar_limit"]:
+            prop_eval["passed"] = False
     metrics = calculate_metrics(
         trades,
         equity_curve,

@@ -12,6 +12,9 @@ import {
 } from "../src/services/replaySimulator.ts";
 import type { Candle, PropFirmRules } from "../src/services/api.ts";
 import { buildReplayExecutionAnalytics } from "../src/services/executionAnalytics.ts";
+import { getMffuDrawdown } from "../src/services/mffuDrawdown.ts";
+import { mffuContractLimit } from "../src/services/mffuContracts.ts";
+import { assessMffuEvidence, evaluationStatus } from "../src/services/mffuEvidence.ts";
 
 function makeCandles(count: number): Candle[] {
   return Array.from({ length: count }, (_, index) => ({
@@ -47,6 +50,75 @@ const rules: PropFirmRules = {
   drawdown_type: "intraday",
   min_trading_days: null,
 };
+
+test("MFFU floor trails observed session closes and caps at starting balance plus $100", () => {
+  const times = ["2026-01-05T19:00:00Z", "2026-01-05T20:00:00Z", "2026-01-06T00:00:00Z"].map((time) => Date.parse(time) / 1000);
+  const breached = getMffuDrawdown([50_000, 51_000, 48_900], times, 50_000, .04);
+  assert.equal(breached.floor, 49_000);
+  assert.equal(breached.breachIndex, 2);
+  const capped = getMffuDrawdown([50_000, 53_000, 50_200], times, 50_000, .04);
+  assert.equal(capped.floor, 50_100);
+  assert.equal(capped.breached, false);
+  assert.equal(getMffuDrawdown([50_000, 54_000], [], 50_000, .04).incomplete, true);
+  assert.equal(getMffuDrawdown([10_000, 11_000, 9_600], times, 10_000, .05, true).floor, 9_500);
+});
+
+test("Builder soft pause blocks later entries until the next futures session", () => {
+  const times = ["2026-01-05T19:00:00Z", "2026-01-05T19:01:00Z", "2026-01-05T19:02:00Z", "2026-01-06T00:00:00Z", "2026-01-06T00:01:00Z"];
+  const candles = times.map((time, i) => ({time: (Date.parse(time) / 1000) as Candle["time"], open: i ? 90 : 100, high: i ? 90 : 100, low: i ? 90 : 100, close: i ? 90 : 100, volume: 1}));
+  const builder: PropFirmRules = {...rules, account_size: 1000, daily_loss_limit: .005, daily_loss_mode: "soft_pause", max_drawdown: .5, evaluation_model: "mffu_eod"};
+  const actions: ReplayAction[] = [
+    {id: "a", barIndex: 0, type: "buy", createdAt: 0},
+    {id: "b", barIndex: 2, type: "buy", createdAt: 1},
+    {id: "c", barIndex: 3, type: "buy", createdAt: 2},
+  ];
+  const result = simulateReplaySession({candles, currentIndex: 4, actions, initialBalance: 1000, commission: 0, tickValue: 1, tickSize: 1, propFirmRules: builder});
+  assert.equal(result.propEvaluation.daily_loss_breached, false);
+  assert.ok(result.executionEvents.some((event) => event.bar_index === 2 && event.type === "ignored" && event.reason?.includes("paused")));
+  assert.equal(result.position?.entry_bar_index, 3);
+});
+
+test("MFFU Studio contract restrictions reject minis and cap micros", () => {
+  const studio: PropFirmRules = {...rules, max_mini_contracts: 0, max_micro_contracts: 5};
+  assert.equal(mffuContractLimit("MES.c.0", studio), 5);
+  assert.throws(() => mffuContractLimit("ES.c.0", studio));
+  assert.throws(() => mffuContractLimit("unknown", studio));
+  assert.throws(() => simulateReplaySession({candles: makeCandles(3), currentIndex: 2, actions: [], initialBalance: 100_000, positionSize: 6, symbol: "MNQ.c.0", propFirmRules: studio}));
+});
+
+test("MFFU replay is inconclusive when an intrabar loss could precede recovery", () => {
+  const times = ["2026-01-05T20:58:00Z", "2026-01-05T20:59:00Z"];
+  const candles = times.map((time, i) => ({time: (Date.parse(time) / 1000) as Candle["time"], open: 5000, high: i ? 8000 : 5000, low: i ? 2500 : 5000, close: i ? 8000 : 5000, volume: 1}));
+  const mffu: PropFirmRules = {...rules, account_size: 50_000, daily_loss_limit: null, max_drawdown: .04, profit_target: .05, consistency_rule: false, min_trading_days: null, evaluation_model: "mffu_eod"};
+  const actions: ReplayAction[] = [{id: "a", barIndex: 0, type: "buy", createdAt: 0}, {id: "b", barIndex: 1, type: "exit", createdAt: 1}];
+  const result = simulateReplaySession({candles, currentIndex: 1, actions, initialBalance: 50_000, commission: 0, tickValue: 1, tickSize: 1, interval: "1min", propFirmRules: mffu});
+  assert.equal(result.propEvaluation.drawdown_breached, false);
+  assert.equal(result.propEvaluation.passed, false);
+  assert.equal(evaluationStatus(result.propEvaluation), "Inconclusive");
+  assert.equal((result.propEvaluation.details.mffu_evidence as {first_intrabar_rule: string}).first_intrabar_rule, "maximum_loss");
+});
+
+test("MFFU session evidence checks the 4:10 Eastern close and missing bars", () => {
+  const times = ["2026-01-05T21:09:00Z", "2026-01-05T23:00:00Z"];
+  const candles = times.map((time) => ({time: (Date.parse(time) / 1000) as Candle["time"], open: 5000, high: 5000, low: 5000, close: 5000, volume: 1}));
+  const mffu: PropFirmRules = {...rules, account_size: 50_000, max_drawdown: .04, evaluation_model: "mffu_eod"};
+  assert.equal(assessMffuEvidence(candles, [], [50_000, 50_000], 50_000, mffu, "1min", 1).incomplete, false);
+  assert.ok(assessMffuEvidence(candles, [], [50_000, 50_000], 50_000, mffu, "15min", 1).reasons.includes("missing_or_unaligned_session_close"));
+  const summer = ["2026-03-09T20:09:00Z", "2026-03-09T22:00:00Z"].map((time) => ({time: (Date.parse(time) / 1000) as Candle["time"], open: 5000, high: 5000, low: 5000, close: 5000, volume: 1}));
+  const daylight = assessMffuEvidence(summer, [], [50_000, 50_000], 50_000, mffu, "1min", 1);
+  assert.equal(daylight.incomplete, false);
+  assert.equal(daylight.partial_first_session, true);
+  assert.equal(daylight.partial_final_session, true);
+});
+
+test("MFFU replay counts sessions across the 6 p.m. Eastern rollover", () => {
+  const times = ["2026-01-05T20:30:00Z", "2026-01-05T20:31:00Z", "2026-01-05T23:00:00Z", "2026-01-05T23:01:00Z"];
+  const candles = times.map((time, i) => ({time: (Date.parse(time) / 1000) as Candle["time"], open: 100 + i, high: 100 + i, low: 100 + i, close: 100 + i, volume: 1}));
+  const mffu: PropFirmRules = {...rules, account_size: 50_000, daily_loss_limit: null, max_drawdown: .04, consistency_rule: false, min_trading_days: 2, evaluation_model: "mffu_eod"};
+  const actions: ReplayAction[] = [{id: "a", barIndex: 0, type: "buy", createdAt: 0}, {id: "b", barIndex: 1, type: "exit", createdAt: 1}, {id: "c", barIndex: 2, type: "buy", createdAt: 2}];
+  const result = simulateReplaySession({candles, currentIndex: 3, actions, initialBalance: 50_000, commission: 0, tickValue: 1, tickSize: 1, interval: "1min", propFirmRules: mffu});
+  assert.equal(result.propEvaluation.details.trading_days_completed, 2);
+});
 
 test("replay helpers clamp indices and progress consistently", () => {
   assert.equal(clampReplayIndex(-10, 12), 0);

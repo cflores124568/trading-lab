@@ -48,6 +48,7 @@ import {
   type ReplayAction,
 } from "../../services/replaySimulator";
 import { defaultExecutionConfigForSymbol } from "../../services/executionModel";
+import { evaluationStatus, evidenceSummary } from "../../services/mffuEvidence";
 import {
   estimateFirstPayout,
   evaluatePropFirmRules,
@@ -77,6 +78,7 @@ interface PropEvalDetails {
   daily_loss_breach_time?: string | null;
   daily_loss_breach_equity?: number | null;
   drawdown_type?: "intraday" | "eod";
+  drawdown_floor?: number | null;
   max_drawdown_limit_pct?: number;
   actual_drawdown_pct?: number;
   drawdown_breach_time?: string | null;
@@ -262,8 +264,9 @@ function createReplayAction(type: ReplayAction["type"], barIndex: number): Repla
   };
 }
 
-function propEvalTone(passed: boolean): string {
-  return passed ? "border-green-700 bg-green-950/40" : "border-red-700 bg-red-950/40";
+function propEvalTone(evaluation: PropFirmEvaluation): string {
+  const status = evaluationStatus(evaluation);
+  return status === "Passed" ? "border-green-700 bg-green-950/40" : status === "Inconclusive" ? "border-amber-700 bg-amber-950/30" : "border-red-700 bg-red-950/40";
 }
 
 function getPropEvalDetails(evaluation: PropFirmEvaluation): PropEvalDetails {
@@ -488,8 +491,10 @@ function PropEvalPanel(props: {
   const minTradingDaysPassed = () => props.evaluation.min_trading_days_passed ?? true;
   const drawdownLimitPct = () => details().max_drawdown_limit_pct ?? props.rules.max_drawdown;
   const actualDrawdownPct = () => details().actual_drawdown_pct ?? 0;
-  const drawdownBufferPct = () => Math.max(0, drawdownLimitPct() - actualDrawdownPct());
-  const drawdownBufferDollars = () => drawdownBufferPct() * props.rules.account_size;
+  const drawdownBufferDollars = () => typeof details().drawdown_floor === "number"
+    ? Math.max(0, props.summary.current_balance - details().drawdown_floor!)
+    : Math.max(0, drawdownLimitPct() - actualDrawdownPct()) * props.rules.account_size;
+  const drawdownBufferPct = () => drawdownBufferDollars() / props.rules.account_size;
   const profitTargetPct = () => details().profit_target_pct ?? props.rules.profit_target;
   const actualProfitPct = () => details().actual_profit_pct ?? 0;
   const profitProgress = () => {
@@ -511,20 +516,23 @@ function PropEvalPanel(props: {
     details().stopped_at_first_breach ? "Stopped Equity" : "Current Equity";
 
   return (
-    <div class={`rounded-md border p-5 ${propEvalTone(props.evaluation.passed)}`}>
+    <div class={`rounded-md border p-5 ${propEvalTone(props.evaluation)}`}>
       <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div class="space-y-2">
           <div class="flex items-center gap-2">
             {props.evaluation.passed ? (
               <CircleCheck class="text-green-400" />
+            ) : evaluationStatus(props.evaluation) === "Inconclusive" ? (
+              <TriangleAlert class="text-amber-400" />
             ) : (
               <CircleX size={18} class="text-red-400" />
             )}
             <p class="font-semibold text-stone-100">
-              {props.title}: {props.evaluation.passed ? "Passed" : "Failed"}
+              {props.title}: {evaluationStatus(props.evaluation)}
             </p>
           </div>
           <p class="text-sm text-stone-300">{props.rules.name}</p>
+          <Show when={evidenceSummary(props.evaluation)}>{(message) => <p class="text-sm text-amber-300">{message()}</p>}</Show>
           <Show when={props.note}>
             <p class="max-w-2xl text-xs text-stone-500">{props.note}</p>
           </Show>
@@ -552,9 +560,9 @@ function PropEvalPanel(props: {
         />
         <MetricCard
           label="Remaining DD Buffer"
-          value={formatPercent(drawdownBufferPct(), 2)}
-          hint={formatCurrency(drawdownBufferDollars())}
-          tone={props.evaluation.drawdown_breached ? "bad" : "good"}
+          value={evaluationStatus(props.evaluation) === "Inconclusive" ? "Unverified" : formatPercent(drawdownBufferPct(), 2)}
+          hint={evaluationStatus(props.evaluation) === "Inconclusive" ? "The bar data cannot verify the available buffer." : formatCurrency(drawdownBufferDollars())}
+          tone={props.evaluation.drawdown_breached ? "bad" : evaluationStatus(props.evaluation) === "Inconclusive" ? "default" : "good"}
         />
         <MetricCard
           label="Consistency %"
@@ -1095,6 +1103,9 @@ export default function BacktestDetail() {
       rebasedSelectedEquityCurve(),
       rules.account_size,
       ((candles.error ? undefined : candles()) ?? []).map((candle) => Number(candle.time)),
+      (candles.error ? undefined : candles()) ?? [],
+      backtest.replay_context?.interval,
+      backtest.run_config.tick_value / backtest.run_config.tick_size,
     );
   });
   const strategySummary = createMemo(() => {
@@ -1185,6 +1196,8 @@ export default function BacktestDetail() {
       volatileBarExtraTicks: executionDefaults.volatileBarExtraTicks,
       restingFillMode: executionDefaults.restingFillMode,
       propFirmRules: backtest.prop_firm_rules,
+      symbol: backtest.symbol,
+      interval: backtest.replay_context?.interval,
     });
   });
   const replayTradeSummary = createMemo(() => {
@@ -1344,7 +1357,7 @@ export default function BacktestDetail() {
         hint: `${formatCurrency(summary.gross_wins)} gross wins`,
       },
       {
-        label: "Max Drawdown",
+        label: "Close-based Drawdown",
         value: formatPercent(backtest.metrics.max_drawdown, 2),
         hint: backtest.prop_firm_rules.drawdown_type.toUpperCase(),
       },
@@ -1356,8 +1369,8 @@ export default function BacktestDetail() {
       },
       {
         label: "Saved Prop Eval",
-        value: backtest.prop_firm_eval.passed ? "Passed" : "Failed",
-        tone: backtest.prop_firm_eval.passed ? "good" : "bad",
+        value: evaluationStatus(backtest.prop_firm_eval),
+        tone: backtest.prop_firm_eval.passed ? "good" : evaluationStatus(backtest.prop_firm_eval) === "Inconclusive" ? "default" : "bad",
         hint: backtest.prop_firm_rules.name,
       },
     ] as DashboardCard[];
@@ -1388,7 +1401,7 @@ export default function BacktestDetail() {
         tone: analysis.parameter_sweep.baseline_rank === 1 ? "good" : "default",
       },
       {
-        label: "Walk-Forward Pass Rate",
+        label: "Walk-Forward Verified Pass Rate",
         value: formatPercent(analysis.walk_forward.passing_rate),
         hint: `${analysis.walk_forward.folds_completed}/${analysis.walk_forward.folds_requested} folds`,
         tone: analysis.walk_forward.passing_rate >= 0.5 ? "good" : analysis.walk_forward.folds_completed > 0 ? "bad" : "default",
@@ -1610,14 +1623,14 @@ export default function BacktestDetail() {
                   />
                   <HeroMetricCard
                     label="Saved Prop Eval"
-                    value={bt().prop_firm_eval.passed ? "Passed" : "Failed"}
-                    tone={bt().prop_firm_eval.passed ? "good" : "bad"}
+                    value={evaluationStatus(bt().prop_firm_eval)}
+                    tone={bt().prop_firm_eval.passed ? "good" : evaluationStatus(bt().prop_firm_eval) === "Inconclusive" ? "default" : "bad"}
                     hint={bt().prop_firm_rules.name}
                   />
                   <HeroMetricCard
                     label="Total Trades"
                     value={formatCount(bt().metrics.total_trades)}
-                    hint={`Max DD ${formatPercent(bt().metrics.max_drawdown, 2)}`}
+                    hint={`Close-based DD ${formatPercent(bt().metrics.max_drawdown, 2)}`}
                   />
                 </div>
 
@@ -2146,6 +2159,9 @@ export default function BacktestDetail() {
                                 </div>
                               </section>
                             </Show>
+                            <Show when={bt().prop_firm_rules.evaluation_model?.startsWith("mffu_")}>
+                              <p class="text-sm text-amber-300">Verified pass rates count inconclusive runs as not passed. Open a run's evidence before interpreting its result.</p>
+                            </Show>
 
                             <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
                               <For each={robustnessHighlights()}>
@@ -2213,8 +2229,8 @@ export default function BacktestDetail() {
                                 />
                                 <MetricCard
                                   label="Prop Status"
-                                  value={analysis().baseline.passed ? "Passed" : "Failed"}
-                                  tone={analysis().baseline.passed ? "good" : "bad"}
+                                  value={evaluationStatus(bt().prop_firm_eval)}
+                                  tone={analysis().baseline.passed ? "good" : evaluationStatus(bt().prop_firm_eval) === "Inconclusive" ? "default" : "bad"}
                                 />
                               </div>
                             </section>
@@ -2330,7 +2346,7 @@ export default function BacktestDetail() {
                                           <td class="px-3 py-3 font-mono text-stone-300">{formatRatio(run.profit_factor)}</td>
                                           <td class="px-3 py-3">
                                             <span class={`rounded-sm border px-2 py-1 text-xs ${run.passed ? "border-green-800 text-green-300" : "border-red-800 text-red-300"}`}>
-                                              {run.passed ? "Pass" : "Fail"}
+                                              {run.passed ? "Pass" : bt().prop_firm_rules.evaluation_model?.startsWith("mffu_") ? "Not passed" : "Fail"}
                                             </span>
                                           </td>
                                         </tr>
@@ -2438,7 +2454,7 @@ export default function BacktestDetail() {
                                             <td class="px-3 py-3 font-mono text-stone-300">{formatCount(fold.test_trades)}</td>
                                             <td class="px-3 py-3">
                                               <span class={`rounded-sm border px-2 py-1 text-xs ${fold.test_passed ? "border-green-800 text-green-300" : "border-red-800 text-red-300"}`}>
-                                                {fold.test_passed ? "Pass" : "Fail"}
+                                              {fold.test_passed ? "Pass" : bt().prop_firm_rules.evaluation_model?.startsWith("mffu_") ? "Not passed" : "Fail"}
                                               </span>
                                             </td>
                                           </tr>

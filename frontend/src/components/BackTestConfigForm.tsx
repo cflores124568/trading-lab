@@ -1,4 +1,6 @@
 import DataLoadError from "./DataLoadError";
+import MffuCatalog from "./MffuCatalog";
+import { firmOf } from "../utils/firmLogo";
 import { createSignal, createResource, Show, For, batch, createEffect, createMemo } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { ChevronDown, ChevronRight } from "lucide-solid";
@@ -29,10 +31,7 @@ const strategyDescriptions: Record<StrategyValue, string> = {
 // Group presets by firm name 
 function groupPresets(presets: PropFirmPreset[]): Record<string, PropFirmPreset[]> {
   return presets.reduce<Record<string, PropFirmPreset[]>>((acc, p) => {
-    // Handles variety of prop firms
-    let firm = p.name.split(/\s+\d/)[0].trim();  // everything before first number
-    firm = firm.replace(/^My Funded Futures (Rapid|Flex)?/i, "My Funded Futures")
-               .replace(/^Lucid Trading /i, "Lucid Trading").trim();
+    const firm = firmOf(p.name);
     (acc[firm] ??= []).push(p);
     return acc;
   }, {});
@@ -108,7 +107,7 @@ function formatDailyLossLimit(limit: number | null | undefined): string {
     return "Off";
   }
 
-  return `${(limit * 100).toFixed(0)}%`;
+  return `${Number((limit * 100).toFixed(2))}%`;
 }
 
 function formatStepValue(value: number, step: number): string {
@@ -958,6 +957,7 @@ export default function BackTestConfigForm() {
                 </select>
               </div>
 
+              <MffuCatalog />
               <Show when={preset()}>
                 {(p) => (
                   <div class="space-y-3">
@@ -969,11 +969,17 @@ export default function BackTestConfigForm() {
                       <p class="mt-1 text-xs text-stone-500">
                         This block is the evaluation stage only. Funded payout/account rules live separately.
                       </p>
+                      <Show when={p().name.startsWith("My Funded Futures") && !p().name.includes("Studio #")}>
+                        <p class="mt-2 text-xs text-amber-300">{p().evaluation_model === "mffu_eod" ? "MFFU results use conservative candle checks. Use 1-, 5-, or 10-minute bars to align the regular 4:10 p.m. Eastern close. Missing bars and uncertain intrabar fills can make results inconclusive." : "This older saved rule set uses a fixed floor and does not include the MFFU candle checks."} Holidays, news and inactivity require separate review.{p().max_mini_contracts == null ? " This saved rule set does not enforce account contract limits." : ""}</p>
+                      </Show>
+                      <Show when={p().name.includes("My Funded Futures Studio #")}>
+                        <p class="mt-2 text-xs text-amber-300">{p().evaluation_model === "mffu_static" ? "Studio results use conservative candle checks. Use 1-, 5-, or 10-minute bars for the regular 4:10 p.m. Eastern close; missing bars and uncertain intrabar fills can make results inconclusive." : "This older saved rule set does not include the MFFU candle checks."} Holidays, news and inactivity require separate review.</p>
+                      </Show>
                     </div>
 
                     <div class="grid gap-2 md:grid-cols-3">
                       <StatCard label="Account" value={`$${p().account_size.toLocaleString()}`} mono />
-                      <StatCard label="Daily loss" value={formatDailyLossLimit(p().daily_loss_limit)} />
+                      <StatCard label={p().daily_loss_mode === "soft_pause" ? "Daily soft pause" : "Daily loss"} value={formatDailyLossLimit(p().daily_loss_limit)} />
                       <StatCard label="Max DD" value={`${(p().max_drawdown * 100).toFixed(0)}%`} mono />
                       <StatCard label="Eval target" value={`${(p().profit_target * 100).toFixed(0)}%`} mono />
                       <StatCard label="Eval min days" value={String(p().min_trading_days ?? "—")} mono />

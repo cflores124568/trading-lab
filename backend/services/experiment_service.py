@@ -12,6 +12,7 @@ from schemas import (
     Strategy,
 )
 from services.backtest_engine import run_backtest_batch
+from services.mffu_contracts import effective_max_contracts
 from services.backtest_service import (
     complete_backtest_result,
     persist_backtest_result,
@@ -236,7 +237,12 @@ def run_experiment(experiment: dict) -> tuple[dict, list[dict]]:
                 atr_period=group_entries[0]["atr_period"],
                 sizing_mode=request.sizing_mode,
                 risk_per_trade_pct=request.risk_per_trade_pct,
-                max_position_size=request.max_position_size,
+                max_position_size=effective_max_contracts(group_entries[0]["dataset"]["info"].get("symbol", ""), request),
+                daily_loss_soft_limit=(
+                    request.prop_firm_rules.account_size * request.prop_firm_rules.daily_loss_limit
+                    if request.prop_firm_rules.daily_loss_mode == "soft_pause" and request.prop_firm_rules.daily_loss_limit is not None
+                    else None
+                ),
             )
             for group_entry, engine_result in zip(group_entries, engine_results):
                 group_entry["engine_result"] = engine_result

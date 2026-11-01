@@ -1,4 +1,5 @@
 import type { PropFirmEvaluation, Trade } from "./api";
+import { evaluationStatus } from "./mffuEvidence.ts";
 
 const MINUTE_MS = 60_000;
 
@@ -15,7 +16,7 @@ export interface ReplayTradeMatch {
 export interface ReplayPropComparison {
   manualPassed: boolean;
   systemPassed: boolean;
-  passDelta: "improved" | "worse" | "same";
+  passDelta: "improved" | "worse" | "same" | "inconclusive";
   actualProfitPctDiff: number;
   actualDrawdownPctDiff: number;
 }
@@ -178,7 +179,9 @@ export function compareReplayToBacktest(args: {
       manualPassed,
       systemPassed,
       passDelta:
-        manualPassed === systemPassed
+        evaluationStatus(args.manualPropEvaluation) === "Inconclusive" || evaluationStatus(args.systemPropEvaluation) === "Inconclusive"
+          ? "inconclusive"
+          : manualPassed === systemPassed
           ? "same"
           : manualPassed
             ? "improved"

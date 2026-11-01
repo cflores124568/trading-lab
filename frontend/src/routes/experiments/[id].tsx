@@ -2,6 +2,7 @@ import DataLoadError from "../../components/DataLoadError";
 import { A, useParams } from "@solidjs/router";
 import { batch, createMemo, createResource, createSignal, For, Show } from "solid-js";
 import AppShell from "../../components/AppShell";
+import { evaluationStatus } from "../../services/mffuEvidence";
 import {
   fetchExperiment,
   fetchExperimentResults,
@@ -433,12 +434,12 @@ export default function ExperimentDetailPage() {
                                   class={`rounded-full border px-2.5 py-1 text-xs font-medium ${
                                     run.passed
                                       ? "border-green-700 bg-green-950/40 text-green-200"
-                                      : run.status === "failed"
+                                      : run.status === "failed" || (run.prop_firm_eval && evaluationStatus(run.prop_firm_eval) === "Inconclusive")
                                         ? "border-stone-700 bg-stone-900 text-stone-400"
                                         : "border-red-700 bg-red-950/40 text-red-200"
                                   }`}
                                 >
-                                  {run.status === "failed" ? "n/a" : run.passed ? "Pass" : "Fail"}
+                                  {run.status === "failed" ? "n/a" : run.prop_firm_eval ? evaluationStatus(run.prop_firm_eval) : run.passed ? "Pass" : "Fail"}
                                 </span>
                               </td>
                               <td

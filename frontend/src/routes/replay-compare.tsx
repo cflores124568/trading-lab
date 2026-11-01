@@ -8,6 +8,7 @@ import {
 } from "../services/api";
 import { compareReplayToBacktest } from "../services/replayComparison";
 import { formatTradeLabel } from "../services/tradeFormatting";
+import { evaluationStatus } from "../services/mffuEvidence";
 
 function formatMoney(value: number): string {
   return `${value >= 0 ? "+" : "-"}$${Math.abs(value).toFixed(2)}`;
@@ -264,7 +265,7 @@ export default function ReplayComparePage() {
                                 Prop Result
                               </p>
                               <p class="mt-2 text-lg font-semibold text-stone-100">
-                                {comparison.propComparison.passDelta === "improved"
+                                {comparison.propComparison.passDelta === "inconclusive" ? "Prop result is inconclusive" : comparison.propComparison.passDelta === "improved"
                                   ? "Manual session improved the prop result"
                                   : comparison.propComparison.passDelta === "worse"
                                     ? "Manual session came in worse than the system"
@@ -274,13 +275,13 @@ export default function ReplayComparePage() {
                                 <div class="rounded-xl border border-stone-700/80 bg-stone-950/65 px-4 py-3">
                                   <p class="text-xs text-stone-500">Manual Pass</p>
                                   <p class="mt-1 text-sm font-semibold text-stone-100">
-                                    {replay.prop_firm_eval.passed ? "Passed" : "Failed"}
+                                    {evaluationStatus(replay.prop_firm_eval)}
                                   </p>
                                 </div>
                                 <div class="rounded-xl border border-stone-700/80 bg-stone-950/65 px-4 py-3">
                                   <p class="text-xs text-stone-500">System Pass</p>
                                   <p class="mt-1 text-sm font-semibold text-stone-100">
-                                    {system.prop_firm_eval.passed ? "Passed" : "Failed"}
+                                    {evaluationStatus(system.prop_firm_eval)}
                                   </p>
                                 </div>
                                 <div class="rounded-xl border border-stone-700/80 bg-stone-950/65 px-4 py-3">

@@ -2107,6 +2107,147 @@
         "title": "LoadSymbolRequest",
         "type": "object"
       },
+      "MffuEvaluationCatalog": {
+        "properties": {
+          "plans": {
+            "items": {
+              "$ref": "#/components/schemas/MffuEvaluationPlan"
+            },
+            "title": "Plans",
+            "type": "array"
+          },
+          "reviewed_on": {
+            "title": "Reviewed On",
+            "type": "string"
+          },
+          "stage": {
+            "const": "evaluation",
+            "title": "Stage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reviewed_on",
+          "stage",
+          "plans"
+        ],
+        "title": "MffuEvaluationCatalog",
+        "type": "object"
+      },
+      "MffuEvaluationPlan": {
+        "properties": {
+          "account_size": {
+            "title": "Account Size",
+            "type": "integer"
+          },
+          "consistency_threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consistency Threshold"
+          },
+          "daily_soft_pause": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Soft Pause"
+          },
+          "drawdown": {
+            "enum": [
+              "static",
+              "eod_trailing"
+            ],
+            "title": "Drawdown",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "max_loss": {
+            "title": "Max Loss",
+            "type": "integer"
+          },
+          "max_micro_contracts": {
+            "title": "Max Micro Contracts",
+            "type": "integer"
+          },
+          "max_mini_contracts": {
+            "title": "Max Mini Contracts",
+            "type": "integer"
+          },
+          "min_trading_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Trading Days"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "preset_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset Key"
+          },
+          "profit_target": {
+            "title": "Profit Target",
+            "type": "integer"
+          },
+          "simulation_status": {
+            "enum": [
+              "reference_only",
+              "approximate"
+            ],
+            "title": "Simulation Status",
+            "type": "string"
+          },
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "account_size",
+          "profit_target",
+          "max_loss",
+          "daily_soft_pause",
+          "max_mini_contracts",
+          "max_micro_contracts",
+          "consistency_threshold",
+          "min_trading_days",
+          "drawdown",
+          "preset_key",
+          "simulation_status",
+          "source_url"
+        ],
+        "title": "MffuEvaluationPlan",
+        "type": "object"
+      },
       "OrderSide": {
         "enum": [
           "buy",
@@ -3185,9 +3326,28 @@
             "default": 0.04,
             "title": "Daily Loss Limit"
           },
+          "daily_loss_mode": {
+            "default": "breach",
+            "enum": [
+              "breach",
+              "soft_pause"
+            ],
+            "title": "Daily Loss Mode",
+            "type": "string"
+          },
           "drawdown_type": {
             "$ref": "#/components/schemas/DrawdownType",
             "default": "eod"
+          },
+          "evaluation_model": {
+            "default": "legacy",
+            "enum": [
+              "legacy",
+              "mffu_eod",
+              "mffu_static"
+            ],
+            "title": "Evaluation Model",
+            "type": "string"
           },
           "max_drawdown": {
             "default": 0.08,
@@ -3195,6 +3355,30 @@
             "maximum": 1.0,
             "title": "Max Drawdown",
             "type": "number"
+          },
+          "max_micro_contracts": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Micro Contracts"
+          },
+          "max_mini_contracts": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Mini Contracts"
           },
           "min_trading_days": {
             "anyOf": [
@@ -9001,6 +9185,28 @@
           }
         },
         "summary": "List Presets",
+        "tags": [
+          "Prop Firms"
+        ]
+      }
+    },
+    "/api/prop-firms/mffu-catalog": {
+      "get": {
+        "description": "Reference terms, including plans the current simulator cannot run.",
+        "operationId": "get_mffu_catalog_api_prop_firms_mffu_catalog_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MffuEvaluationCatalog"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Mffu Catalog",
         "tags": [
           "Prop Firms"
         ]
