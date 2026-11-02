@@ -141,6 +141,7 @@ def complete_backtest_result(
             bars=bars, trades=trades, equity=equity_curve,
             initial_balance=request.initial_balance, rules=prop_rules,
             interval=dataset["info"].get("interval"), tick_size=request.tick_size, tick_value=request.tick_value,
+            symbol=dataset["info"].get("symbol"),
         )
         prop_eval["details"]["mffu_evidence"] = evidence
         if evidence["incomplete"] or evidence["possible_intrabar_limit"]:

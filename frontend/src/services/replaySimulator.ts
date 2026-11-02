@@ -1488,7 +1488,7 @@ export function simulateReplaySession(args: {
       exit_price: currentCandle.close, pnl: finalUnrealizedPnl, status: "closed",
       commission: commission * finalPosition.quantity,
     }] : [];
-    const evidence = assessMffuEvidence(visibleCandles.slice(0, equityCurve.length), [...trades, ...openTrade], equityCurve, initialBalance, propFirmRules, interval, tickValue);
+    const evidence = assessMffuEvidence(visibleCandles.slice(0, equityCurve.length), [...trades, ...openTrade], equityCurve, initialBalance, propFirmRules, interval, tickValue, symbol);
     finalEvaluation.details.mffu_evidence = evidence;
     if (evidence.incomplete || evidence.possible_intrabar_limit) {
       finalEvaluation.passed = false;

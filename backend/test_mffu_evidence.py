@@ -2,6 +2,8 @@ import unittest
 from unittest.mock import patch
 import os
 import time
+import json
+from pathlib import Path
 import pandas as pd
 from services.mffu_evidence import assess_mffu_evidence
 from services.data_loader import get_candles, _normalise_loaded_frame
@@ -57,6 +59,35 @@ class MffuEvidenceTests(unittest.TestCase):
     def test_final_bar_crossing_cutoff_is_not_treated_as_complete(self):
         result = self.assess([bar("2026-01-05T21:00:00Z")], interval="15min")
         self.assertIn("missing_or_unaligned_session_close", result["reasons"])
+
+    def test_mourning_day_early_close_only_flags_equity_index_products(self):
+        bars = [bar("2025-01-09T14:00:00Z")]
+        args = dict(bars=bars, trades=[], equity=[50_000], initial_balance=50_000,
+                    rules=self.rules, interval="1min", tick_size=1, tick_value=1)
+        for symbol in ("ES", "MES.c.0", "NQH25", "MNQ"):
+            with self.subTest(symbol=symbol):
+                result = assess_mffu_evidence(**args, symbol=symbol)
+                self.assertIn("cme_equity_early_close_2025_01_09", result["reasons"])
+        for symbol in ("GC", "MGC"):
+            with self.subTest(symbol=symbol):
+                result = assess_mffu_evidence(**args, symbol=symbol)
+                self.assertNotIn("cme_equity_early_close_2025_01_09", result["reasons"])
+
+    def test_shared_holidays_cover_positions_and_list_range(self):
+        bars = [bar("2024-11-27T20:00:00Z"), bar("2024-11-28T15:00:00Z")]
+        trade = {"entry_time": "2024-11-27T20:00:00Z", "exit_time": "2024-11-28T15:00:00Z", "entry_price": 5000, "side": "buy", "quantity": 1, "commission": 0, "pnl": 0}
+        args = dict(bars=bars, trades=[trade], equity=[50_000, 50_000], initial_balance=50_000, rules=self.rules, interval="1min", tick_size=1, tick_value=1)
+        for symbol in ("ES", "MES", "NQ", "MNQ", "GC", "MGC"):
+            with self.subTest(symbol=symbol):
+                self.assertIn("holiday_trading_requires_rule_review", assess_mffu_evidence(**args, symbol=symbol)["reasons"])
+        args.update(bars=[bar("2026-01-05T20:00:00Z")], equity=[50_000], trades=[{**trade, "entry_time":"2026-01-05T20:00:00Z", "exit_time":"2026-01-05T20:00:00Z"}])
+        self.assertIn("holiday_calendar_outside_coverage", assess_mffu_evidence(**args, symbol="ES")["reasons"])
+
+    def test_frontend_and_backend_holiday_calendars_match(self):
+        root = Path(__file__).resolve().parent.parent
+        backend = json.loads((root / "backend/services/cme_shared_holidays_2019_2025.json").read_text())
+        frontend = json.loads((root / "frontend/src/data/cme_shared_holidays_2019_2025.json").read_text())
+        self.assertEqual(backend, frontend)
 
     def test_gap_and_open_position_across_cutoff_are_incomplete(self):
         bars = [bar("2026-01-05T21:07:00Z"), bar("2026-01-05T21:09:00Z"), bar("2026-01-05T23:00:00Z")]

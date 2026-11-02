@@ -145,6 +145,7 @@ export function evaluatePropFirmRules(
   candles: Candle[] = [],
   interval?: string,
   dollarsPerPoint = 0,
+  symbol?: string,
 ): PropFirmEvaluation {
   const accountSize = rules.account_size ?? initialBalance;
   const dailyLossLimit = rules.daily_loss_limit ?? null;
@@ -220,7 +221,7 @@ export function evaluatePropFirmRules(
     }
   }
 
-  const evidence = mffu ? assessMffuEvidence(candles.slice(0, equityCurve.length), trades, equityCurve, initialBalance, rules, interval, dollarsPerPoint) : null;
+  const evidence = mffu ? assessMffuEvidence(candles.slice(0, equityCurve.length), trades, equityCurve, initialBalance, rules, interval, dollarsPerPoint, symbol) : null;
   return {
     passed:
       !mffu?.incomplete && !evidence?.incomplete && !evidence?.possible_intrabar_limit && (softPause || !dailyLossReport.breached) &&

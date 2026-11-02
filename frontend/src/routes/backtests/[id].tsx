@@ -1106,6 +1106,7 @@ export default function BacktestDetail() {
       (candles.error ? undefined : candles()) ?? [],
       backtest.replay_context?.interval,
       backtest.run_config.tick_value / backtest.run_config.tick_size,
+      backtest.symbol,
     );
   });
   const strategySummary = createMemo(() => {

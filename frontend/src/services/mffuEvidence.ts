@@ -1,5 +1,9 @@
 import type { Candle, PropFirmEvaluation, PropFirmRules, Trade } from "./api";
 import { mffuSession } from "./mffuDrawdown.ts";
+import holidayCalendar from "../data/cme_shared_holidays_2019_2025.json" with { type: "json" };
+
+const holidayDates = Object.keys(holidayCalendar.dates).sort();
+const sharedSymbol = /^(?:MES|MNQ|MGC|ES|NQ|GC)(?:$|[.=_-]|[FGHJKMNQUVXZ]\d{1,4}$)/;
 
 const localClock = new Intl.DateTimeFormat("en-GB", {timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23"});
 const localCache = new Map<number, Record<string, string>>();
@@ -38,7 +42,7 @@ export function evidenceSummary(evaluation: PropFirmEvaluation): string {
   const problems: string[] = [];
   if (evidence?.possible_intrabar_limit) problems.push(`A bar may have crossed the ${evidence.first_intrabar_rule === "daily_soft_pause" ? "daily soft-pause limit" : "maximum-loss floor"} at ${evidence.first_intrabar_time}; OHLC cannot establish fill order.`);
   if (evidence?.incomplete) {
-    const labels: Record<string, string> = {missing_or_unaligned_session_close: "missing or unaligned 4:10 p.m. close (try 1-, 5-, or 10-minute bars)", missing_bars_within_session: "missing bars", position_over_regular_session_close: "position open past the regular close", entry_outside_regular_trading_hours: "entry outside regular hours", unsupported_or_missing_intraday_interval: "unsupported or missing interval"};
+    const labels: Record<string, string> = {holiday_calendar_outside_coverage: "holiday dates are only available for 2019–2025", holiday_trading_requires_rule_review: "a position was open on a holiday; the firm's holiday rule needs review", cme_equity_early_close_2025_01_09: "CME equity futures closed early on January 9, 2025; the MFFU holiday deadline is not modeled", missing_or_unaligned_session_close: "missing or unaligned 4:10 p.m. close (try 1-, 5-, or 10-minute bars)", missing_bars_within_session: "missing bars", position_over_regular_session_close: "position open past the regular close", entry_outside_regular_trading_hours: "entry outside regular hours", unsupported_or_missing_intraday_interval: "unsupported or missing interval"};
     problems.push(`Session or price evidence is incomplete: ${evidence.reasons.map((reason) => labels[reason] ?? reason.replace(/_/g, " ")).join(", ")}.`);
   } else if (evaluation.details.drawdown_evidence_incomplete) problems.push("Session or price evidence is incomplete.");
   if (problems.length) return problems.join(" ");
@@ -47,7 +51,7 @@ export function evidenceSummary(evaluation: PropFirmEvaluation): string {
 }
 
 /** Conservative OHLC envelope; extrema do not establish order of fills. */
-export function assessMffuEvidence(candles: Candle[], trades: Trade[], equity: number[], initial: number, rules: PropFirmRules, interval: string | undefined, dollarsPerPoint: number): MffuEvidence {
+export function assessMffuEvidence(candles: Candle[], trades: Trade[], equity: number[], initial: number, rules: PropFirmRules, interval: string | undefined, dollarsPerPoint: number, symbol?: string): MffuEvidence {
   const reasons = new Set<string>();
   const match = /^(\d+)(min|m|h)$/.exec((interval ?? "").toLowerCase());
   const seconds = match ? Number(match[1]) * (match[2] === "h" ? 3600 : 60) : 0;
@@ -61,6 +65,7 @@ export function assessMffuEvidence(candles: Candle[], trades: Trade[], equity: n
   if (reasons.size) return empty();
 
   const sessions = candles.map((bar) => mffuSession(bar.time));
+  if (/^(?:MES|MNQ|ES|NQ)(?:$|[.=_-]|[FGHJKMNQUVXZ]\d{1,4}$)/.test((symbol ?? "").trim().toUpperCase()) && sessions.includes("2025-01-09")) reasons.add("cme_equity_early_close_2025_01_09");
   const floors: number[] = [];
   const starts: number[] = [];
   let floor = rules.account_size * (1 - rules.max_drawdown);
@@ -123,6 +128,11 @@ export function assessMffuEvidence(candles: Candle[], trades: Trade[], equity: n
     lastExit = exit;
     if (entry < candles[0].time || exit > candles[candles.length - 1].time) reasons.add("trade_outside_evidence_window");
     const startLocal = localParts(entry), endLocal = localParts(exit);
+    if (sharedSymbol.test((symbol ?? "").trim().toUpperCase())) {
+      const startDay = localDate(startLocal), endDay = localDate(endLocal);
+      if (startDay < holidayCalendar.coverage.start || endDay > holidayCalendar.coverage.end) reasons.add("holiday_calendar_outside_coverage");
+      if (holidayDates.some((date) => startDay <= date && date <= endDay)) reasons.add("holiday_trading_requires_rule_review");
+    }
     const entrySession = mffuSession(entry), exitSession = mffuSession(exit);
     if (minutes(startLocal) >= 970 && minutes(startLocal) < 1080) reasons.add("entry_outside_regular_trading_hours");
     if (entrySession !== exitSession || (localDate(endLocal) === entrySession && minutes(endLocal) >= 970 && (localDate(startLocal) !== entrySession || minutes(startLocal) < 970))) reasons.add("position_over_regular_session_close");

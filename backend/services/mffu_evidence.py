@@ -3,9 +3,14 @@ from bisect import bisect_left, bisect_right
 from datetime import datetime, time, timedelta, timezone
 import math
 import re
+import json
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 NY = ZoneInfo("America/New_York")
+HOLIDAY_CALENDAR = json.loads((Path(__file__).parent / "cme_shared_holidays_2019_2025.json").read_text())
+HOLIDAY_DATES = sorted(HOLIDAY_CALENDAR["dates"])
+SHARED_SYMBOL = re.compile(r"^(?:MES|MNQ|MGC|ES|NQ|GC)(?:$|[.=_-]|[FGHJKMNQUVXZ]\d{1,4}$)")
 
 
 def _timestamp(value):
@@ -29,7 +34,7 @@ def _session_date(timestamp):
     return local.date() + timedelta(days=local.hour >= 18)
 
 
-def assess_mffu_evidence(*, bars, trades, equity, initial_balance, rules, interval, tick_size, tick_value):
+def assess_mffu_evidence(*, bars, trades, equity, initial_balance, rules, interval, tick_size, tick_value, symbol=None):
     """Report uncertain session coverage and possible intrabar risk crossings.
 
     Bar timestamps denote bar starts. The whole candle is an adverse envelope;
@@ -65,6 +70,10 @@ def assess_mffu_evidence(*, bars, trades, equity, initial_balance, rules, interv
         return {"incomplete": True, "reasons": sorted(set(reasons)), "partial_first_session": False, "partial_final_session": False, "possible_intrabar_limit": False, "first_intrabar_time": None, "first_intrabar_rule": None, "worst_equity": None}
 
     sessions = [_session_date(t) for t in times]
+    # CME's January 9, 2025 national day of mourning affected equities,
+    # but not metals. Do not treat the regular-day MFFU cutoff as verified.
+    if re.match(r"^(?:MES|MNQ|ES|NQ)(?:$|[.=_-]|[FGHJKMNQUVXZ]\d{1,4}$)", str(symbol or "").strip().upper()) and datetime(2025, 1, 9).date() in sessions:
+        reasons.append("cme_equity_early_close_2025_01_09")
     floors = []
     starts = []
     floor = rules["account_size"] * (1 - rules["max_drawdown"])
@@ -133,6 +142,14 @@ def assess_mffu_evidence(*, bars, trades, equity, initial_balance, rules, interv
         if entry < times[0] or exit_time > times[-1]:
             reasons.append("trade_outside_evidence_window")
         local_entry = entry.astimezone(NY)
+        local_exit = exit_time.astimezone(NY)
+        if SHARED_SYMBOL.match(str(symbol or "").strip().upper()):
+            start_day, end_day = local_entry.date().isoformat(), local_exit.date().isoformat()
+            if start_day < HOLIDAY_CALENDAR["coverage"]["start"] or end_day > HOLIDAY_CALENDAR["coverage"]["end"]:
+                reasons.append("holiday_calendar_outside_coverage")
+            holiday_index = bisect_left(HOLIDAY_DATES, start_day)
+            if holiday_index < len(HOLIDAY_DATES) and HOLIDAY_DATES[holiday_index] <= end_day:
+                reasons.append("holiday_trading_requires_rule_review")
         if (local_entry.hour, local_entry.minute) >= (16, 10) and local_entry.hour < 18:
             reasons.append("entry_outside_regular_trading_hours")
         next_cutoff = bisect_right(cutoffs, entry)

@@ -98,6 +98,29 @@ test("MFFU replay is inconclusive when an intrabar loss could precede recovery",
   assert.equal((result.propEvaluation.details.mffu_evidence as {first_intrabar_rule: string}).first_intrabar_rule, "maximum_loss");
 });
 
+test("MFFU evidence flags the 2025 mourning day for equity indices, not gold", () => {
+  const candle = {...makeCandles(1)[0], time: (Date.parse("2025-01-09T14:00:00Z") / 1000) as Candle["time"]};
+  const policy: PropFirmRules = {...rules, evaluation_model: "mffu_eod"};
+  for (const symbol of ["ES", "MES.c.0", "NQH25", "MNQ"]) {
+    assert.ok(assessMffuEvidence([candle], [], [100_000], 100_000, policy, "1min", 1, symbol).reasons.includes("cme_equity_early_close_2025_01_09"));
+  }
+  for (const symbol of ["GC", "MGC"]) {
+    assert.ok(!assessMffuEvidence([candle], [], [100_000], 100_000, policy, "1min", 1, symbol).reasons.includes("cme_equity_early_close_2025_01_09"));
+  }
+});
+
+test("MFFU holiday evidence uses the shared list for every supported ticker", () => {
+  const candle = {...makeCandles(1)[0], time: (Date.parse("2024-11-28T15:00:00Z") / 1000) as Candle["time"]};
+  const policy: PropFirmRules = {...rules, evaluation_model: "mffu_eod"};
+  const trade = {trade_id: 1, entry_time: "2024-11-28T15:00:00Z", exit_time: "2024-11-28T15:00:00Z", side: "buy" as const, quantity: 1, entry_price: candle.close, exit_price: candle.close, pnl: 0, status: "closed" as const, commission: 0};
+  for (const symbol of ["ES", "MES", "NQ", "MNQ", "GC", "MGC"]) {
+    assert.ok(assessMffuEvidence([candle], [trade], [100_000], 100_000, policy, "1min", 1, symbol).reasons.includes("holiday_trading_requires_rule_review"));
+  }
+  const outside = {...candle, time: (Date.parse("2026-01-05T15:00:00Z") / 1000) as Candle["time"]};
+  const later = {...trade, entry_time: "2026-01-05T15:00:00Z", exit_time: "2026-01-05T15:00:00Z"};
+  assert.ok(assessMffuEvidence([outside], [later], [100_000], 100_000, policy, "1min", 1, "ES").reasons.includes("holiday_calendar_outside_coverage"));
+});
+
 test("MFFU session evidence checks the 4:10 Eastern close and missing bars", () => {
   const times = ["2026-01-05T21:09:00Z", "2026-01-05T23:00:00Z"];
   const candles = times.map((time) => ({time: (Date.parse(time) / 1000) as Candle["time"], open: 5000, high: 5000, low: 5000, close: 5000, volume: 1}));
