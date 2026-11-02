@@ -67,7 +67,27 @@ is present, evidence is incomplete unless a bar ends exactly at 16:10, and a
 position held across that cutoff is flagged. The final partial session is
 identified separately and does not by itself imply a breach. Missing bars,
 unparseable intervals, invalid OHLC and unordered time evidence are flagged.
-Holiday calendars and full missing trading days are not inferred.
+Unlisted exceptional closures and full missing trading days are not inferred.
+
+The shared 2019–2025 holiday-date list is checked for open and closed positions
+in ES, MES, NQ, MNQ, GC and MGC. A position open on a listed New York calendar
+date makes the MFFU result inconclusive pending review of the account's holiday
+terms. Trading outside the list's coverage also makes the result inconclusive.
+This check does not assert a breach, block an entry, or model a closing time.
+The frontend carries a copy of the backend list for offline replay.
+
+MFFU states that automatic liquidation applies on regular trading days, but
+does not occur at a holiday early close: traders must close positions before
+the market closes, subject to any communicated exception. Holiday hours are
+communicated separately. The simulator does not currently model either the
+regular automatic liquidation or holiday-specific closing requirements, so a
+position crossing a regular cutoff is evidence of uncertainty, not a simulated
+liquidation or an automatic rule breach. A holiday schedule must be verified for
+the relevant dates and instruments before it can be used to model those days.
+As a targeted safeguard, ES, MES, NQ and MNQ evidence covering January 9,
+2025 is inconclusive: [CME announced an early equity-market close that day](https://www.cmegroup.com/media-room/press-releases/2025/12/30/cme_group_announcestradinghoursforusnationaldayofmourningtohonor.html).
+The same announcement says metals kept normal hours, so GC and MGC are not
+flagged by this specific check. Other exceptional market closures are not yet covered.
 
 MFFU evaluation checks each simulated position against the candle's adverse
 high or low, not merely its close. If that envelope reaches a hard loss floor or
