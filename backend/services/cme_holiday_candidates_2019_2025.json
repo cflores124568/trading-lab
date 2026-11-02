@@ -1,0 +1,781 @@
+{
+  "description": "Research candidate dates, not an authoritative MFFU schedule; early close times must be checked against historical exchange notices.",
+  "source": "pandas_market_calendars 5.6.0",
+  "source_url": "https://github.com/rsheftel/pandas_market_calendars",
+  "coverage": "2019-01-01 through 2025-12-31",
+  "limitations": [
+    "Calendar omits extraordinary closures including 2025-01-09; this exception is added separately.",
+    "A missing session does not establish a full-day closure.",
+    "Times have not been individually verified against CME notices or MFFU rules.",
+    "Verification records match asset-class overviews and do not verify firm-specific deadlines or all individual contracts."
+  ],
+  "products": {
+    "CME Globex Equity": {
+      "symbols": [
+        "ES",
+        "MES",
+        "NQ",
+        "MNQ"
+      ],
+      "dates": {
+        "2019-01-01": {
+          "kind": "no_session_in_source"
+        },
+        "2019-01-21": {
+          "kind": "early_close_candidate",
+          "time_utc": "2019-01-21T18:00:00+00:00"
+        },
+        "2019-02-18": {
+          "kind": "early_close_candidate",
+          "time_utc": "2019-02-18T18:00:00+00:00"
+        },
+        "2019-04-19": {
+          "kind": "no_session_in_source"
+        },
+        "2019-05-27": {
+          "kind": "early_close_candidate",
+          "time_utc": "2019-05-27T17:00:00+00:00"
+        },
+        "2019-07-03": {
+          "kind": "early_close_candidate",
+          "time_utc": "2019-07-03T17:15:00+00:00"
+        },
+        "2019-07-04": {
+          "kind": "early_close_candidate",
+          "time_utc": "2019-07-04T17:00:00+00:00"
+        },
+        "2019-09-02": {
+          "kind": "early_close_candidate",
+          "time_utc": "2019-09-02T17:00:00+00:00"
+        },
+        "2019-11-28": {
+          "kind": "early_close_candidate",
+          "time_utc": "2019-11-28T18:00:00+00:00"
+        },
+        "2019-11-29": {
+          "kind": "early_close_candidate",
+          "time_utc": "2019-11-29T18:15:00+00:00"
+        },
+        "2019-12-24": {
+          "kind": "early_close_candidate",
+          "time_utc": "2019-12-24T18:15:00+00:00"
+        },
+        "2019-12-25": {
+          "kind": "no_session_in_source"
+        },
+        "2020-01-01": {
+          "kind": "no_session_in_source"
+        },
+        "2020-01-20": {
+          "kind": "early_close_candidate",
+          "time_utc": "2020-01-20T18:00:00+00:00"
+        },
+        "2020-02-17": {
+          "kind": "early_close_candidate",
+          "time_utc": "2020-02-17T18:00:00+00:00"
+        },
+        "2020-04-10": {
+          "kind": "no_session_in_source"
+        },
+        "2020-05-25": {
+          "kind": "early_close_candidate",
+          "time_utc": "2020-05-25T17:00:00+00:00"
+        },
+        "2020-07-03": {
+          "kind": "early_close_candidate",
+          "time_utc": "2020-07-03T17:00:00+00:00"
+        },
+        "2020-09-07": {
+          "kind": "early_close_candidate",
+          "time_utc": "2020-09-07T17:00:00+00:00"
+        },
+        "2020-11-26": {
+          "kind": "early_close_candidate",
+          "time_utc": "2020-11-26T18:00:00+00:00"
+        },
+        "2020-11-27": {
+          "kind": "early_close_candidate",
+          "time_utc": "2020-11-27T18:15:00+00:00"
+        },
+        "2020-12-24": {
+          "kind": "early_close_candidate",
+          "time_utc": "2020-12-24T18:15:00+00:00"
+        },
+        "2020-12-25": {
+          "kind": "no_session_in_source"
+        },
+        "2021-01-01": {
+          "kind": "no_session_in_source"
+        },
+        "2021-01-18": {
+          "kind": "early_close_candidate",
+          "time_utc": "2021-01-18T18:00:00+00:00"
+        },
+        "2021-02-15": {
+          "kind": "early_close_candidate",
+          "time_utc": "2021-02-15T18:00:00+00:00"
+        },
+        "2021-04-02": {
+          "kind": "early_close_candidate",
+          "time_utc": "2021-04-02T13:15:00+00:00"
+        },
+        "2021-05-31": {
+          "kind": "early_close_candidate",
+          "time_utc": "2021-05-31T17:00:00+00:00"
+        },
+        "2021-07-05": {
+          "kind": "early_close_candidate",
+          "time_utc": "2021-07-05T17:00:00+00:00"
+        },
+        "2021-09-06": {
+          "kind": "early_close_candidate",
+          "time_utc": "2021-09-06T17:00:00+00:00"
+        },
+        "2021-11-25": {
+          "kind": "early_close_candidate",
+          "time_utc": "2021-11-25T18:00:00+00:00"
+        },
+        "2021-11-26": {
+          "kind": "early_close_candidate",
+          "time_utc": "2021-11-26T18:15:00+00:00"
+        },
+        "2021-12-24": {
+          "kind": "no_session_in_source"
+        },
+        "2022-01-17": {
+          "kind": "early_close_candidate",
+          "time_utc": "2022-01-17T18:00:00+00:00"
+        },
+        "2022-02-21": {
+          "kind": "early_close_candidate",
+          "time_utc": "2022-02-21T18:00:00+00:00"
+        },
+        "2022-04-15": {
+          "kind": "no_session_in_source"
+        },
+        "2022-05-30": {
+          "kind": "early_close_candidate",
+          "time_utc": "2022-05-30T17:00:00+00:00"
+        },
+        "2022-06-20": {
+          "kind": "early_close_candidate",
+          "time_utc": "2022-06-20T17:00:00+00:00"
+        },
+        "2022-07-04": {
+          "kind": "early_close_candidate",
+          "time_utc": "2022-07-04T17:00:00+00:00"
+        },
+        "2022-09-05": {
+          "kind": "early_close_candidate",
+          "time_utc": "2022-09-05T17:00:00+00:00"
+        },
+        "2022-11-24": {
+          "kind": "early_close_candidate",
+          "time_utc": "2022-11-24T18:00:00+00:00",
+          "verification": {
+            "status": "matched_public_broker_schedule",
+            "event": "halt",
+            "source": "https://www.ironbeam.com/thanksgiving-holiday-futures-trading-hours-2022/",
+            "limitation": "Asset-class schedule; MFFU deadlines are not verified."
+          }
+        },
+        "2022-11-25": {
+          "kind": "early_close_candidate",
+          "time_utc": "2022-11-25T18:15:00+00:00",
+          "verification": {
+            "status": "matched_public_broker_schedule",
+            "event": "close",
+            "source": "https://www.ironbeam.com/thanksgiving-holiday-futures-trading-hours-2022/",
+            "limitation": "Asset-class schedule; MFFU deadlines are not verified."
+          }
+        },
+        "2022-12-26": {
+          "kind": "no_session_in_source"
+        },
+        "2023-01-02": {
+          "kind": "no_session_in_source"
+        },
+        "2023-01-16": {
+          "kind": "early_close_candidate",
+          "time_utc": "2023-01-16T18:00:00+00:00"
+        },
+        "2023-02-20": {
+          "kind": "early_close_candidate",
+          "time_utc": "2023-02-20T18:00:00+00:00"
+        },
+        "2023-04-07": {
+          "kind": "early_close_candidate",
+          "time_utc": "2023-04-07T13:15:00+00:00",
+          "verification": {
+            "status": "matched_public_broker_schedule",
+            "event": "close",
+            "source": "https://www.ironbeam.com/good-friday-holidy-futures-trading-schedule-2023/",
+            "limitation": "Asset-class schedule; MFFU deadlines are not verified."
+          }
+        },
+        "2023-05-29": {
+          "kind": "early_close_candidate",
+          "time_utc": "2023-05-29T17:00:00+00:00",
+          "verification": {
+            "status": "matched_cme_asset_class_notice",
+            "event": "halt",
+            "source": "https://www.cmegroup.com/trading-hours/files/memorial-day-2023.pdf",
+            "limitation": "Notice gives a general asset-class overview, not a product-specific schedule."
+          }
+        },
+        "2023-06-19": {
+          "kind": "early_close_candidate",
+          "time_utc": "2023-06-19T17:00:00+00:00",
+          "verification": {
+            "status": "matched_cme_asset_class_notice",
+            "event": "halt",
+            "source": "https://www.cmegroup.com/trading-hours/files/juneteenth-2023.pdf",
+            "limitation": "Notice gives a general asset-class overview, not a product-specific schedule."
+          }
+        },
+        "2023-07-03": {
+          "kind": "early_close_candidate",
+          "time_utc": "2023-07-03T17:15:00+00:00"
+        },
+        "2023-07-04": {
+          "kind": "early_close_candidate",
+          "time_utc": "2023-07-04T17:00:00+00:00"
+        },
+        "2023-09-04": {
+          "kind": "early_close_candidate",
+          "time_utc": "2023-09-04T17:00:00+00:00",
+          "verification": {
+            "status": "matched_cme_asset_class_notice",
+            "event": "halt",
+            "source": "https://www.cmegroup.com/trading-hours/files/labor-day-2023.pdf",
+            "limitation": "Notice gives a general asset-class overview, not a product-specific schedule."
+          }
+        },
+        "2023-11-23": {
+          "kind": "early_close_candidate",
+          "time_utc": "2023-11-23T18:00:00+00:00",
+          "verification": {
+            "status": "matched_cme_asset_class_notice",
+            "event": "halt",
+            "source": "https://www.cmegroup.com/trading-hours/files/thanksgiving-day-2023.pdf",
+            "limitation": "Notice gives a general asset-class overview, not a product-specific schedule."
+          }
+        },
+        "2023-11-24": {
+          "kind": "early_close_candidate",
+          "time_utc": "2023-11-24T18:15:00+00:00",
+          "verification": {
+            "status": "matched_cme_asset_class_notice",
+            "event": "close",
+            "source": "https://www.cmegroup.com/trading-hours/files/thanksgiving-day-2023.pdf",
+            "limitation": "Notice gives a general asset-class overview, not a product-specific schedule."
+          }
+        },
+        "2023-12-25": {
+          "kind": "no_session_in_source"
+        },
+        "2024-01-01": {
+          "kind": "no_session_in_source"
+        },
+        "2024-01-15": {
+          "kind": "early_close_candidate",
+          "time_utc": "2024-01-15T18:00:00+00:00"
+        },
+        "2024-02-19": {
+          "kind": "early_close_candidate",
+          "time_utc": "2024-02-19T18:00:00+00:00"
+        },
+        "2024-03-29": {
+          "kind": "no_session_in_source"
+        },
+        "2024-05-27": {
+          "kind": "early_close_candidate",
+          "time_utc": "2024-05-27T17:00:00+00:00"
+        },
+        "2024-06-19": {
+          "kind": "early_close_candidate",
+          "time_utc": "2024-06-19T17:00:00+00:00"
+        },
+        "2024-07-03": {
+          "kind": "early_close_candidate",
+          "time_utc": "2024-07-03T17:15:00+00:00"
+        },
+        "2024-07-04": {
+          "kind": "early_close_candidate",
+          "time_utc": "2024-07-04T17:00:00+00:00"
+        },
+        "2024-09-02": {
+          "kind": "early_close_candidate",
+          "time_utc": "2024-09-02T17:00:00+00:00"
+        },
+        "2024-11-28": {
+          "kind": "early_close_candidate",
+          "time_utc": "2024-11-28T18:00:00+00:00",
+          "verification": {
+            "status": "matched_public_broker_schedule",
+            "event": "halt",
+            "source": "https://www.ironbeam.com/thanksgiving-holiday-futures-trading-hours-2024/",
+            "limitation": "Asset-class schedule; MFFU deadlines are not verified."
+          }
+        },
+        "2024-11-29": {
+          "kind": "early_close_candidate",
+          "time_utc": "2024-11-29T18:15:00+00:00",
+          "verification": {
+            "status": "matched_public_broker_schedule",
+            "event": "close",
+            "source": "https://www.ironbeam.com/thanksgiving-holiday-futures-trading-hours-2024/",
+            "limitation": "Asset-class schedule; MFFU deadlines are not verified."
+          }
+        },
+        "2024-12-24": {
+          "kind": "early_close_candidate",
+          "time_utc": "2024-12-24T18:15:00+00:00",
+          "verification": {
+            "status": "matched_public_broker_schedule",
+            "event": "close",
+            "source": "https://www.ironbeam.com/christmas-holiday-futures-trading-hours-2024/",
+            "limitation": "Asset-class schedule; MFFU deadlines are not verified."
+          }
+        },
+        "2024-12-25": {
+          "kind": "no_session_in_source",
+          "verification": {
+            "status": "matched_public_broker_schedule",
+            "event": "closed_trade_date",
+            "source": "https://www.ironbeam.com/christmas-holiday-futures-trading-hours-2024/",
+            "limitation": "Next session opens on the evening of December 25; not a full calendar-day closure."
+          }
+        },
+        "2025-01-01": {
+          "kind": "no_session_in_source"
+        },
+        "2025-01-09": {
+          "kind": "early_close_candidate",
+          "time_utc": "2025-01-09T14:30:00+00:00",
+          "source": "https://www.cmegroup.com/media-room/press-releases/2025/12/30/cme_group_announcestradinghoursforusnationaldayofmourningtohonor.html",
+          "verification": {
+            "status": "matched_cme_asset_class_notice",
+            "event": "early_close",
+            "source": "https://www.cmegroup.com/media-room/press-releases/2025/12/30/cme_group_announcestradinghoursforusnationaldayofmourningtohonor.html",
+            "limitation": "Notice describes U.S. equity markets generally, not individual product codes."
+          }
+        },
+        "2025-01-20": {
+          "kind": "early_close_candidate",
+          "time_utc": "2025-01-20T18:00:00+00:00"
+        },
+        "2025-02-17": {
+          "kind": "early_close_candidate",
+          "time_utc": "2025-02-17T18:00:00+00:00"
+        },
+        "2025-04-18": {
+          "kind": "no_session_in_source"
+        },
+        "2025-05-26": {
+          "kind": "early_close_candidate",
+          "time_utc": "2025-05-26T17:00:00+00:00"
+        },
+        "2025-06-19": {
+          "kind": "early_close_candidate",
+          "time_utc": "2025-06-19T17:00:00+00:00"
+        },
+        "2025-07-03": {
+          "kind": "early_close_candidate",
+          "time_utc": "2025-07-03T17:15:00+00:00"
+        },
+        "2025-07-04": {
+          "kind": "early_close_candidate",
+          "time_utc": "2025-07-04T17:00:00+00:00"
+        },
+        "2025-09-01": {
+          "kind": "early_close_candidate",
+          "time_utc": "2025-09-01T17:00:00+00:00"
+        },
+        "2025-11-27": {
+          "kind": "early_close_candidate",
+          "time_utc": "2025-11-27T18:00:00+00:00"
+        },
+        "2025-11-28": {
+          "kind": "early_close_candidate",
+          "time_utc": "2025-11-28T18:15:00+00:00"
+        },
+        "2025-12-24": {
+          "kind": "early_close_candidate",
+          "time_utc": "2025-12-24T18:15:00+00:00"
+        },
+        "2025-12-25": {
+          "kind": "no_session_in_source"
+        }
+      }
+    },
+    "CMEGlobex_Gold": {
+      "symbols": [
+        "GC",
+        "MGC"
+      ],
+      "dates": {
+        "2019-01-01": {
+          "kind": "no_session_in_source"
+        },
+        "2019-01-21": {
+          "kind": "early_close_candidate",
+          "time_utc": "2019-01-21T18:00:00+00:00"
+        },
+        "2019-02-18": {
+          "kind": "early_close_candidate",
+          "time_utc": "2019-02-18T18:00:00+00:00"
+        },
+        "2019-04-19": {
+          "kind": "no_session_in_source"
+        },
+        "2019-05-27": {
+          "kind": "early_close_candidate",
+          "time_utc": "2019-05-27T17:00:00+00:00"
+        },
+        "2019-07-04": {
+          "kind": "early_close_candidate",
+          "time_utc": "2019-07-04T17:00:00+00:00"
+        },
+        "2019-09-02": {
+          "kind": "early_close_candidate",
+          "time_utc": "2019-09-02T17:00:00+00:00"
+        },
+        "2019-11-28": {
+          "kind": "early_close_candidate",
+          "time_utc": "2019-11-28T18:00:00+00:00"
+        },
+        "2019-11-29": {
+          "kind": "early_close_candidate",
+          "time_utc": "2019-11-29T18:45:00+00:00"
+        },
+        "2019-12-24": {
+          "kind": "early_close_candidate",
+          "time_utc": "2019-12-24T18:45:00+00:00"
+        },
+        "2019-12-25": {
+          "kind": "no_session_in_source"
+        },
+        "2020-01-01": {
+          "kind": "no_session_in_source"
+        },
+        "2020-01-20": {
+          "kind": "early_close_candidate",
+          "time_utc": "2020-01-20T18:00:00+00:00"
+        },
+        "2020-02-17": {
+          "kind": "early_close_candidate",
+          "time_utc": "2020-02-17T18:00:00+00:00"
+        },
+        "2020-04-10": {
+          "kind": "no_session_in_source"
+        },
+        "2020-05-25": {
+          "kind": "early_close_candidate",
+          "time_utc": "2020-05-25T17:00:00+00:00"
+        },
+        "2020-07-03": {
+          "kind": "early_close_candidate",
+          "time_utc": "2020-07-03T17:00:00+00:00"
+        },
+        "2020-09-07": {
+          "kind": "early_close_candidate",
+          "time_utc": "2020-09-07T17:00:00+00:00"
+        },
+        "2020-11-26": {
+          "kind": "early_close_candidate",
+          "time_utc": "2020-11-26T18:00:00+00:00"
+        },
+        "2020-11-27": {
+          "kind": "early_close_candidate",
+          "time_utc": "2020-11-27T18:45:00+00:00"
+        },
+        "2020-12-24": {
+          "kind": "early_close_candidate",
+          "time_utc": "2020-12-24T18:45:00+00:00"
+        },
+        "2020-12-25": {
+          "kind": "no_session_in_source"
+        },
+        "2021-01-01": {
+          "kind": "no_session_in_source"
+        },
+        "2021-01-18": {
+          "kind": "early_close_candidate",
+          "time_utc": "2021-01-18T18:00:00+00:00"
+        },
+        "2021-02-15": {
+          "kind": "early_close_candidate",
+          "time_utc": "2021-02-15T18:00:00+00:00"
+        },
+        "2021-04-02": {
+          "kind": "no_session_in_source"
+        },
+        "2021-05-31": {
+          "kind": "early_close_candidate",
+          "time_utc": "2021-05-31T17:00:00+00:00"
+        },
+        "2021-07-05": {
+          "kind": "early_close_candidate",
+          "time_utc": "2021-07-05T17:00:00+00:00"
+        },
+        "2021-09-06": {
+          "kind": "early_close_candidate",
+          "time_utc": "2021-09-06T17:00:00+00:00"
+        },
+        "2021-11-25": {
+          "kind": "early_close_candidate",
+          "time_utc": "2021-11-25T18:00:00+00:00"
+        },
+        "2021-11-26": {
+          "kind": "early_close_candidate",
+          "time_utc": "2021-11-26T18:45:00+00:00"
+        },
+        "2021-12-24": {
+          "kind": "no_session_in_source"
+        },
+        "2022-01-17": {
+          "kind": "early_close_candidate",
+          "time_utc": "2022-01-17T19:30:00+00:00"
+        },
+        "2022-02-21": {
+          "kind": "early_close_candidate",
+          "time_utc": "2022-02-21T19:30:00+00:00"
+        },
+        "2022-04-15": {
+          "kind": "no_session_in_source"
+        },
+        "2022-05-30": {
+          "kind": "early_close_candidate",
+          "time_utc": "2022-05-30T18:30:00+00:00"
+        },
+        "2022-06-20": {
+          "kind": "early_close_candidate",
+          "time_utc": "2022-06-20T18:30:00+00:00"
+        },
+        "2022-07-04": {
+          "kind": "early_close_candidate",
+          "time_utc": "2022-07-04T18:30:00+00:00"
+        },
+        "2022-09-05": {
+          "kind": "early_close_candidate",
+          "time_utc": "2022-09-05T18:30:00+00:00"
+        },
+        "2022-11-24": {
+          "kind": "early_close_candidate",
+          "time_utc": "2022-11-24T19:30:00+00:00",
+          "verification": {
+            "status": "matched_public_broker_schedule",
+            "event": "halt",
+            "source": "https://www.ironbeam.com/thanksgiving-holiday-futures-trading-hours-2022/",
+            "limitation": "Asset-class schedule; MFFU deadlines are not verified."
+          }
+        },
+        "2022-11-25": {
+          "kind": "early_close_candidate",
+          "time_utc": "2022-11-25T18:45:00+00:00",
+          "verification": {
+            "status": "matched_public_broker_schedule",
+            "event": "close",
+            "source": "https://www.ironbeam.com/thanksgiving-holiday-futures-trading-hours-2022/",
+            "limitation": "Asset-class schedule; MFFU deadlines are not verified."
+          }
+        },
+        "2022-12-26": {
+          "kind": "no_session_in_source"
+        },
+        "2023-01-02": {
+          "kind": "no_session_in_source"
+        },
+        "2023-01-16": {
+          "kind": "early_close_candidate",
+          "time_utc": "2023-01-16T19:30:00+00:00"
+        },
+        "2023-02-20": {
+          "kind": "early_close_candidate",
+          "time_utc": "2023-02-20T19:30:00+00:00"
+        },
+        "2023-04-07": {
+          "kind": "no_session_in_source",
+          "verification": {
+            "status": "matched_public_broker_schedule",
+            "event": "closed_trade_date",
+            "source": "https://www.ironbeam.com/good-friday-holidy-futures-trading-schedule-2023/",
+            "limitation": "Broker reports metals closed for trade date; exact session boundaries not provided."
+          }
+        },
+        "2023-05-29": {
+          "kind": "early_close_candidate",
+          "time_utc": "2023-05-29T18:30:00+00:00",
+          "verification": {
+            "status": "matched_cme_asset_class_notice",
+            "event": "halt",
+            "source": "https://www.cmegroup.com/trading-hours/files/memorial-day-2023.pdf",
+            "limitation": "Notice gives a general asset-class overview, not a product-specific schedule."
+          }
+        },
+        "2023-06-19": {
+          "kind": "early_close_candidate",
+          "time_utc": "2023-06-19T18:30:00+00:00",
+          "verification": {
+            "status": "matched_cme_asset_class_notice",
+            "event": "halt",
+            "source": "https://www.cmegroup.com/trading-hours/files/juneteenth-2023.pdf",
+            "limitation": "Notice gives a general asset-class overview, not a product-specific schedule."
+          }
+        },
+        "2023-07-04": {
+          "kind": "early_close_candidate",
+          "time_utc": "2023-07-04T18:30:00+00:00"
+        },
+        "2023-09-04": {
+          "kind": "early_close_candidate",
+          "time_utc": "2023-09-04T18:30:00+00:00",
+          "verification": {
+            "status": "matched_cme_asset_class_notice",
+            "event": "halt",
+            "source": "https://www.cmegroup.com/trading-hours/files/labor-day-2023.pdf",
+            "limitation": "Notice gives a general asset-class overview, not a product-specific schedule."
+          }
+        },
+        "2023-11-23": {
+          "kind": "early_close_candidate",
+          "time_utc": "2023-11-23T19:30:00+00:00",
+          "verification": {
+            "status": "matched_cme_asset_class_notice",
+            "event": "halt",
+            "source": "https://www.cmegroup.com/trading-hours/files/thanksgiving-day-2023.pdf",
+            "limitation": "Notice gives a general asset-class overview, not a product-specific schedule."
+          }
+        },
+        "2023-11-24": {
+          "kind": "early_close_candidate",
+          "time_utc": "2023-11-24T18:45:00+00:00",
+          "verification": {
+            "status": "matched_cme_asset_class_notice",
+            "event": "close",
+            "source": "https://www.cmegroup.com/trading-hours/files/thanksgiving-day-2023.pdf",
+            "limitation": "Notice gives a general asset-class overview, not a product-specific schedule."
+          }
+        },
+        "2023-12-25": {
+          "kind": "no_session_in_source"
+        },
+        "2024-01-01": {
+          "kind": "no_session_in_source"
+        },
+        "2024-01-15": {
+          "kind": "early_close_candidate",
+          "time_utc": "2024-01-15T19:30:00+00:00"
+        },
+        "2024-02-19": {
+          "kind": "early_close_candidate",
+          "time_utc": "2024-02-19T19:30:00+00:00"
+        },
+        "2024-03-29": {
+          "kind": "no_session_in_source"
+        },
+        "2024-05-27": {
+          "kind": "early_close_candidate",
+          "time_utc": "2024-05-27T18:30:00+00:00"
+        },
+        "2024-06-19": {
+          "kind": "early_close_candidate",
+          "time_utc": "2024-06-19T18:30:00+00:00"
+        },
+        "2024-07-04": {
+          "kind": "early_close_candidate",
+          "time_utc": "2024-07-04T18:30:00+00:00"
+        },
+        "2024-09-02": {
+          "kind": "early_close_candidate",
+          "time_utc": "2024-09-02T18:30:00+00:00"
+        },
+        "2024-11-28": {
+          "kind": "early_close_candidate",
+          "time_utc": "2024-11-28T19:30:00+00:00",
+          "verification": {
+            "status": "matched_public_broker_schedule",
+            "event": "halt",
+            "source": "https://www.ironbeam.com/thanksgiving-holiday-futures-trading-hours-2024/",
+            "limitation": "Asset-class schedule; MFFU deadlines are not verified."
+          }
+        },
+        "2024-11-29": {
+          "kind": "early_close_candidate",
+          "time_utc": "2024-11-29T19:45:00+00:00",
+          "verification": {
+            "status": "matched_public_broker_schedule",
+            "event": "close",
+            "source": "https://www.ironbeam.com/thanksgiving-holiday-futures-trading-hours-2024/",
+            "limitation": "Asset-class schedule; MFFU deadlines are not verified."
+          }
+        },
+        "2024-12-24": {
+          "kind": "early_close_candidate",
+          "time_utc": "2024-12-24T18:45:00+00:00",
+          "verification": {
+            "status": "matched_public_broker_schedule",
+            "event": "close",
+            "source": "https://www.ironbeam.com/christmas-holiday-futures-trading-hours-2024/",
+            "limitation": "Asset-class schedule; MFFU deadlines are not verified."
+          }
+        },
+        "2024-12-25": {
+          "kind": "no_session_in_source",
+          "verification": {
+            "status": "matched_public_broker_schedule",
+            "event": "closed_trade_date",
+            "source": "https://www.ironbeam.com/christmas-holiday-futures-trading-hours-2024/",
+            "limitation": "Next session opens on the evening of December 25; not a full calendar-day closure."
+          }
+        },
+        "2025-01-01": {
+          "kind": "no_session_in_source"
+        },
+        "2025-01-20": {
+          "kind": "early_close_candidate",
+          "time_utc": "2025-01-20T19:30:00+00:00"
+        },
+        "2025-02-17": {
+          "kind": "early_close_candidate",
+          "time_utc": "2025-02-17T19:30:00+00:00"
+        },
+        "2025-04-18": {
+          "kind": "no_session_in_source"
+        },
+        "2025-05-26": {
+          "kind": "early_close_candidate",
+          "time_utc": "2025-05-26T18:30:00+00:00"
+        },
+        "2025-06-19": {
+          "kind": "early_close_candidate",
+          "time_utc": "2025-06-19T18:30:00+00:00"
+        },
+        "2025-07-04": {
+          "kind": "early_close_candidate",
+          "time_utc": "2025-07-04T17:00:00+00:00"
+        },
+        "2025-09-01": {
+          "kind": "early_close_candidate",
+          "time_utc": "2025-09-01T18:30:00+00:00"
+        },
+        "2025-11-27": {
+          "kind": "early_close_candidate",
+          "time_utc": "2025-11-27T19:30:00+00:00"
+        },
+        "2025-11-28": {
+          "kind": "early_close_candidate",
+          "time_utc": "2025-11-28T19:45:00+00:00"
+        },
+        "2025-12-24": {
+          "kind": "early_close_candidate",
+          "time_utc": "2025-12-24T18:45:00+00:00"
+        },
+        "2025-12-25": {
+          "kind": "no_session_in_source"
+        }
+      }
+    }
+  }
+}
