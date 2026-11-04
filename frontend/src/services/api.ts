@@ -1397,6 +1397,7 @@ export const startPaperSessionRunner = async (
 export const resolvePaperPolicyDecision = async (
   paperSessionId: string,
   payload: {
+    decisionId: string;
     approved: boolean;
     actor?: string;
     note?: string;
@@ -1408,6 +1409,7 @@ export const resolvePaperPolicyDecision = async (
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        decision_id: payload.decisionId,
         approved: payload.approved,
         actor: payload.actor ?? "local-user",
         note: payload.note,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from threading import Event, Lock, Thread
@@ -8,6 +9,7 @@ from typing import Any
 import pandas as pd
 from services.backtest_repo import get_backtest as get_backtest_db
 from services.backtest_store import get_backtest as get_backtest_mem
+from services.candidate_store import candidate_transaction
 from schemas import PaperDecisionStatus, PaperPolicyDecision, PaperPolicyMode, PaperSessionStatus
 from services.data_loader import normalise_interval
 from services.db import db_configured, get_next_ohlcv_bar, get_ohlcv
@@ -19,11 +21,14 @@ from services.paper_session_service import (
     _ensure_session_defaults,
     _has_open_position,
     _make_paper_event,
+    _get_policy_decision_resolution_any,
     _now,
     _normalize_timestamp,
     _require_candidate,
     _require_paper_session,
     _save_paper_session_any,
+    _policy_event_id,
+    _policy_decision_has_execution_any,
     _sync_candidate_paper_session,
     advance_paper_session_bar,
     execute_paper_session_action,
@@ -46,7 +51,9 @@ from services.paper_session_repo import (
     PaperSessionWriteConflict,
     RunnerLeaseLost,
     guarded_runner_transaction,
+    locked_paper_session_transaction,
 )
+from services.paper_session_store import paper_session_transaction
 from services.strategy import generate_signals
 
 DEFAULT_RUNNER_POLL_INTERVAL_MS = 750
@@ -415,32 +422,59 @@ def set_runner_kill_switch(
         return _ensure_session_defaults(_require_paper_session(paper_session_id))
 
 
+@contextmanager
+def _policy_decision_transaction(paper_session_id: str):
+    if db_configured():
+        with locked_paper_session_transaction(paper_session_id):
+            yield
+    else:
+        with paper_session_transaction(paper_session_id) as candidate_id:
+            with candidate_transaction(candidate_id):
+                yield
+
+
 def resolve_pending_policy_decision(
     paper_session_id: str,
     *,
+    decision_id: str,
     approved: bool,
     actor: str = "local-user",
     note: str | None = None,
 ) -> dict:
-    """Resolve the one durable approval proposal held by a paused runner."""
+    """Resolve a specific proposal once, atomically with its execution effects."""
+    requested_id = decision_id.strip()
+    if not requested_id:
+        raise ValueError("A policy decision id is required for resolution.")
     _stop_runner_thread(paper_session_id)
 
-    with _session_lock(paper_session_id):
+    with _session_lock(paper_session_id), _policy_decision_transaction(paper_session_id):
         session = _ensure_session_defaults(_require_paper_session(paper_session_id))
         state = _ensure_runner_state(session.get("runner_state"))
+        receipt = _get_policy_decision_resolution_any(paper_session_id, requested_id)
+        if receipt is not None:
+            if receipt["payload"]["approved"] != approved:
+                raise PaperSessionWriteConflict("This policy decision already has a different resolution.")
+            # A retry must leave any newer pending decision and runtime state alone.
+            return session
         pending = state.get("pending_decision")
         if not pending:
             raise ValueError("This paper session has no pending policy decision.")
+        if pending.get("decision_id") != requested_id:
+            raise PaperSessionWriteConflict("The pending policy decision changed. Refresh before resolving it.")
+        if _policy_decision_has_execution_any(paper_session_id, requested_id):
+            raise PaperSessionWriteConflict(
+                "This decision has execution records without a resolution receipt. Inspect the session before retrying."
+            )
 
         decision = PaperPolicyDecision.model_validate(pending)
-        now = _now()
-        decision.resolved_at = now
+        if decision.paper_session_id != paper_session_id or decision.status != PaperDecisionStatus.PENDING_APPROVAL:
+            raise ValueError("The requested policy decision is not awaiting approval for this session.")
         decision.resolved_by = actor
 
         if approved:
             if _runner_guardrail_breached(session):
                 raise ValueError("The pending decision cannot execute while a hard guardrail is breached.")
-            for action in decision.actions:
+            for index, action in enumerate(decision.actions):
                 execute_paper_session_action(
                     paper_session_id,
                     action=_runner_execution_action(action),
@@ -450,6 +484,7 @@ def resolve_pending_policy_decision(
                     note=note or f"Approved policy decision {decision.decision_id}.",
                     sync_candidate=False,
                     approved_decision_id=decision.decision_id,
+                    approved_action_index=index,
                 )
             decision.status = PaperDecisionStatus.EXECUTED
             summary = note or f"Approved and executed policy decision {decision.decision_id}."
@@ -457,6 +492,8 @@ def resolve_pending_policy_decision(
             decision.status = PaperDecisionStatus.REJECTED
             summary = note or f"Rejected policy decision {decision.decision_id}."
 
+        now = _now()
+        decision.resolved_at = now
         session = _ensure_session_defaults(_require_paper_session(paper_session_id))
         state = _ensure_runner_state(session.get("runner_state"))
         state["pending_decision"] = None
@@ -469,17 +506,24 @@ def resolve_pending_policy_decision(
         session["updated_at"] = now
         _save_paper_session_any(session)
         _revoke_durable_runner_lease(paper_session_id)
-        _append_paper_event_any(
-            _make_paper_event(
-                paper_session_id=paper_session_id,
-                candidate_id=session["candidate_id"],
-                event_type="policy_decision_resolved",
-                actor=actor,
-                summary=summary,
-                created_at=now,
-                payload={"decision": decision.model_dump(mode="json"), "approved": approved},
-            )
+        receipt = _make_paper_event(
+            paper_session_id=paper_session_id,
+            candidate_id=session["candidate_id"],
+            event_type="policy_decision_resolved",
+            actor=actor,
+            summary=summary,
+            created_at=now,
+            payload={
+                "decision": decision.model_dump(mode="json"),
+                "approved": approved,
+                "action_event_ids": [
+                    _policy_event_id(paper_session_id, requested_id, f"action:{index}")
+                    for index in range(len(decision.actions))
+                ] if approved else [],
+            },
         )
+        receipt["paper_event_id"] = _policy_event_id(paper_session_id, requested_id, "resolution")
+        _append_paper_event_any(receipt)
 
         candidate = _require_candidate(session["candidate_id"])
         _sync_candidate_paper_session(

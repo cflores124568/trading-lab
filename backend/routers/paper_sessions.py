@@ -220,6 +220,7 @@ async def resolve_session_policy_decision(
     try:
         return resolve_pending_policy_decision(
             paper_session_id,
+            decision_id=request.decision_id,
             approved=request.approved,
             actor=request.actor,
             note=request.note,

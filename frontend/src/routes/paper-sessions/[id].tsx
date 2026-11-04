@@ -704,6 +704,7 @@ export default function PaperSessionDetailPage() {
 
     await runSessionAction(approved ? "decision-approve" : "decision-reject", async () => {
       const nextSession = await resolvePaperPolicyDecision(paperSessionId(), {
+        decisionId: pending.decision_id,
         approved,
         note: approved
           ? `Approved ${pending.action_label} from the paper-session UI.`

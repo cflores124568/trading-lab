@@ -2355,6 +2355,12 @@
             "title": "Approved",
             "type": "boolean"
           },
+          "decision_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Decision Id",
+            "type": "string"
+          },
           "note": {
             "anyOf": [
               {
@@ -2368,6 +2374,7 @@
           }
         },
         "required": [
+          "decision_id",
           "approved"
         ],
         "title": "PaperDecisionResolutionRequest",

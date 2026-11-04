@@ -512,6 +512,7 @@ class PaperPolicyDecision(BaseModel):
 
 
 class PaperDecisionResolutionRequest(BaseModel):
+    decision_id: str = Field(min_length=1, max_length=200)
     approved: bool
     actor: str = Field(default="local-user")
     note: Optional[str] = None

@@ -3,7 +3,7 @@
 import os
 import sys
 import unittest
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext
 from copy import deepcopy
 from unittest.mock import patch
 
@@ -267,6 +267,8 @@ class PaperPolicyTests(unittest.TestCase):
 
                 with ExitStack() as stack:
                     stack.enter_context(patch.object(paper_runner_service, "_stop_runner_thread", return_value=None))
+                    stack.enter_context(patch.object(paper_runner_service, "_policy_decision_transaction", return_value=nullcontext()))
+                    stack.enter_context(patch.object(paper_runner_service, "_get_policy_decision_resolution_any", return_value=None))
                     stack.enter_context(patch.object(paper_runner_service, "_require_paper_session", return_value=session))
                     stack.enter_context(
                         patch.object(
@@ -311,6 +313,7 @@ class PaperPolicyTests(unittest.TestCase):
 
                     result = paper_runner_service.resolve_pending_policy_decision(
                         "paper-1",
+                        decision_id=decision.decision_id,
                         approved=approved,
                         actor="reviewer",
                     )
@@ -371,6 +374,7 @@ class PaperPolicyTests(unittest.TestCase):
             }
         }
         executions = []
+        receipts = []
 
         def load_durable(_paper_session_id):
             return deepcopy(durable["session"])
@@ -382,6 +386,8 @@ class PaperPolicyTests(unittest.TestCase):
         with ExitStack() as stack:
             stack.enter_context(patch.object(paper_runner_service, "_require_db_runner_support", return_value=None))
             stack.enter_context(patch.object(paper_runner_service, "_stop_runner_thread", return_value=None))
+            stack.enter_context(patch.object(paper_runner_service, "_policy_decision_transaction", return_value=nullcontext()))
+            stack.enter_context(patch.object(paper_runner_service, "_get_policy_decision_resolution_any", side_effect=lambda *args: receipts[-1] if receipts else None))
             stack.enter_context(patch.object(paper_runner_service, "_require_paper_session", side_effect=load_durable))
             stack.enter_context(
                 patch.object(paper_runner_service, "_ensure_session_defaults", side_effect=lambda payload: payload)
@@ -399,7 +405,7 @@ class PaperPolicyTests(unittest.TestCase):
                     or load_durable(_session_id),
                 )
             )
-            stack.enter_context(patch.object(paper_runner_service, "_append_paper_event_any", return_value=None))
+            stack.enter_context(patch.object(paper_runner_service, "_append_paper_event_any", side_effect=lambda event: receipts.append(event)))
             stack.enter_context(
                 patch.object(paper_runner_service, "_make_paper_event", side_effect=lambda **payload: payload)
             )
@@ -417,15 +423,18 @@ class PaperPolicyTests(unittest.TestCase):
 
             resolved = paper_runner_service.resolve_pending_policy_decision(
                 "paper-1",
+                decision_id=decision.decision_id,
                 approved=True,
                 actor="reviewer-after-restart",
             )
-            with self.assertRaisesRegex(ValueError, "no pending policy decision"):
-                paper_runner_service.resolve_pending_policy_decision(
-                    "paper-1",
-                    approved=True,
-                    actor="duplicate-retry",
-                )
+            retried = paper_runner_service.resolve_pending_policy_decision(
+                "paper-1",
+                decision_id=decision.decision_id,
+                approved=True,
+                actor="duplicate-retry",
+            )
+            self.assertEqual(retried, resolved)
+            self.assertEqual(len(receipts), 1)
 
         self.assertEqual(executions, ["lift_ask"])
         self.assertIsNone(durable["session"]["runner_state"]["pending_decision"])
