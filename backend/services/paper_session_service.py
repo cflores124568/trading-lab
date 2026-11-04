@@ -1,3 +1,4 @@
+import json
 import uuid
 from copy import deepcopy
 from datetime import datetime
@@ -30,6 +31,8 @@ from services.paper_session_repo import (
     append_paper_event as append_paper_event_db,
     get_paper_session as get_paper_session_db,
     get_paper_session_by_candidate as get_paper_session_by_candidate_db,
+    get_policy_decision_resolution as get_policy_decision_resolution_db,
+    policy_decision_has_execution as policy_decision_has_execution_db,
     list_paper_events as list_paper_events_db,
     list_paper_sessions as list_paper_sessions_db,
     save_paper_session as save_paper_session_db,
@@ -492,6 +495,7 @@ def execute_paper_session_action(
     note: str | None = None,
     sync_candidate: bool = True,
     approved_decision_id: str | None = None,
+    approved_action_index: int | None = None,
 ) -> dict:
     session = _ensure_session_defaults(_require_paper_session(paper_session_id))
     raw_action = action.strip().lower()
@@ -751,17 +755,22 @@ def execute_paper_session_action(
     session["updated_at"] = now
     session = _ensure_session_defaults(session)
     _save_paper_session_any(session)
-    _append_paper_event_any(
-        _make_paper_event(
-            paper_session_id=session["paper_session_id"],
-            candidate_id=session["candidate_id"],
-            event_type=event_type,
-            actor=actor,
-            summary=summary,
-            created_at=now,
-            payload=payload,
-        )
+    event = _make_paper_event(
+        paper_session_id=session["paper_session_id"],
+        candidate_id=session["candidate_id"],
+        event_type=event_type,
+        actor=actor,
+        summary=summary,
+        created_at=now,
+        payload=payload,
     )
+    if approved_decision_id is not None and approved_action_index is not None:
+        event["paper_event_id"] = _policy_event_id(
+            paper_session_id, approved_decision_id, f"action:{approved_action_index}"
+        )
+        payload["approved_decision_id"] = approved_decision_id
+        payload["approved_action_index"] = approved_action_index
+    _append_paper_event_any(event)
 
     if sync_candidate:
         candidate = _require_candidate(session["candidate_id"])
@@ -884,6 +893,30 @@ def _append_paper_event_any(event: dict) -> dict:
     snapshot = deepcopy(event)
     after_commit(lambda: append_paper_event_mem(snapshot["paper_session_id"], snapshot))
     return event
+
+
+def _get_policy_decision_resolution_any(paper_session_id: str, decision_id: str) -> dict | None:
+    if _db_required():
+        return get_policy_decision_resolution_db(paper_session_id, decision_id)
+    return next((
+        event for event in list_paper_events_mem(paper_session_id)
+        if event["event_type"] == "policy_decision_resolved"
+        and (event.get("payload", {}).get("decision") or {}).get("decision_id") == decision_id
+    ), None)
+
+
+def _policy_event_id(paper_session_id: str, decision_id: str, part: str) -> str:
+    key = json.dumps(["trading-lab:policy", paper_session_id, decision_id, part])
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, key))
+
+
+def _policy_decision_has_execution_any(paper_session_id: str, decision_id: str) -> bool:
+    if _db_required():
+        return policy_decision_has_execution_db(paper_session_id, decision_id)
+    return any(
+        event.get("payload", {}).get("approved_decision_id") == decision_id
+        for event in list_paper_events_mem(paper_session_id)
+    )
 
 
 def _default_session_name(candidate: dict) -> str:

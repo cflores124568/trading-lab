@@ -179,6 +179,24 @@ def _ensure_paper_sessions_schema(conn) -> None:
 
 
 @contextmanager
+def locked_paper_session_transaction(paper_session_id: str):
+    """Serialize manual decision resolution across API processes."""
+    from services.db import _conn, transaction
+
+    with _conn() as conn:
+        _ensure_paper_sessions_schema(conn)
+    with transaction() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT paper_session_id FROM paper_sessions WHERE paper_session_id = %s FOR UPDATE",
+                [paper_session_id],
+            )
+            if cur.fetchone() is None:
+                raise LookupError(f"Paper session '{paper_session_id}' not found.")
+        yield
+
+
+@contextmanager
 def guarded_runner_transaction(
     paper_session_id: str,
     *,
@@ -404,6 +422,36 @@ def get_paper_event(paper_event_id: str) -> Optional[dict]:
     if df.empty:
         return None
     return _row_to_event(df.iloc[0])
+
+
+def get_policy_decision_resolution(paper_session_id: str, decision_id: str) -> Optional[dict]:
+    """Read the durable receipt, including resolutions written by older code."""
+    from services.db import _conn, _read_sql
+
+    with _conn() as conn:
+        _ensure_paper_sessions_schema(conn)
+    df = _read_sql(
+        """SELECT * FROM paper_events
+        WHERE paper_session_id = %s AND event_type = 'policy_decision_resolved'
+          AND payload->'decision'->>'decision_id' = %s
+        ORDER BY created_at ASC LIMIT 1""",
+        params=[paper_session_id, decision_id],
+        parse_dates=["created_at"],
+    )
+    return None if df.empty else _row_to_event(df.iloc[0])
+
+
+def policy_decision_has_execution(paper_session_id: str, decision_id: str) -> bool:
+    """Detect pre-upgrade effects whose resolution receipt never committed."""
+    from services.db import _conn, _read_sql
+
+    with _conn() as conn:
+        _ensure_paper_sessions_schema(conn)
+    return not _read_sql(
+        """SELECT 1 FROM paper_events
+        WHERE paper_session_id = %s AND payload->>'approved_decision_id' = %s LIMIT 1""",
+        params=[paper_session_id, decision_id],
+    ).empty
 
 
 def get_paper_session(paper_session_id: str) -> Optional[dict]:

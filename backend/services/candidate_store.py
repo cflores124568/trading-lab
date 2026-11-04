@@ -1,11 +1,26 @@
 from copy import deepcopy
+from contextlib import contextmanager
 from datetime import datetime
-from threading import Lock
+from threading import RLock
 from typing import Optional
 
 _candidate_store: dict[str, dict] = {}
 _candidate_run_index: dict[str, str] = {}
-_store_lock = Lock()
+_store_lock = RLock()
+
+
+@contextmanager
+def candidate_transaction(candidate_id: str):
+    """Keep candidate projection/audit changes atomic with a memory approval."""
+    with _store_lock:
+        if candidate_id not in _candidate_store:
+            raise LookupError(f"Candidate '{candidate_id}' not found.")
+        before = deepcopy(_candidate_store[candidate_id])
+        try:
+            yield
+        except BaseException:
+            _candidate_store[candidate_id] = before
+            raise
 
 
 def upsert_candidate(candidate_id: str, candidate: dict) -> None:

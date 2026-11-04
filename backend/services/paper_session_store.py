@@ -1,12 +1,29 @@
 from copy import deepcopy
+from contextlib import contextmanager
 from datetime import datetime
-from threading import Lock
+from threading import RLock
 from typing import Optional
 
 _paper_session_store: dict[str, dict] = {}
 _paper_session_candidate_index: dict[str, str] = {}
 _paper_event_store: dict[str, list[dict]] = {}
-_store_lock = Lock()
+_store_lock = RLock()
+
+
+@contextmanager
+def paper_session_transaction(paper_session_id: str):
+    """Rollback one in-memory approval attempt while hiding tentative writes."""
+    with _store_lock:
+        if paper_session_id not in _paper_session_store:
+            raise LookupError(f"Paper session '{paper_session_id}' not found.")
+        before = deepcopy(_paper_session_store[paper_session_id])
+        events = deepcopy(_paper_event_store.get(paper_session_id, []))
+        try:
+            yield before["candidate_id"]
+        except BaseException:
+            _paper_session_store[paper_session_id] = before
+            _paper_event_store[paper_session_id] = events
+            raise
 
 
 def upsert_paper_session(paper_session_id: str, session: dict) -> None:
