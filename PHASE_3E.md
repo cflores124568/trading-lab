@@ -41,6 +41,44 @@ In Docker Compose, `api` and `paper_runner` use the same image but different
 commands. Both point at the same database. Multiple worker replicas are safe:
 only one active lease can exist for a paper session.
 
+## Worker commit fencing
+
+Each durable worker bar uses one database transaction for execution state,
+cursor updates, paper events, and any candidate projection/audit writes. A
+private `paper_sessions.state_version` counter rejects writes from stale
+snapshots. Before commit, the worker locks the session and lease rows and
+checks the expected session version, owner, opaque token, and lease expiry.
+Expiry uses PostgreSQL `clock_timestamp()` so a lease that expired during
+processing cannot pass using the transaction's start time.
+
+Ownership loss or a concurrent session change rolls back the whole tentative
+bar. Memory mirrors publish only after commit; session mirrors also reject
+older versions delivered late, and aborted signal history is discarded. An
+execution error first rolls back the bar, then attempts to record failure
+under the same ownership/version guard. It cannot overwrite a
+newer pause, kill switch, or owner through the failure handler.
+
+Concurrent API session writes return HTTP 409 with a retry message when their
+loaded snapshot is stale. Refresh the session and retry the intended action.
+The additive version column is initialized to zero for existing sessions by
+the schema helper. Deploy/restart the API and worker together so every writer
+maintains the version counter. No public payload fields or trading rules
+change, and this does not make manual approval resolution transactional.
+
+Validation includes the existing runner, policy, risk, execution-event, and
+forward-qualification tests plus isolated PostgreSQL race tests:
+
+```bash
+cd backend
+./venv/bin/python -m unittest test_db_transactions test_paper_runner_fencing test_paper_runner_worker test_paper_session_repo
+PAPER_FENCING_TEST_DSN='<isolated PostgreSQL DSN>' ./venv/bin/python -m unittest test_paper_runner_fencing
+```
+
+The PostgreSQL cases are opt-in and never fall back to `DATABASE_URL`. They
+create a unique test schema, require no Timescale extension or market data,
+and cover pause/kill races, version conflicts, expiry during processing,
+revocation/takeover, rollback after a taker fill, and completion/failure paths.
+
 ## Completed next slice
 
 [`PHASE_3F.md`](PHASE_3F.md) now freezes the typed event-driven market input

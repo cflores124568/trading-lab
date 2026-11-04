@@ -212,6 +212,16 @@ If Docker stops while a session remains `running`, the worker can resume it
 after restart because running intent and the cursor are durable. This is
 expected recovery behavior.
 
+Durable worker bars now commit their state and events together after checking
+the current lease and session version. A worker that loses its lease rolls
+back its tentative bar. If a concurrent control request reports that the
+session changed (HTTP 409), refresh the session and retry the action.
+
+When deploying this version, restart the API and paper worker together. The
+schema helper adds an internal version counter to existing sessions; all
+writers must run the matching code. This update does not start or resume any
+sessions by itself.
+
 ## MCP and Codex
 
 The `trading_lab` MCP server provides read-only candidate/session inspection and
