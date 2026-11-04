@@ -42,6 +42,11 @@ from services.paper_runner_lease_repo import (
     get_runner_lease,
     revoke_runner_lease,
 )
+from services.paper_session_repo import (
+    PaperSessionWriteConflict,
+    RunnerLeaseLost,
+    guarded_runner_transaction,
+)
 from services.strategy import generate_signals
 
 DEFAULT_RUNNER_POLL_INTERVAL_MS = 750
@@ -534,15 +539,37 @@ def advance_historical_runner_worker_once(
         state = _ensure_runner_state(session.get("runner_state"))
         if session.get("status") != PaperSessionStatus.RUNNING.value or state.get("mode") != "running":
             return session, "not_running"
+        guard = None
         try:
-            return _advance_one_bar_locked(
-                paper_session_id,
-                actor="paper-runner",
-                keep_running=True,
-            )
+            with guarded_runner_transaction(
+                paper_session_id, owner_id=owner_id, lease_token=lease_token
+            ) as guard:
+                session = _ensure_session_defaults(_require_paper_session(paper_session_id))
+                state = _ensure_runner_state(session.get("runner_state"))
+                if session.get("status") != PaperSessionStatus.RUNNING.value or state.get("mode") != "running":
+                    return session, "not_running"
+                return _advance_one_bar_locked(
+                    paper_session_id,
+                    actor="paper-runner",
+                    keep_running=True,
+                )
+        except (PaperSessionWriteConflict, RunnerLeaseLost):
+            _reset_signal_history(paper_session_id)
+            raise
         except Exception as exc:
-            _mark_runner_failed_locked(paper_session_id, str(exc))
-            return _ensure_session_defaults(_require_paper_session(paper_session_id)), "failed"
+            _reset_signal_history(paper_session_id)
+            if guard is None:
+                raise
+            # The failed bar was rolled back. A failure marker is another
+            # fenced write and must not overwrite a newer control or owner.
+            with guarded_runner_transaction(
+                paper_session_id,
+                owner_id=owner_id,
+                lease_token=lease_token,
+                expected_version=guard.starting_version,
+            ):
+                _mark_runner_failed_locked(paper_session_id, str(exc))
+                return _ensure_session_defaults(_require_paper_session(paper_session_id)), "failed"
 
 
 def _advance_one_bar_locked(
