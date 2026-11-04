@@ -135,6 +135,14 @@ processing.
 - Pauses before a position-changing action.
 - Requires **Approve & Execute** or **Reject** on the session page.
 - Persists the pending decision across restarts.
+- Resolves the specific decision shown on screen. Approval and all execution
+  effects commit together; a failed attempt can be retried without duplicate
+  fills. Repeating the same outcome returns current session state.
+- Returns a conflict if the proposal changed or was resolved with the opposite
+  outcome. Refresh the session before taking another action.
+
+API callers must send `decision_id` with `approved` to the resolution endpoint.
+Deploy the matching frontend and API together for this request-contract update.
 
 ### Autonomous Paper
 

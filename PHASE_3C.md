@@ -44,6 +44,40 @@ marks, but pauses on `buy`, `sell`, or `exit`. The proposal is stored in the
 session's durable `runner_state.pending_decision` field. The runner cannot
 restart until that decision is approved or rejected.
 
+## Atomic approval recovery
+
+Resolution requests now require the displayed `decision_id` alongside
+`approved`. The frontend and committed OpenAPI contract carry that identity;
+deploy the frontend and API together. Requests without it fail validation,
+and a stale identity cannot resolve a newer proposal.
+
+The API locks the session row and uses one PostgreSQL transaction for every
+execution action, pending-decision removal, resolution receipt, lease
+revocation, candidate projection, and audit write. A process exit or failure
+before commit rolls back the whole operation. Execution events and the
+resolution receipt have deterministic IDs scoped to session, decision, and
+action index. Memory mirrors publish after commit. The in-memory development
+store uses locks and snapshot rollback for the same operation boundary.
+
+Repeating the same decision/outcome returns current session state without
+executing again, appending another receipt, or disturbing a newer proposal.
+The first resolver's identity and rationale remain in the audit. An opposite
+outcome returns HTTP 409. Older receipts with random event IDs are also
+recognized by their decision identity. Execution evidence without a receipt
+is treated as an incomplete older resolution requiring inspection; it is not
+automatically executed again.
+
+Tests cover both storage paths, concurrent API contexts, response retries,
+stale IDs, rollback after either flip action/receipt/candidate audit, lease
+rollback, and forced API-process exits between actions. PostgreSQL tests use
+an explicit isolated `PAPER_FENCING_TEST_DSN`, never the application database:
+
+```bash
+cd backend
+./venv/bin/python -m unittest test_paper_approval_resolution test_paper_policy
+PAPER_FENCING_TEST_DSN='<isolated PostgreSQL DSN>' ./venv/bin/python -m unittest test_paper_approval_resolution
+```
+
 ## Phase status
 
 Phase 3C is complete and frozen. Unit coverage and a real backend restart verify

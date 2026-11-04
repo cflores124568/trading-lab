@@ -62,8 +62,9 @@ Concurrent API session writes return HTTP 409 with a retry message when their
 loaded snapshot is stale. Refresh the session and retry the intended action.
 The additive version column is initialized to zero for existing sessions by
 the schema helper. Deploy/restart the API and worker together so every writer
-maintains the version counter. No public payload fields or trading rules
-change, and this does not make manual approval resolution transactional.
+maintains the version counter. Worker fencing preserves existing trading
+rules. Manual approval recovery now has its own transaction boundary and
+decision-ID contract, documented in [Phase 3C](PHASE_3C.md#atomic-approval-recovery).
 
 Validation includes the existing runner, policy, risk, execution-event, and
 forward-qualification tests plus isolated PostgreSQL race tests:
