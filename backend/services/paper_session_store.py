@@ -20,6 +20,16 @@ def upsert_paper_session(paper_session_id: str, session: dict) -> None:
     entry["stored_at"] = datetime.utcnow().isoformat()
 
     with _store_lock:
+        existing = _paper_session_store.get(paper_session_id)
+        if (
+            existing is not None
+            and existing.get("_state_version") is not None
+            and entry.get("_state_version") is not None
+            and existing["_state_version"] > entry["_state_version"]
+        ):
+            # A newer commit may publish while an older transaction's
+            # after-commit callbacks are still being delivered.
+            return
         _paper_session_store[paper_session_id] = entry
         candidate_id = entry.get("candidate_id")
         if isinstance(candidate_id, str) and candidate_id:

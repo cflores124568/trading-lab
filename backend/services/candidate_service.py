@@ -1,7 +1,9 @@
 import uuid
+from copy import deepcopy
 from datetime import datetime
 
 from schemas import CandidateLifecycleStatus, PaperBotStatus
+from services.db import after_commit
 from services.candidate_repo import (
     get_candidate as get_candidate_db,
     get_candidate_by_run as get_candidate_by_run_db,
@@ -622,7 +624,8 @@ def _require_candidate(candidate_id: str) -> dict:
 def _save_candidate_any(candidate: dict) -> dict:
     if _db_required():
         save_candidate_db(candidate)
-    upsert_candidate_mem(candidate["candidate_id"], candidate)
+    snapshot = deepcopy(candidate)
+    after_commit(lambda: upsert_candidate_mem(snapshot["candidate_id"], snapshot))
     return candidate
 
 

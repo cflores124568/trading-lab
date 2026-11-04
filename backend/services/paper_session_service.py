@@ -1,4 +1,5 @@
 import uuid
+from copy import deepcopy
 from datetime import datetime
 
 from schemas import PaperSessionStatus
@@ -42,6 +43,7 @@ from services.paper_session_store import (
     upsert_paper_session as upsert_paper_session_mem,
 )
 from services.prop_firm_eval import evaluate_prop_firm
+from services.db import after_commit
 
 DEFAULT_TICK_VALUES = {
     "NQ": 20.0,
@@ -871,14 +873,16 @@ def _save_paper_session_any(session: dict) -> dict:
     session = _ensure_session_defaults(session)
     if _db_required():
         save_paper_session_db(session)
-    upsert_paper_session_mem(session["paper_session_id"], session)
+    snapshot = deepcopy(session)
+    after_commit(lambda: upsert_paper_session_mem(snapshot["paper_session_id"], snapshot))
     return session
 
 
 def _append_paper_event_any(event: dict) -> dict:
     if _db_required():
         append_paper_event_db(event)
-    append_paper_event_mem(event["paper_session_id"], event)
+    snapshot = deepcopy(event)
+    after_commit(lambda: append_paper_event_mem(snapshot["paper_session_id"], snapshot))
     return event
 
 

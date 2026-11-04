@@ -10,13 +10,64 @@ from __future__ import annotations
 import os
 import warnings
 from contextlib import contextmanager
-from typing import Any, Generator
+from contextvars import ContextVar
+from typing import Any, Callable, Generator
 
 import numpy as np
 import pandas as pd
 
 # ── Connection pool (lazy init) ───────────────────────────────────────────────
 _pool = None  # psycopg2.pool.ThreadedConnectionPool
+
+
+class _TransactionConnection:
+    """Let existing repository helpers share one outer commit boundary."""
+
+    def __init__(self, connection) -> None:
+        self.connection = connection
+        self.after_commit: list[Callable[[], None]] = []
+
+    def __getattr__(self, name):
+        return getattr(self.connection, name)
+
+    def commit(self) -> None:
+        # Repository-level commits are deferred to transaction().
+        pass
+
+
+_transaction: ContextVar[_TransactionConnection | None] = ContextVar(
+    "database_transaction", default=None
+)
+
+
+@contextmanager
+def transaction() -> Generator:
+    """Commit nested repository operations together, or roll all of them back.
+
+    Schema initialization must happen before entering this scope: repository
+    schema-ready flags describe committed DDL, not a tentative transaction.
+    """
+    if _transaction.get() is not None:
+        raise RuntimeError("Nested database transactions are not supported.")
+    with _conn() as connection:
+        scope = _TransactionConnection(connection)
+        token = _transaction.set(scope)
+        try:
+            yield scope
+            connection.commit()
+        finally:
+            _transaction.reset(token)
+    for publish in scope.after_commit:
+        publish()
+
+
+def after_commit(publish: Callable[[], None]) -> None:
+    """Publish a memory mirror only after the enclosing transaction succeeds."""
+    scope = _transaction.get()
+    if scope is None:
+        publish()
+    else:
+        scope.after_commit.append(publish)
 
 
 def db_configured() -> bool:
@@ -81,6 +132,11 @@ def _conn() -> Generator:
     """Borrow a connection from the pool (creating the pool if needed) and
     always return it afterwards, even if an error occurs.
     """
+    scope = _transaction.get()
+    if scope is not None:
+        yield scope
+        return
+
     _init_pool()
     conn = _pool.getconn()
     try:
