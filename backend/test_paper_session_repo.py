@@ -33,6 +33,7 @@ class PaperSessionRepoTests(unittest.TestCase):
             "updated_at": "2026-07-18T00:00:00+00:00",
         }
         cursor = MagicMock()
+        cursor.fetchone.return_value = (0,)
         connection = MagicMock()
         connection.cursor.return_value.__enter__.return_value = cursor
 
@@ -50,6 +51,24 @@ class PaperSessionRepoTests(unittest.TestCase):
         self.assertEqual(json.loads(values[20]), session["last_quote"])
         self.assertEqual(json.loads(values[23]), session["active_orders"])
         self.assertEqual(json.loads(values[26]), session["runner_state"])
+        self.assertIsNone(values[-1])
+        self.assertEqual(session["_state_version"], 0)
+
+
+class PaperSessionConflictApiTests(unittest.IsolatedAsyncioTestCase):
+    async def test_pause_reports_a_retryable_conflict(self):
+        from fastapi import HTTPException
+        from routers import paper_sessions
+        from schemas import PaperRunnerPauseRequest
+
+        with patch.object(
+            paper_sessions, "pause_historical_runner",
+            side_effect=paper_session_repo.PaperSessionWriteConflict("Session changed. Retry with current state."),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                await paper_sessions.pause_session_runner("paper-1", PaperRunnerPauseRequest())
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertIn("Retry", raised.exception.detail)
 
 
 if __name__ == "__main__":

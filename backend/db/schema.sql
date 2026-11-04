@@ -311,6 +311,7 @@ CREATE TABLE IF NOT EXISTS paper_sessions (
     prop_firm_rules  JSONB NOT NULL,
     guardrails       JSONB NOT NULL DEFAULT '{}'::jsonb,
     status           TEXT NOT NULL DEFAULT 'draft',
+    state_version    BIGINT NOT NULL DEFAULT 0,
     commission       DOUBLE PRECISION NOT NULL DEFAULT 5,
     tick_value       DOUBLE PRECISION NOT NULL DEFAULT 1,
     current_position JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -360,6 +361,9 @@ CREATE INDEX IF NOT EXISTS paper_runner_leases_expires_idx
 
 CREATE INDEX IF NOT EXISTS paper_events_candidate_created_idx
     ON paper_events (candidate_id, created_at DESC);
+
+ALTER TABLE paper_sessions
+    ADD COLUMN IF NOT EXISTS state_version BIGINT NOT NULL DEFAULT 0;
 
 ALTER TABLE paper_sessions
     ADD COLUMN IF NOT EXISTS commission DOUBLE PRECISION NOT NULL DEFAULT 5;

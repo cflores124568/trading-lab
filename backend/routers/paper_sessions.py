@@ -28,6 +28,7 @@ from services.paper_session_service import (
     list_paper_sessions_any,
     update_paper_session_status,
 )
+from services.paper_session_repo import PaperSessionWriteConflict
 
 router = APIRouter()
 
@@ -80,6 +81,8 @@ async def patch_paper_session_status(
             actor=request.actor,
             summary=request.summary,
         )
+    except PaperSessionWriteConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except ValueError as exc:
@@ -101,6 +104,8 @@ async def create_paper_session_event(
             actor=request.actor,
             payload=request.payload,
         )
+    except PaperSessionWriteConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except ValueError as exc:
@@ -126,6 +131,8 @@ async def execute_session_action(
             actor=request.actor,
             note=request.note,
         )
+    except PaperSessionWriteConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except ValueError as exc:
@@ -149,6 +156,8 @@ async def start_session_runner(
             reset_cursor=request.reset_cursor,
             policy_mode=request.policy_mode,
         )
+    except PaperSessionWriteConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except ValueError as exc:
@@ -170,6 +179,8 @@ async def pause_session_runner(
             actor=request.actor,
             summary=request.summary,
         )
+    except PaperSessionWriteConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except ValueError as exc:
@@ -189,6 +200,8 @@ async def step_session_runner(
             actor=request.actor,
             steps=request.steps,
         )
+    except PaperSessionWriteConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except ValueError as exc:
@@ -211,6 +224,8 @@ async def resolve_session_policy_decision(
             actor=request.actor,
             note=request.note,
         )
+    except PaperSessionWriteConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except ValueError as exc:
@@ -231,6 +246,8 @@ async def update_session_kill_switch(
             actor=request.actor,
             reason=request.reason,
         )
+    except PaperSessionWriteConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except ValueError as exc:

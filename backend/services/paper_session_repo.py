@@ -1,4 +1,7 @@
 import json
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
 from threading import Lock
 from typing import Any, Optional
 
@@ -6,6 +9,26 @@ import pandas as pd
 
 _schema_lock = Lock()
 _schema_ready = False
+
+
+class PaperSessionWriteConflict(RuntimeError):
+    """A session changed after the snapshot being saved was read."""
+
+
+class RunnerLeaseLost(RuntimeError):
+    """A worker may no longer commit its tentative bar."""
+
+
+@dataclass
+class _RunnerWriteGuard:
+    paper_session_id: str
+    starting_version: int
+    expected_version: int
+
+
+_runner_write_guard: ContextVar[_RunnerWriteGuard | None] = ContextVar(
+    "paper_runner_write_guard", default=None
+)
 
 
 def _ensure_paper_sessions_schema(conn) -> None:
@@ -43,6 +66,7 @@ def _ensure_paper_sessions_schema(conn) -> None:
                     prop_firm_rules  JSONB NOT NULL,
                     guardrails       JSONB NOT NULL DEFAULT '{}'::jsonb,
                     status           TEXT NOT NULL DEFAULT 'draft',
+                    state_version    BIGINT NOT NULL DEFAULT 0,
                     commission       DOUBLE PRECISION NOT NULL DEFAULT 5,
                     tick_value       DOUBLE PRECISION NOT NULL DEFAULT 1,
                     tick_size        DOUBLE PRECISION NOT NULL DEFAULT 0.25,
@@ -66,6 +90,9 @@ def _ensure_paper_sessions_schema(conn) -> None:
                     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
                 """
+            )
+            cur.execute(
+                "ALTER TABLE paper_sessions ADD COLUMN IF NOT EXISTS state_version BIGINT NOT NULL DEFAULT 0"
             )
             cur.execute(
                 "ALTER TABLE paper_sessions ADD COLUMN IF NOT EXISTS commission DOUBLE PRECISION NOT NULL DEFAULT 5"
@@ -151,8 +178,87 @@ def _ensure_paper_sessions_schema(conn) -> None:
         _schema_ready = True
 
 
+@contextmanager
+def guarded_runner_transaction(
+    paper_session_id: str,
+    *,
+    owner_id: str,
+    lease_token: str,
+    expected_version: int | None = None,
+):
+    """Fence every write in one worker bar at its final database commit.
+
+    Session saves compare versions and retain their row lock until commit.
+    The final lease row lock serializes revocation/takeover with publication;
+    clock_timestamp() checks actual expiry, not transaction-start time.
+    """
+    from services.backtest_repo import _ensure_backtests_schema
+    from services.db import _conn, transaction
+
+    with _conn() as conn:
+        _ensure_paper_sessions_schema(conn)
+        # End-of-window parity may read a backtest inside the transaction.
+        _ensure_backtests_schema(conn)
+
+    with transaction() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT state_version FROM paper_sessions WHERE paper_session_id = %s",
+                [paper_session_id],
+            )
+            row = cur.fetchone()
+        if row is None:
+            raise LookupError(f"Paper session '{paper_session_id}' not found.")
+        version = int(row[0])
+        if expected_version is not None and version != expected_version:
+            raise PaperSessionWriteConflict(
+                "Paper session changed before the worker could commit. Retry with current state."
+            )
+        guard = _RunnerWriteGuard(paper_session_id, version, version)
+        token = _runner_write_guard.set(guard)
+        try:
+            yield guard
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT state_version FROM paper_sessions WHERE paper_session_id = %s FOR UPDATE",
+                    [paper_session_id],
+                )
+                row = cur.fetchone()
+                if row is None or int(row[0]) != guard.expected_version:
+                    raise PaperSessionWriteConflict(
+                        "Paper session changed before the worker could commit. Retry with current state."
+                    )
+                cur.execute(
+                    "SELECT lease_token FROM paper_runner_leases WHERE paper_session_id = %s FOR UPDATE",
+                    [paper_session_id],
+                )
+                cur.fetchone()
+                cur.execute(
+                    """SELECT 1 FROM paper_runner_leases
+                    WHERE paper_session_id = %s AND owner_id = %s
+                      AND lease_token = %s AND expires_at > clock_timestamp()""",
+                    [paper_session_id, owner_id, lease_token],
+                )
+                if cur.fetchone() is None:
+                    raise RunnerLeaseLost("The paper runner lease expired or changed before commit.")
+        finally:
+            _runner_write_guard.reset(token)
+
+
 def save_paper_session(session: dict) -> None:
     from services.db import _conn
+
+    expected_version = session.get("_state_version")
+    guard = _runner_write_guard.get()
+    if guard is not None:
+        if session["paper_session_id"] != guard.paper_session_id:
+            raise PaperSessionWriteConflict("A worker cannot write another paper session.")
+        # A helper rereading newer state must not silently adopt a concurrent
+        # pause/kill-switch version and continue the old worker operation.
+        if expected_version != guard.expected_version:
+            raise PaperSessionWriteConflict(
+                "Paper session changed during worker advancement. Retry with current state."
+            )
 
     sql = """
         INSERT INTO paper_sessions (
@@ -199,7 +305,10 @@ def save_paper_session(session: dict) -> None:
             last_bar_time    = EXCLUDED.last_bar_time,
             last_event_at    = EXCLUDED.last_event_at,
             created_by       = EXCLUDED.created_by,
-            updated_at       = EXCLUDED.updated_at
+            updated_at       = EXCLUDED.updated_at,
+            state_version    = paper_sessions.state_version + 1
+        WHERE paper_sessions.state_version = %s
+        RETURNING state_version
     """
 
     with _conn() as conn:
@@ -240,8 +349,17 @@ def save_paper_session(session: dict) -> None:
                     session.get("created_by", "local-user"),
                     session["created_at"],
                     session["updated_at"],
+                    expected_version,
                 ],
             )
+            row = cur.fetchone()
+            if row is None:
+                raise PaperSessionWriteConflict(
+                    "Paper session changed since it was loaded. Retry with current state."
+                )
+            session["_state_version"] = int(row[0])
+            if guard is not None:
+                guard.expected_version = session["_state_version"]
         conn.commit()
 
 
@@ -358,6 +476,7 @@ def _row_to_session(row) -> dict:
         "prop_firm_rules": _maybe_json(row["prop_firm_rules"]) or {},
         "guardrails": _maybe_json(row["guardrails"]) or {},
         "status": row["status"],
+        "_state_version": int(row.get("state_version") or 0),
         "commission": float(row.get("commission") or 5.0),
         "tick_value": float(row.get("tick_value") or 1.0),
         "tick_size": float(row.get("tick_size") or 0.25),
