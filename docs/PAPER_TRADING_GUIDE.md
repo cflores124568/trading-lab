@@ -118,7 +118,8 @@ The names are similar, but they serve different purposes.
 
 The candidate page's **Start Paper Bot** button changes handoff status. The
 paper-session page's **Start Runner** button actually queues historical candle
-processing.
+processing. A new session created from a running bot handoff is ready and idle
+until explicitly started.
 
 ## Policy modes
 
@@ -164,7 +165,7 @@ Session status describes allowed runtime state:
 | `ready` | Session is configured and may start. |
 | `running` | Durable intent says the worker should advance it. |
 | `paused` | State is preserved and the worker must not advance it. |
-| `stopped` | Explicitly stopped; move it to an allowed state before running. |
+| `stopped` | Explicitly stopped; reopen to `ready` before starting again. |
 | `failed` | A runner or guardrail error requires inspection. |
 
 Runner health summarizes what the historical runner last reported:
@@ -180,6 +181,13 @@ Runner health summarizes what the historical runner last reported:
 | `idle` | No bars have been processed. |
 
 Refresh the list after changing a session if its card has not updated yet.
+
+Start, pause, stop, fail/reopen, and kill-switch controls save session status,
+runner intent, lease changes, and audit records together. A failed request leaves
+the previous state intact. Setting status to `running` applies the same safety
+guards as **Start Runner** and resumes the saved window and cursor. Pause and
+stop retain the paper position and resting orders. Resetting the kill switch
+leaves the session inactive until an explicit start.
 
 ## What a paper session supports
 

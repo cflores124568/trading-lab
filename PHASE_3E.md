@@ -80,6 +80,35 @@ create a unique test schema, require no Timescale extension or market data,
 and cover pause/kill races, version conflicts, expiry during processing,
 revocation/takeover, rollback after a taker fill, and completion/failure paths.
 
+## Atomic session controls
+
+Runner start, pause, kill-switch changes, and the generic session-status endpoint
+share a session-row transaction. Session status, runner intent, lease revocation,
+paper event, candidate projection, and candidate audit commit together. A failed
+event or audit write leaves the previous state and lease intact. The memory
+fallback uses the same command boundary with snapshot rollback.
+
+Setting status to `running` uses the runner-start guards, including the emergency
+latch, pending approvals, and forward-qualification restrictions. Generic resume
+keeps the saved window, polling interval, and cursor. Inactive statuses clear
+runnable intent; pausing a completed or failed runner preserves its diagnostics.
+Stopped sessions must reopen to `ready` before starting again. Pause and stop
+preserve positions, resting orders, and progress; resetting the kill switch does
+not resume work. A newly created session from a running bot handoff starts ready
+and idle until explicitly started.
+
+Lease acquisition locks and rechecks the session's runnable status and mode, so
+stale worker discovery cannot reclaim a stopped session. Claims wait for any
+tentative session write to finish. Workers validate cached signal history against
+the durable cursor and rebuild it after another process resets or moves it.
+
+```bash
+PAPER_FENCING_TEST_DSN='<isolated PostgreSQL DSN>' ./venv/bin/python -m unittest test_paper_controls test_paper_runner_fencing test_paper_approval_resolution
+```
+
+These cases cover control rollback, lease restoration, concurrent start/stop,
+publication visibility, shared start guards, and cursor-cache recovery.
+
 ## Completed next slice
 
 [`PHASE_3F.md`](PHASE_3F.md) now freezes the typed event-driven market input
