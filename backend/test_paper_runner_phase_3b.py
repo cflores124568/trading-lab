@@ -5,7 +5,7 @@ import math
 import sys
 import types
 import unittest
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext
 from copy import deepcopy
 from datetime import datetime
 from threading import Event, Thread
@@ -240,6 +240,7 @@ class PaperRunnerPhase3BTests(unittest.TestCase):
                 self.assertEqual(paper_runner_service._plan_signal_actions({}, -1), (["sell"], "open_short"))
                 self.assertEqual(paper_runner_service._plan_signal_actions({"current_position": {"side": "buy"}}, -1), (["exit", "sell"], "flip_to_sell"))
 
+    @patch.object(paper_runner_service, "_paper_control_transaction", new=lambda _: nullcontext())
     def test_reliability_matrix_covers_pause_resume_restart_and_cleanup(self):
         """Lock the runner reliability matrix before `3C` sneaks in.
 

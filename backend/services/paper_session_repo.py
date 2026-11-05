@@ -180,7 +180,7 @@ def _ensure_paper_sessions_schema(conn) -> None:
 
 @contextmanager
 def locked_paper_session_transaction(paper_session_id: str):
-    """Serialize manual decision resolution across API processes."""
+    """Serialize session controls and decision resolution across API processes."""
     from services.db import _conn, transaction
 
     with _conn() as conn:

@@ -12,7 +12,7 @@ _store_lock = RLock()
 
 @contextmanager
 def paper_session_transaction(paper_session_id: str):
-    """Rollback one in-memory approval attempt while hiding tentative writes."""
+    """Rollback one memory control command while hiding tentative writes."""
     with _store_lock:
         if paper_session_id not in _paper_session_store:
             raise LookupError(f"Paper session '{paper_session_id}' not found.")

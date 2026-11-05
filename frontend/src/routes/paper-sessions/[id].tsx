@@ -427,11 +427,6 @@ function statusActions(status: PaperSessionStatus): Array<{
           status: "ready",
           tone: "app-button-secondary",
         },
-        {
-          label: "Resume",
-          status: "running",
-          tone: "app-button-primary",
-        },
       ];
     case "failed":
       return [

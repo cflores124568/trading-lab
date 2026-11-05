@@ -376,12 +376,23 @@ runner.resolve_pending_policy_decision(sys.argv[1], decision_id=sys.argv[2], app
         self.assertEqual(len(self.receipts()), 1)
 
     def test_rollback_restores_revoked_lease(self):
-        lease = paper_runner_lease_repo.acquire_runner_lease(self.session_id, owner_id="fixture-worker")
+        # Simulate a lease left behind by pre-upgrade pause handling. New
+        # workers correctly refuse to claim an already-paused session.
+        lease_token = str(uuid.uuid4())
+        with db._conn() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """INSERT INTO paper_runner_leases
+                    (paper_session_id, owner_id, lease_token, expires_at)
+                    VALUES (%s, 'fixture-worker', %s, NOW() + INTERVAL '30 seconds')""",
+                    [self.session_id, lease_token],
+                )
+            connection.commit()
         with patch.object(paper_runner_service, "_append_paper_event_any", side_effect=RuntimeError("receipt interrupted")):
             with self.assertRaisesRegex(RuntimeError, "receipt interrupted"):
                 self.resolve(approved=False)
         current = paper_runner_lease_repo.get_runner_lease(self.session_id)
-        self.assertEqual(current["lease_token"], lease["lease_token"])
+        self.assertEqual(current["lease_token"], lease_token)
         self.assertTrue(current["active"])
 
 

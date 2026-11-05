@@ -99,7 +99,6 @@ PAPER_SESSION_TRANSITIONS = {
     },
     PaperSessionStatus.STOPPED.value: {
         PaperSessionStatus.READY.value,
-        PaperSessionStatus.RUNNING.value,
     },
     PaperSessionStatus.FAILED.value: {
         PaperSessionStatus.READY.value,
@@ -260,55 +259,11 @@ def create_paper_session_for_candidate(
 
 
 def update_paper_session_status(
-    paper_session_id: str,
-    status: str,
-    *,
-    actor: str = "local-user",
-    summary: str | None = None,
+    paper_session_id: str, status: str, *, actor: str = "local-user", summary: str | None = None,
 ) -> dict:
-    session = _require_paper_session(paper_session_id)
-    next_status = status.strip()
-    previous_status = session["status"]
-
-    if next_status == previous_status:
-        return session
-
-    allowed = PAPER_SESSION_TRANSITIONS.get(previous_status, set())
-    if next_status not in allowed:
-        raise ValueError(f"Can't move paper session from '{previous_status}' to '{next_status}'.")
-
-    now = _now()
-    session["status"] = next_status
-    session["last_event_at"] = now
-    session["updated_at"] = now
-    session = _ensure_session_defaults(session)
-    _save_paper_session_any(session)
-    _append_paper_event_any(
-        _make_paper_event(
-            paper_session_id=session["paper_session_id"],
-            candidate_id=session["candidate_id"],
-            event_type="status_changed",
-            actor=actor,
-            summary=summary or f"Moved paper session from `{previous_status}` to `{next_status}`.",
-            created_at=now,
-            payload={"from": previous_status, "to": next_status},
-        )
-    )
-
-    candidate = _require_candidate(session["candidate_id"])
-    _sync_candidate_paper_session(
-        candidate,
-        session["paper_session_id"],
-        now,
-        session_status=next_status,
-    )
-    _append_candidate_session_audit(
-        candidate,
-        actor=actor,
-        summary=summary or f"Moved paper session from `{previous_status}` to `{next_status}`.",
-        created_at=now,
-    )
-    return session
+    # Import here because the runner also uses the execution helpers below.
+    from services.paper_runner_service import transition_paper_session_status
+    return transition_paper_session_status(paper_session_id, status, actor=actor, summary=summary)
 
 
 def add_paper_session_event(
@@ -1140,7 +1095,8 @@ def _paper_bot_to_session_status(paper_bot_status: str | None) -> str:
     if paper_bot_status == "ready":
         return PaperSessionStatus.READY.value
     if paper_bot_status == "paper_running":
-        return PaperSessionStatus.RUNNING.value
+        # A Phase 2 bot stub is configuration, not durable worker intent.
+        return PaperSessionStatus.READY.value
     if paper_bot_status == "stopped":
         return PaperSessionStatus.PAUSED.value
     return PaperSessionStatus.DRAFT.value

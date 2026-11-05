@@ -11,7 +11,7 @@ _store_lock = RLock()
 
 @contextmanager
 def candidate_transaction(candidate_id: str):
-    """Keep candidate projection/audit changes atomic with a memory approval."""
+    """Keep candidate projection/audit changes atomic with a memory command."""
     with _store_lock:
         if candidate_id not in _candidate_store:
             raise LookupError(f"Candidate '{candidate_id}' not found.")

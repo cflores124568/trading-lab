@@ -15,6 +15,8 @@ from services.data_loader import normalise_interval
 from services.db import db_configured, get_next_ohlcv_bar, get_ohlcv
 from services.indicators import add_all_indicators
 from services.paper_session_service import (
+    PAPER_SESSION_TRANSITIONS,
+    _db_required as _paper_storage_uses_db,
     _append_candidate_session_audit,
     _append_paper_event_any,
     _force_close_open_position,
@@ -73,108 +75,145 @@ _session_locks: dict[str, Lock] = {}
 _signal_bar_history: dict[str, list[dict[str, Any]]] = {}
 
 
-def start_historical_runner(
-    paper_session_id: str,
-    *,
-    actor: str = "local-user",
-    start_date: str | None = None,
-    end_date: str | None = None,
-    poll_interval_ms: int = DEFAULT_RUNNER_POLL_INTERVAL_MS,
-    reset_cursor: bool = False,
+def _persist_control_transition(
+    session: dict, *, actor: str, event_type: str, summary: str,
+    payload: dict, revoke_lease: bool = True,
+) -> dict:
+    """Publish one control command's state, lease change, event, and projection."""
+    now = _now()
+    session["runner_state"]["updated_at"] = now
+    session["last_event_at"] = now
+    session["updated_at"] = now
+    _save_paper_session_any(session)
+    if revoke_lease:
+        _revoke_durable_runner_lease(session["paper_session_id"])
+    _append_paper_event_any(_make_paper_event(
+        paper_session_id=session["paper_session_id"], candidate_id=session["candidate_id"],
+        event_type=event_type, actor=actor, summary=summary, created_at=now, payload=payload,
+    ))
+    candidate = _require_candidate(session["candidate_id"])
+    _sync_candidate_paper_session(
+        candidate, session["paper_session_id"], now, session_status=session["status"],
+    )
+    _append_candidate_session_audit(candidate, actor=actor, summary=summary, created_at=now)
+    return _ensure_session_defaults(_require_paper_session(session["paper_session_id"]))
+
+
+def _validate_status_transition(session: dict, next_status: str) -> None:
+    previous = session["status"]
+    if next_status not in PAPER_SESSION_TRANSITIONS or (
+        next_status != previous and next_status not in PAPER_SESSION_TRANSITIONS.get(previous, set())
+    ):
+        raise ValueError(f"Can't move paper session from '{previous}' to '{next_status}'.")
+
+
+def _set_inactive_status(session: dict, status: str, *, summary: str | None = None) -> None:
+    state = _ensure_runner_state(session.get("runner_state"))
+    if status != "paused" or state.get("mode") not in {"completed", "failed"}:
+        if status == "failed":
+            state["mode"] = "failed"
+        elif status in {"draft", "ready"}:
+            state["mode"] = "idle"
+        else:
+            state["mode"] = "paused"
+    if status == "ready":
+        state["last_error"] = None
+    elif status == "failed":
+        state["last_error"] = summary or state.get("last_error") or "Marked failed by the operator."
+    session["status"] = status
+    session["runner_state"] = state
+
+
+def _prepare_runner_start(
+    session: dict, *, start_date: str | None = None, end_date: str | None = None,
+    poll_interval_ms: int | None = None, reset_cursor: bool = False,
     policy_mode: str | PaperPolicyMode | None = None,
 ) -> dict:
-    """Queue or resume one fake-live historical session for the durable worker.
-
-    This keeps time simulated, not wall-clock based, and advances one candle at
-    a time. The API persists intent and cursor state; a separate worker owns the
-    right to advance the session through an expiring PostgreSQL lease.
-    """
-    _require_db_runner_support()
-    poll = _validate_poll_interval(poll_interval_ms)
+    _validate_runner_session_status(session, allow_running=True)
+    state = _ensure_runner_state(session.get("runner_state"))
+    state = _apply_default_window(session, state)
+    if state.get("kill_switch_engaged"):
+        raise ValueError("Reset the emergency kill switch before starting the runner.")
+    if state.get("pending_decision"):
+        raise ValueError("Resolve the pending policy decision before restarting the runner.")
+    _validate_forward_qualification_mode(state, policy_mode)
+    poll = _validate_poll_interval(
+        poll_interval_ms if poll_interval_ms is not None else int(state.get("poll_interval_ms") or DEFAULT_RUNNER_POLL_INTERVAL_MS)
+    )
     start_ts = _normalize_optional_timestamp(start_date)
     end_ts = _normalize_optional_timestamp(end_date)
-    _validate_range(start_ts, end_ts)
+    if policy_mode is not None:
+        state["policy_mode"] = normalize_policy_mode(policy_mode).value
+    if start_ts is not None:
+        state["start_date"] = start_ts
+    if end_ts is not None:
+        state["end_date"] = end_ts
+    _validate_range(state.get("start_date"), state.get("end_date"))
+    if reset_cursor:
+        session["last_bar_time"] = None
+        state.update(
+            bars_processed=0, last_candle_time=None, last_price=None, last_signal=0,
+            last_signal_action=None, last_signal_reason=None, parity_check={},
+            last_decision=None, pending_decision=None, shadow_scorecard={},
+        )
+    state.update(
+        mode="running", poll_interval_ms=poll, last_error=None,
+        execution_backend="durable_worker", worker_requested_at=_now(),
+    )
+    session["runner_state"] = state
+    session["status"] = PaperSessionStatus.RUNNING.value
+    return {
+        "start_date": state.get("start_date"), "end_date": state.get("end_date"),
+        "poll_interval_ms": poll, "reset_cursor": reset_cursor,
+        "policy_mode": state.get("policy_mode"),
+    }
 
+
+def start_historical_runner(
+    paper_session_id: str, *, actor: str = "local-user", start_date: str | None = None,
+    end_date: str | None = None, poll_interval_ms: int = DEFAULT_RUNNER_POLL_INTERVAL_MS,
+    reset_cursor: bool = False, policy_mode: str | PaperPolicyMode | None = None,
+) -> dict:
+    """Atomically queue runnable intent; only the leased worker advances bars."""
+    _require_db_runner_support()
     with _session_lock(paper_session_id):
-        session = _ensure_session_defaults(_require_paper_session(paper_session_id))
-        _validate_runner_session_status(session, allow_running=True)
-        now = _now()
-
-        state = _ensure_runner_state(session.get("runner_state"))
-        state = _apply_default_window(session, state)
-        if state.get("kill_switch_engaged"):
-            raise ValueError("Reset the emergency kill switch before starting the runner.")
-        if state.get("pending_decision"):
-            raise ValueError("Resolve the pending policy decision before restarting the runner.")
-        _validate_forward_qualification_mode(state, policy_mode)
-        if policy_mode is not None:
-            state["policy_mode"] = normalize_policy_mode(policy_mode).value
-        if start_ts is not None:
-            state["start_date"] = start_ts
-        if end_ts is not None:
-            state["end_date"] = end_ts
-        _validate_range(state.get("start_date"), state.get("end_date"))
-
-        if reset_cursor:
-            session["last_bar_time"] = None
-            state["bars_processed"] = 0
-            state["last_candle_time"] = None
-            state["last_price"] = None
-            state["last_signal"] = 0
-            state["last_signal_action"] = None
-            state["last_signal_reason"] = None
-            state["parity_check"] = {}
-            state["last_decision"] = None
-            state["pending_decision"] = None
-            state["shadow_scorecard"] = {}
-            _reset_signal_history(paper_session_id)
-
-        state["mode"] = "running"
-        state["poll_interval_ms"] = poll
-        state["last_error"] = None
-        state["execution_backend"] = "durable_worker"
-        state["worker_requested_at"] = now
-        state["updated_at"] = now
-
-        session["runner_state"] = state
-        session["status"] = PaperSessionStatus.RUNNING.value
-        session["last_event_at"] = now
-        session["updated_at"] = now
-        _save_paper_session_any(session)
-
-        _append_paper_event_any(
-            _make_paper_event(
-                paper_session_id=paper_session_id,
-                candidate_id=session["candidate_id"],
-                event_type="runner_started",
-                actor=actor,
-                summary="Queued the historical paper runner for durable execution.",
-                created_at=now,
-                payload={
-                    "start_date": state.get("start_date"),
-                    "end_date": state.get("end_date"),
-                    "poll_interval_ms": state.get("poll_interval_ms"),
-                    "reset_cursor": reset_cursor,
-                    "policy_mode": state.get("policy_mode"),
-                },
+        with _paper_control_transaction(paper_session_id):
+            session = _ensure_session_defaults(_require_paper_session(paper_session_id))
+            payload = _prepare_runner_start(
+                session, start_date=start_date, end_date=end_date,
+                poll_interval_ms=poll_interval_ms, reset_cursor=reset_cursor, policy_mode=policy_mode,
             )
-        )
+            result = _persist_control_transition(
+                session, actor=actor, event_type="runner_started",
+                summary="Queued the historical paper runner for durable execution.", payload=payload,
+            )
+        if reset_cursor:
+            _reset_signal_history(paper_session_id)
+        return result
 
-        candidate = _require_candidate(session["candidate_id"])
-        _sync_candidate_paper_session(
-            candidate,
-            paper_session_id,
-            now,
-            session_status=session["status"],
-        )
-        _append_candidate_session_audit(
-            candidate,
-            actor=actor,
-            summary="Queued the historical paper runner for durable execution.",
-            created_at=now,
-        )
 
-    return _ensure_session_defaults(_require_paper_session(paper_session_id))
+def transition_paper_session_status(
+    paper_session_id: str, status: str, *, actor: str = "local-user", summary: str | None = None,
+) -> dict:
+    """Use the same start/stop guards and transaction for status-button controls."""
+    next_status = status.strip()
+    if next_status == "running":
+        _require_db_runner_support()
+    else:
+        _stop_runner_thread(paper_session_id)
+    with _session_lock(paper_session_id), _paper_control_transaction(paper_session_id):
+        session = _ensure_session_defaults(_require_paper_session(paper_session_id))
+        previous = session["status"]
+        _validate_status_transition(session, next_status)
+        if next_status == "running":
+            _prepare_runner_start(session)
+        else:
+            _set_inactive_status(session, next_status, summary=summary)
+        return _persist_control_transition(
+            session, actor=actor, event_type="status_changed",
+            summary=summary or f"Moved paper session from `{previous}` to `{next_status}`.",
+            payload={"from": previous, "to": next_status},
+        )
 
 
 def _validate_forward_qualification_mode(
@@ -206,68 +245,20 @@ def _validate_forward_qualification_mode(
 
 
 def pause_historical_runner(
-    paper_session_id: str,
-    *,
-    actor: str = "local-user",
-    summary: str | None = None,
+    paper_session_id: str, *, actor: str = "local-user", summary: str | None = None,
 ) -> dict:
-    """Pause the background historical loop but keep all runner state intact.
-
-    I don't throw away the cursor when paused, so resume continues from the next
-    candle. This is the safe "hold position and inspect" control for paper
-    sessions that are mid-window.
-    """
+    """Pause intent and revoke ownership together while retaining execution state."""
     _stop_runner_thread(paper_session_id)
-
-    with _session_lock(paper_session_id):
+    with _session_lock(paper_session_id), _paper_control_transaction(paper_session_id):
         session = _ensure_session_defaults(_require_paper_session(paper_session_id))
-        state = _ensure_runner_state(session.get("runner_state"))
-        now = _now()
-
-        if state.get("mode") not in {"completed", "failed"}:
-            state["mode"] = "paused"
-        state["updated_at"] = now
-        session["runner_state"] = state
-
-        if session["status"] == PaperSessionStatus.RUNNING.value:
-            session["status"] = PaperSessionStatus.PAUSED.value
-
-        session["last_event_at"] = now
-        session["updated_at"] = now
-        _save_paper_session_any(session)
-        _revoke_durable_runner_lease(paper_session_id)
-
-        note = summary or "Paused the historical paper runner."
-        _append_paper_event_any(
-            _make_paper_event(
-                paper_session_id=paper_session_id,
-                candidate_id=session["candidate_id"],
-                event_type="runner_paused",
-                actor=actor,
-                summary=note,
-                created_at=now,
-                payload={
-                    "last_candle_time": state.get("last_candle_time"),
-                    "bars_processed": state.get("bars_processed"),
-                },
-            )
+        _validate_status_transition(session, PaperSessionStatus.PAUSED.value)
+        _set_inactive_status(session, PaperSessionStatus.PAUSED.value)
+        state = session["runner_state"]
+        return _persist_control_transition(
+            session, actor=actor, event_type="runner_paused",
+            summary=summary or "Paused the historical paper runner.",
+            payload={"last_candle_time": state.get("last_candle_time"), "bars_processed": state.get("bars_processed")},
         )
-
-        candidate = _require_candidate(session["candidate_id"])
-        _sync_candidate_paper_session(
-            candidate,
-            paper_session_id,
-            now,
-            session_status=session["status"],
-        )
-        _append_candidate_session_audit(
-            candidate,
-            actor=actor,
-            summary=note,
-            created_at=now,
-        )
-
-    return _ensure_session_defaults(_require_paper_session(paper_session_id))
 
 
 def step_historical_runner(
@@ -365,72 +356,48 @@ def stop_all_historical_runners() -> None:
 
 
 def set_runner_kill_switch(
-    paper_session_id: str,
-    *,
-    engaged: bool,
-    actor: str = "local-user",
-    reason: str | None = None,
+    paper_session_id: str, *, engaged: bool, actor: str = "local-user", reason: str | None = None,
 ) -> dict:
-    """Persist the emergency autonomous-execution stop for one session."""
+    """Change the emergency latch without publishing a partial pause or reset."""
     if engaged:
         _stop_runner_thread(paper_session_id)
-
-    with _session_lock(paper_session_id):
+    with _session_lock(paper_session_id), _paper_control_transaction(paper_session_id):
         session = _ensure_session_defaults(_require_paper_session(paper_session_id))
         state = _ensure_runner_state(session.get("runner_state"))
-        now = _now()
+        was_engaged = bool(state.get("kill_switch_engaged"))
         state["kill_switch_engaged"] = bool(engaged)
         state["kill_switch_reason"] = reason.strip() if isinstance(reason, str) and reason.strip() else None
-        if engaged:
-            state["mode"] = "paused"
-            if session["status"] == PaperSessionStatus.RUNNING.value:
-                session["status"] = PaperSessionStatus.PAUSED.value
-        state["updated_at"] = now
         session["runner_state"] = state
-        session["last_event_at"] = now
-        session["updated_at"] = now
-        _save_paper_session_any(session)
-        if engaged:
-            _revoke_durable_runner_lease(paper_session_id)
-
-        event_type = "kill_switch_engaged" if engaged else "kill_switch_reset"
-        summary = (
-            state["kill_switch_reason"] or "Emergency kill switch engaged."
-            if engaged
-            else "Emergency kill switch reset."
+        revoke_lease = engaged or was_engaged or session["status"] != "running"
+        if engaged or was_engaged or (session["status"] == "running" and state.get("mode") != "running"):
+            target = "paused" if session["status"] == "running" else session["status"]
+            _set_inactive_status(session, target)
+            revoke_lease = True
+        elif session["status"] != "running":
+            _set_inactive_status(session, session["status"])
+        summary = (state["kill_switch_reason"] or "Emergency kill switch engaged.") if engaged else "Emergency kill switch reset."
+        return _persist_control_transition(
+            session, actor=actor, event_type="kill_switch_engaged" if engaged else "kill_switch_reset",
+            summary=summary, payload={"engaged": bool(engaged), "reason": state["kill_switch_reason"]},
+            revoke_lease=revoke_lease,
         )
-        _append_paper_event_any(
-            _make_paper_event(
-                paper_session_id=paper_session_id,
-                candidate_id=session["candidate_id"],
-                event_type=event_type,
-                actor=actor,
-                summary=summary,
-                created_at=now,
-                payload={"engaged": bool(engaged), "reason": state["kill_switch_reason"]},
-            )
-        )
-
-        candidate = _require_candidate(session["candidate_id"])
-        _sync_candidate_paper_session(
-            candidate,
-            paper_session_id,
-            now,
-            session_status=session["status"],
-        )
-        _append_candidate_session_audit(candidate, actor=actor, summary=summary, created_at=now)
-        return _ensure_session_defaults(_require_paper_session(paper_session_id))
 
 
 @contextmanager
-def _policy_decision_transaction(paper_session_id: str):
-    if db_configured():
+def _paper_control_transaction(paper_session_id: str):
+    if _paper_storage_uses_db():
         with locked_paper_session_transaction(paper_session_id):
             yield
     else:
         with paper_session_transaction(paper_session_id) as candidate_id:
             with candidate_transaction(candidate_id):
                 yield
+
+
+@contextmanager
+def _policy_decision_transaction(paper_session_id: str):
+    with _paper_control_transaction(paper_session_id):
+        yield
 
 
 def resolve_pending_policy_decision(
@@ -1086,11 +1053,11 @@ def _get_signal_history(session: dict, state: dict) -> list[dict[str, Any]]:
     paper_session_id = session["paper_session_id"]
     with _registry_lock:
         existing = _signal_bar_history.get(paper_session_id)
-    if existing is not None:
-        return [*existing]
-
     if not session.get("last_bar_time"):
+        _reset_signal_history(paper_session_id)
         return []
+    if existing and _normalize_timestamp(str(existing[-1]["time"])) == _normalize_timestamp(session["last_bar_time"]):
+        return [*existing]
 
     history_df = get_ohlcv(
         symbol=session["symbol"],

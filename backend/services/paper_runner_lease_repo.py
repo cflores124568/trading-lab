@@ -43,6 +43,17 @@ def acquire_runner_lease(
     with _conn() as conn:
         _ensure_paper_sessions_schema(conn)
         with conn.cursor() as cur:
+            # Serialize discovery/claim with control commands. A worker may
+            # have discovered this ID before another process stopped it.
+            cur.execute(
+                """SELECT paper_session_id FROM paper_sessions
+                WHERE paper_session_id = %s AND status = 'running'
+                  AND runner_state->>'mode' = 'running' FOR UPDATE""",
+                [session_id],
+            )
+            if cur.fetchone() is None:
+                conn.commit()
+                return None
             cur.execute(sql, [session_id, owner, token, ttl])
             row = cur.fetchone()
             columns = [description.name for description in cur.description] if row else []

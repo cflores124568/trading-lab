@@ -187,17 +187,24 @@ class PaperRunnerPostgresFencingTests(unittest.TestCase):
         self.assertEqual(paper_session_repo.list_paper_events(self.session_id), [])
 
     def test_takeover_rolls_back_tentative_session_events_and_memory(self):
-        def takeover():
-            self.expire_lease()
-            return paper_runner_lease_repo.acquire_runner_lease(self.session_id, owner_id="worker-b")
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            takeover = None
 
-        def signal(*args):
-            lease = self.outside_transaction(takeover)
-            self.assertNotEqual(lease["lease_token"], self.token)
-            return 1
+            def signal(*args):
+                nonlocal takeover
+                self.outside_transaction(self.expire_lease)
+                # Claims now lock the session too. The replacement owner
+                # waits for the expired worker's tentative bar to roll back.
+                takeover = executor.submit(
+                    paper_runner_lease_repo.acquire_runner_lease,
+                    self.session_id, owner_id="worker-b",
+                )
+                return 1
 
-        with self.assertRaises(RunnerLeaseLost):
-            self.advance(signal=signal)
+            with self.assertRaises(RunnerLeaseLost):
+                self.advance(signal=signal)
+            lease = takeover.result(timeout=5)
+        self.assertNotEqual(lease["lease_token"], self.token)
         current = self.assert_no_bar_committed()
         self.assertEqual(current["status"], "running")
         self.assertEqual(paper_session_repo.list_paper_events(self.session_id), [])

@@ -355,6 +355,7 @@ class PaperPolicyTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Resolve the pending policy decision"):
                 paper_runner_service.step_historical_runner("paper-1")
 
+    @patch.object(paper_runner_service, "_paper_control_transaction", new=lambda _: nullcontext())
     def test_pending_approval_survives_restart_and_resolves_once(self):
         decision = decide_with_deterministic_policy(
             build_market_observation(self._session(), self._bar(), signal=1, bar_index=9),
