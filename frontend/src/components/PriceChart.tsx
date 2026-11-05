@@ -1152,7 +1152,7 @@ export default function PriceChart(props: Props) {
       }}
     >
       <div ref={container} class="h-full w-full" />
-      {props.initialVisibleBars && <div class="absolute right-20 top-2 z-10 flex gap-1">
+      {props.initialVisibleBars && <div class="price-chart-view-controls absolute right-20 top-2 z-10 flex gap-1">
         <button type="button" class="rounded border border-stone-700 bg-stone-950/90 px-2 py-1 text-[11px] text-stone-300" title="Fit all loaded candles" onClick={() => chart?.timeScale().fitContent()}>Fit</button>
         <button type="button" class="rounded border border-stone-700 bg-stone-950/90 px-2 py-1 text-[11px] text-stone-300" title="Show recent candles" onClick={() => chart?.timeScale().setVisibleLogicalRange({ from: Math.max(0, visibleCandles().length - props.initialVisibleBars!), to: visibleCandles().length + 3 })}>Recent</button>
       </div>}
@@ -1160,7 +1160,7 @@ export default function PriceChart(props: Props) {
 
       {indicatorLegendMode() !== "hidden" && activeCandle() ? (
         <div
-          class={`pointer-events-none absolute left-3 top-3 z-10 ${props.initialVisibleBars ? "max-w-[min(320px,calc(100%-11rem))]" : "max-w-[min(320px,calc(100%-1.5rem))]"} border border-stone-800/90 bg-stone-950/82 shadow-xl shadow-black/25 backdrop-blur ${
+          class={`price-chart-indicator-legend pointer-events-none absolute left-3 top-3 z-10 ${props.initialVisibleBars ? "max-w-[min(320px,calc(100%-12rem))]" : "max-w-[min(320px,calc(100%-1.5rem))]"} border border-stone-800/90 bg-stone-950/82 shadow-xl shadow-black/25 backdrop-blur ${
             indicatorLegendMode() === "full" ? "px-3 py-2.5" : "px-2.5 py-2"
           }`}
           style={{ "border-radius": "0" }}

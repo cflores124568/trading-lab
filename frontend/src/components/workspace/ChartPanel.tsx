@@ -40,6 +40,7 @@ import {
 
 interface Props {
   panel: ChartPanelConfig;
+  selected: boolean;
   canRemove: boolean;
   canDuplicate: boolean;
   canReorder: boolean;
@@ -142,6 +143,7 @@ export default function ChartPanel(props: Props) {
   const [showControls, setShowControls] = createSignal(false);
   const [showMenu, setShowMenu] = createSignal(false);
   let menuRoot: HTMLDivElement | undefined;
+  let menuButton: HTMLButtonElement | undefined;
 
   createEffect(() => {
     setTitleDraft(props.panel.title);
@@ -273,14 +275,13 @@ export default function ChartPanel(props: Props) {
 
   return (
     <section
-      class={`workspace-panel app-panel flex h-full min-h-0 flex-col overflow-hidden ${
-        props.expanded ? "app-panel-selected" : ""
-      }`}
+      class="workspace-panel app-panel flex h-full min-h-0 flex-col overflow-hidden"
+      aria-label={`${props.panel.title}${props.selected ? ", active panel" : ""}`}
       style={{ "border-radius": "0" }}
     >
       <div class="workspace-panel-header shrink-0">
         <div class="flex flex-wrap items-center justify-between gap-2">
-          <div class="min-w-0 flex-1">
+          <div class="workspace-panel-identity min-w-0 flex-1">
             <div class="flex min-w-0 flex-wrap items-center gap-1.5">
               <Show when={props.canReorder}>
                 <button
@@ -288,7 +289,7 @@ export default function ChartPanel(props: Props) {
                   draggable
                   title="Drag to reorder panel"
                   aria-label="Drag to reorder panel"
-                  class="inline-flex h-7 w-7 cursor-grab items-center justify-center rounded-sm border border-stone-700 bg-stone-950 text-stone-500 transition-colors hover:border-stone-600 hover:text-stone-200 active:cursor-grabbing"
+                  class="workspace-panel-action workspace-panel-grip"
                   onDragStart={props.onReorderDragStart}
                   onDragEnd={props.onReorderDragEnd}
                 >
@@ -307,7 +308,7 @@ export default function ChartPanel(props: Props) {
               </span>
 
             </div>
-            <p class="mt-1 truncate text-xs text-stone-500">{panelSummary()}</p>
+            <p class="workspace-panel-summary mt-1 truncate text-xs" title={panelSummary()}>{panelSummary()}</p>
           </div>
 
           <div class="flex flex-wrap items-center gap-1.5">
@@ -320,43 +321,40 @@ export default function ChartPanel(props: Props) {
               type="button"
               title={showControls() ? "Hide panel controls" : "Show panel controls"}
               aria-expanded={showControls()}
-              class={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                showControls()
-                  ? "border-[rgba(232,223,209,0.78)] bg-[rgba(235,227,213,0.1)] text-stone-50"
-                  : "border-white/10 bg-white/[0.04] text-stone-300 hover:border-white/18 hover:text-stone-100"
-              }`}
+              class="workspace-panel-action"
               onClick={() => setShowControls((current) => !current)}
             >
               <SlidersHorizontal size={14} />
-              {showControls() ? "Hide controls" : "Controls"}
+              Controls
+            </button>
+            <button type="button" class="workspace-panel-action" title={props.expanded ? "Collapse panel" : "Expand panel"}
+              aria-label={props.expanded ? "Collapse panel" : "Expand panel"} aria-expanded={!!props.expanded}
+              onClick={props.onToggleExpand}>
+              {props.expanded ? <Minimize2 size={15} /> : <Expand size={15} />}
             </button>
 
-            <div ref={menuRoot} class="relative">
+            <div ref={menuRoot} class="relative" onKeyDown={(event) => {
+              if (event.key === "Escape" && showMenu()) {
+                event.stopPropagation();
+                setShowMenu(false);
+                menuButton?.focus();
+              }
+            }}>
               <button
+                ref={menuButton}
                 type="button"
                 title="Panel actions"
                 aria-label="Panel actions"
                 aria-expanded={showMenu()}
-                class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-xs font-medium text-stone-400 transition-colors hover:border-white/18 hover:text-stone-200"
+                class="workspace-panel-action"
                 onClick={() => setShowMenu((current) => !current)}
               >
                 <Ellipsis size={15} />
               </button>
 
               <Show when={showMenu()}>
-                <div class="absolute right-0 top-[calc(100%+0.5rem)] z-30 w-48 rounded-sm border border-white/10 bg-[#0b0b0b]/98 p-2 shadow-2xl shadow-black/40">
+                <div class="workspace-panel-menu absolute right-0 top-[calc(100%+0.5rem)] z-30 w-48 rounded-sm border border-white/10 bg-[#0b0b0b] p-2 shadow-2xl shadow-black/40">
                   <button type="button" class="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm text-stone-200 hover:bg-white/[0.05]" disabled={candles.loading} onClick={() => { setShowMenu(false); refetch(); }}><RefreshCw size={15} /> Refresh candles</button>
-                  <button
-                    type="button"
-                    class="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm text-stone-200 transition-colors hover:bg-white/[0.05]"
-                    onClick={() => {
-                      setShowMenu(false);
-                      props.onToggleExpand();
-                    }}
-                  >
-                    {props.expanded ? <Minimize2 size={15} /> : <Expand size={15} />}
-                    {props.expanded ? "Collapse panel" : "Expand panel"}
-                  </button>
                   <button
                     type="button"
                     class="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm text-stone-200 transition-colors hover:bg-stone-900 disabled:cursor-not-allowed disabled:text-stone-600"
@@ -567,8 +565,8 @@ export default function ChartPanel(props: Props) {
         }
       >
         {(error) => (
-          <div class="flex min-h-0 flex-1 items-center justify-center px-6 text-center">
-            <div class="space-y-2">
+          <div class="flex min-h-0 flex-1 overflow-auto px-6 py-4 text-center">
+            <div class="m-auto space-y-2">
               <p class="text-sm font-semibold text-red-300">Chart request failed</p>
               <p class="max-w-sm break-words text-xs text-stone-400">{error().message}</p>
               <button class="app-button-compact-secondary" onClick={() => refetch()}>Retry chart</button>
@@ -578,7 +576,7 @@ export default function ChartPanel(props: Props) {
       </Show>
 
       <Show when={!candles.loading && !candles.error && (candles()?.length ?? 0) === 0}>
-        <div class="min-h-0 flex-1 px-4 py-5">
+        <div class="min-h-0 flex-1 overflow-auto px-4 py-5">
           <p class="text-sm font-semibold text-stone-100">No candles for this range</p>
           <p class="mt-1 text-sm text-stone-400">
             There's no stored market data for this symbol and window. Switch the panel to Snapshot, widen
