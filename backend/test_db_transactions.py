@@ -53,6 +53,18 @@ class DatabaseTransactionTests(unittest.TestCase):
         publish.assert_not_called()
         self.assertIsNone(db._transaction.get())
 
+    def test_nested_rollback_keeps_outer_locks_and_prevents_publication(self):
+        publish = MagicMock()
+        with self.assertRaisesRegex(RuntimeError, "failed inside the transaction"):
+            with db.transaction():
+                db.after_commit(publish)
+                with db._conn() as nested:
+                    nested.rollback()
+                self.connection.rollback.assert_not_called()
+        self.connection.rollback.assert_called_once()
+        self.connection.commit.assert_not_called()
+        publish.assert_not_called()
+
     def test_delayed_memory_publication_cannot_replace_a_newer_committed_version(self):
         session_id = "mirror-" + uuid.uuid4().hex
         old = {"paper_session_id": session_id, "_state_version": 1, "status": "running"}

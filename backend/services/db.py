@@ -26,6 +26,7 @@ class _TransactionConnection:
     def __init__(self, connection) -> None:
         self.connection = connection
         self.after_commit: list[Callable[[], None]] = []
+        self.rollback_requested = False
 
     def __getattr__(self, name):
         return getattr(self.connection, name)
@@ -33,6 +34,10 @@ class _TransactionConnection:
     def commit(self) -> None:
         # Repository-level commits are deferred to transaction().
         pass
+
+    def rollback(self) -> None:
+        # A nested reader (such as pandas) must not release transaction locks.
+        self.rollback_requested = True
 
 
 _transaction: ContextVar[_TransactionConnection | None] = ContextVar(
@@ -54,6 +59,8 @@ def transaction() -> Generator:
         token = _transaction.set(scope)
         try:
             yield scope
+            if scope.rollback_requested:
+                raise RuntimeError("A database operation failed inside the transaction.")
             connection.commit()
         finally:
             _transaction.reset(token)
