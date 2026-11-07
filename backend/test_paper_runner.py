@@ -79,7 +79,7 @@ def _fake_next_factory() -> Callable:
 def main() -> None:
     original_loader = experiment_service.load_from_db
     original_db_required = experiment_service._db_required
-    original_runner_db_configured = paper_runner_service.db_configured
+    original_runner_db_support = paper_runner_service._require_db_runner_support
     original_runner_next = paper_runner_service.get_next_ohlcv_bar
     original_spawn = paper_runner_service._spawn_runner_thread
 
@@ -97,7 +97,7 @@ def main() -> None:
 
     experiment_service.load_from_db = fake_load_from_db
     experiment_service._db_required = lambda: False
-    paper_runner_service.db_configured = lambda: True
+    paper_runner_service._require_db_runner_support = lambda: None
     paper_runner_service.get_next_ohlcv_bar = _fake_next_factory()
     paper_runner_service._spawn_runner_thread = lambda paper_session_id: None
 
@@ -216,7 +216,7 @@ def main() -> None:
     finally:
         experiment_service.load_from_db = original_loader
         experiment_service._db_required = original_db_required
-        paper_runner_service.db_configured = original_runner_db_configured
+        paper_runner_service._require_db_runner_support = original_runner_db_support
         paper_runner_service.get_next_ohlcv_bar = original_runner_next
         paper_runner_service._spawn_runner_thread = original_spawn
         if _original_database_url is None:

@@ -324,6 +324,7 @@ class PaperPolicyTests(unittest.TestCase):
                 self.assertEqual(session["runner_state"]["last_decision"]["status"], expected_status)
                 self.assertEqual(events[-1]["event_type"], "policy_decision_resolved")
 
+    @patch.object(paper_runner_service, "_paper_control_transaction", new=lambda _: nullcontext())
     def test_pending_decision_blocks_manual_step(self):
         session = {
             **self._session(),

@@ -7,12 +7,16 @@ from threading import Event, Lock, Thread
 from typing import Any
 
 import pandas as pd
+from services.backtest_repo import _ensure_backtests_schema
 from services.backtest_repo import get_backtest as get_backtest_db
 from services.backtest_store import get_backtest as get_backtest_mem
 from services.candidate_store import candidate_transaction
-from schemas import CandidateLifecycleStatus, PaperDecisionStatus, PaperPolicyDecision, PaperPolicyMode, PaperSessionStatus
+from schemas import (
+    CandidateLifecycleStatus, PaperDecisionStatus, PaperPolicyDecision, PaperPolicyMode,
+    PaperSessionExecutionRequest, PaperSessionStatus,
+)
 from services.data_loader import normalise_interval
-from services.db import db_configured, get_next_ohlcv_bar, get_ohlcv
+from services.db import _conn, db_configured, get_next_ohlcv_bar, get_ohlcv
 from services.indicators import add_all_indicators
 from services.paper_session_service import (
     PAPER_SESSION_TRANSITIONS,
@@ -130,7 +134,7 @@ def _prepare_runner_start(
     policy_mode: str | PaperPolicyMode | None = None,
 ) -> dict:
     _require_unrejected_candidate(session)
-    _validate_runner_session_status(session, allow_running=True)
+    _validate_runner_session_status(session)
     state = _ensure_runner_state(session.get("runner_state"))
     state = _apply_default_window(session, state)
     if state.get("kill_switch_engaged"):
@@ -292,80 +296,92 @@ def step_historical_runner(
     actor: str = "local-user",
     steps: int = 1,
 ) -> dict:
-    """Advance the runner manually by N bars without starting auto-looping.
-
-    This is the deterministic control for debugging or demos where you want to
-    move a session one candle at a time. It updates the same session state as
-    the background loop, just without sleeping or threading.
-    """
+    """Commit each manual bar before allowing the next control or bar."""
     _require_db_runner_support()
     if steps < 1 or steps > 500:
         raise ValueError("Runner step count must stay between 1 and 500.")
 
-    if _runner_thread_alive(paper_session_id) or _runner_worker_active(paper_session_id):
+    if _paper_storage_uses_db():
+        # End-of-window parity can read a backtest from inside the bar transaction.
+        with _conn() as conn:
+            _ensure_backtests_schema(conn)
+
+    expected_version = None
+    completed = 0
+    for index in range(steps):
+        with _session_lock(paper_session_id):
+            try:
+                with _paper_control_transaction(paper_session_id):
+                    session = _require_paper_session(paper_session_id)
+                    if expected_version is not None and session["_state_version"] != expected_version:
+                        raise PaperSessionWriteConflict(
+                            f"Paper session changed after {completed} bar(s) committed. Refresh before stepping again."
+                        )
+                    state = _validate_manual_step(session)
+                    previous_status = session["status"]
+                    previous_bars = int(state.get("bars_processed") or 0)
+                    session, outcome = _advance_one_bar_locked(paper_session_id, actor=actor, keep_running=False)
+                    state = session["runner_state"]
+                    completed += int(state.get("bars_processed") or 0) - previous_bars
+                    if outcome != "stepped" or index == steps - 1:
+                        session = _persist_control_transition(
+                            session,
+                            actor=actor,
+                            event_type="runner_step",
+                            summary=f"Stepped the historical runner by {completed} bar(s).",
+                            payload={
+                                "requested_steps": steps,
+                                "completed_steps": completed,
+                                "last_candle_time": state.get("last_candle_time"),
+                                "mode": state["mode"],
+                            },
+                            revoke_lease=False,
+                        )
+                    elif session["status"] != previous_status:
+                        candidate = _require_candidate(session["candidate_id"])
+                        _sync_candidate_paper_session(
+                            candidate, paper_session_id, session["last_event_at"], session_status=session["status"],
+                        )
+            except Exception:
+                _reset_signal_history(paper_session_id)
+                raise
+        expected_version = session.get("_state_version")
+        if outcome != "stepped":
+            break
+    return session
+
+
+def _validate_manual_step(session: dict) -> dict:
+    state = _ensure_runner_state(session.get("runner_state"))
+    # Older manual fills could leave a running label with idle runner intent.
+    _validate_runner_session_status(session)
+    session_id = session["paper_session_id"]
+    if state["mode"] == "running" or _runner_thread_alive(session_id) or _runner_worker_active(session_id):
         raise ValueError("Pause the running historical worker before manual stepping.")
+    if state["kill_switch_engaged"]:
+        raise ValueError("Reset the emergency kill switch before stepping the runner.")
+    if state.get("pending_decision"):
+        raise ValueError("Resolve the pending policy decision before stepping the runner.")
+    _require_unrejected_candidate(session)
+    _validate_forward_qualification_mode(state, None)
+    return state
 
-    with _session_lock(paper_session_id):
-        session = _ensure_session_defaults(_require_paper_session(paper_session_id))
-        _validate_runner_session_status(session, allow_running=False)
 
-        state = _ensure_runner_state(session.get("runner_state"))
-        state = _apply_default_window(session, state)
-        if state.get("kill_switch_engaged"):
-            raise ValueError("Reset the emergency kill switch before stepping the runner.")
-        if state.get("pending_decision"):
-            raise ValueError("Resolve the pending policy decision before stepping the runner.")
-        _require_unrejected_candidate(session)
-        state["mode"] = "paused"
-        state["updated_at"] = _now()
-        session["runner_state"] = state
-        _save_paper_session_any(session)
-
-        completed = 0
-        for _ in range(steps):
-            _, outcome = _advance_one_bar_locked(paper_session_id, actor=actor, keep_running=False)
-            if outcome != "stepped":
-                break
-            completed += 1
-
-        refreshed = _ensure_session_defaults(_require_paper_session(paper_session_id))
-        _require_unrejected_candidate(refreshed)
-        now = _now()
-        if refreshed["status"] != PaperSessionStatus.FAILED.value:
-            refreshed["status"] = PaperSessionStatus.PAUSED.value
-        _append_paper_event_any(
-            _make_paper_event(
-                paper_session_id=paper_session_id,
-                candidate_id=refreshed["candidate_id"],
-                event_type="runner_step",
-                actor=actor,
-                summary=f"Stepped the historical runner by {completed} bar(s).",
-                created_at=now,
-                payload={
-                    "requested_steps": steps,
-                    "completed_steps": completed,
-                    "last_candle_time": (refreshed.get("runner_state") or {}).get("last_candle_time"),
-                    "mode": (refreshed.get("runner_state") or {}).get("mode"),
-                },
-            )
-        )
-        refreshed["last_event_at"] = now
-        refreshed["updated_at"] = now
-        _save_paper_session_any(refreshed)
-        candidate = _require_candidate(refreshed["candidate_id"])
-        _sync_candidate_paper_session(
-            candidate,
+def execute_manual_paper_session_action(paper_session_id: str, request: PaperSessionExecutionRequest) -> dict:
+    """Commit an operator fill, its event, and its candidate audit together."""
+    with _session_lock(paper_session_id), _paper_control_transaction(paper_session_id):
+        _require_unrejected_candidate(_require_paper_session(paper_session_id))
+        return execute_paper_session_action(
             paper_session_id,
-            now,
-            session_status=refreshed["status"],
+            action=request.action.value,
+            price=request.price,
+            stop_price=request.stop_price,
+            target_price=request.target_price,
+            quantity=request.quantity,
+            filled_at=request.filled_at,
+            actor=request.actor,
+            note=request.note,
         )
-        _append_candidate_session_audit(
-            candidate,
-            actor=actor,
-            summary=f"Stepped the historical runner by {completed} bar(s).",
-            created_at=now,
-        )
-        return _ensure_session_defaults(_require_paper_session(paper_session_id))
 
 
 def stop_all_historical_runners() -> None:
@@ -618,8 +634,6 @@ def _advance_one_bar_locked(
     keep_running: bool,
 ) -> tuple[dict, str]:
     session = _ensure_session_defaults(_require_paper_session(paper_session_id))
-    if not keep_running:
-        _require_unrejected_candidate(session)
     state = _ensure_runner_state(session.get("runner_state"))
     state = _apply_default_window(session, state)
     _validate_range(state.get("start_date"), state.get("end_date"))
@@ -633,7 +647,6 @@ def _advance_one_bar_locked(
     )
 
     if next_bar is None:
-        now = _now()
         if _runner_guardrail_breached(session):
             _mark_runner_failed_locked(paper_session_id, _runner_guardrail_breach_reason(session))
             return _ensure_session_defaults(_require_paper_session(paper_session_id)), "guardrail_breached"
@@ -643,12 +656,13 @@ def _advance_one_bar_locked(
             session = _force_close_open_position(
                 paper_session_id,
                 price=close_price,
-                filled_at=session.get("last_bar_time") or now,
+                filled_at=session.get("last_bar_time") or _now(),
                 actor="paper-runner",
                 note="Historical runner force-closed the open position at the window end.",
                 sync_candidate=False,
             )
 
+        now = _now()
         previous_mode = state.get("mode")
         parity_check = _build_runner_parity_check(session, now=now)
         state["mode"] = "completed"
@@ -656,7 +670,7 @@ def _advance_one_bar_locked(
         state["parity_check"] = parity_check
         state["updated_at"] = now
         session["runner_state"] = state
-        if keep_running and session["status"] == PaperSessionStatus.RUNNING.value:
+        if not keep_running or session["status"] == PaperSessionStatus.RUNNING.value:
             session["status"] = PaperSessionStatus.PAUSED.value
         session["last_event_at"] = now
         session["updated_at"] = now
@@ -711,7 +725,6 @@ def _advance_one_bar_locked(
     signal_history.append(_normalize_bar(next_bar))
     _set_signal_history(session["paper_session_id"], signal_history)
     signal = _compute_strategy_signal(session, signal_history)
-    state = _ensure_runner_state(session.get("runner_state"))
     policy_mode = normalize_policy_mode(state.get("policy_mode"))
     observation = build_market_observation(
         session,
@@ -758,6 +771,7 @@ def _advance_one_bar_locked(
             actor=actor,
             note=_runner_note_for_action(action, signal),
             sync_candidate=False,
+            manual_step=not keep_running,
         )
         session = _ensure_session_defaults(_require_paper_session(paper_session_id))
 
@@ -768,7 +782,6 @@ def _advance_one_bar_locked(
         session["updated_at"] = now
         _save_paper_session_any(session)
 
-    state = _ensure_runner_state(session.get("runner_state"))
     if policy_mode == PaperPolicyMode.SHADOW:
         state["shadow_scorecard"] = update_shadow_scorecard(
             state.get("shadow_scorecard"),
@@ -788,9 +801,9 @@ def _advance_one_bar_locked(
     state["updated_at"] = _now()
 
     session["runner_state"] = state
-    if approval_pending or risk_blocked:
+    if not keep_running or approval_pending or risk_blocked:
         session["status"] = PaperSessionStatus.PAUSED.value
-    elif keep_running:
+    else:
         session["status"] = PaperSessionStatus.RUNNING.value
     session["last_event_at"] = state["updated_at"]
     session["updated_at"] = state["updated_at"]
@@ -1049,7 +1062,7 @@ def _runner_thread_alive(paper_session_id: str) -> bool:
 
 
 def _runner_worker_active(paper_session_id: str) -> bool:
-    if not db_configured():
+    if not _paper_storage_uses_db():
         return False
     lease = get_runner_lease(paper_session_id)
     return bool(lease and lease.get("active"))
@@ -1289,15 +1302,12 @@ def _require_db_runner_support() -> None:
         raise RuntimeError("Historical runner needs a configured TimescaleDB connection.")
 
 
-def _validate_runner_session_status(session: dict, *, allow_running: bool) -> None:
+def _validate_runner_session_status(session: dict) -> None:
     disallowed = {
         PaperSessionStatus.DRAFT.value,
         PaperSessionStatus.STOPPED.value,
         PaperSessionStatus.FAILED.value,
     }
-    if not allow_running:
-        disallowed.add(PaperSessionStatus.RUNNING.value)
-
     if session["status"] in disallowed:
         raise ValueError(
             f"Paper session is '{session['status']}'. Move it to ready or paused before using the runner."

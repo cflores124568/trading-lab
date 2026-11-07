@@ -540,6 +540,7 @@ class PaperRunnerPhase3BTests(unittest.TestCase):
         self.assertFalse(failed_summary["runner_parity_passed"])
         self.assertIn("daily loss", failed_summary["runner_last_error"])
 
+    @patch.object(paper_runner_service, "_paper_control_transaction", new=lambda _: nullcontext())
     def test_long_run_soak_stays_deterministic(self):
         """Keep the long-run row honest with two identical soak passes.
 

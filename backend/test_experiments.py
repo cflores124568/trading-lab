@@ -248,7 +248,8 @@ def main() -> None:
                 },
             )
             _require(opened.status_code == 200, f"Paper position open failed: {opened.text}")
-            _require(opened.json()["status"] == "running", "Opening a paper trade should move the session into running.")
+            _require(opened.json()["status"] == "ready", "A manual paper trade should preserve ready status.")
+            _require(opened.json()["runner_state"]["mode"] == "idle", "A manual trade should leave the runner idle.")
             _require(opened.json()["current_position"]["side"] == "buy", "Open paper position lost its side.")
 
             marked = client.post(

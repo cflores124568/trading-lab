@@ -14,6 +14,7 @@ from schemas import (
     PaperSessionSummary,
 )
 from services.paper_runner_service import (
+    execute_manual_paper_session_action,
     pause_historical_runner,
     resolve_pending_policy_decision,
     set_runner_kill_switch,
@@ -22,7 +23,6 @@ from services.paper_runner_service import (
 )
 from services.paper_session_service import (
     add_paper_session_event,
-    execute_paper_session_action,
     get_paper_session_any,
     list_paper_events_any,
     list_paper_sessions_any,
@@ -120,17 +120,7 @@ async def execute_session_action(
     request: PaperSessionExecutionRequest,
 ):
     try:
-        return execute_paper_session_action(
-            paper_session_id,
-            action=request.action.value,
-            price=request.price,
-            stop_price=request.stop_price,
-            target_price=request.target_price,
-            quantity=request.quantity,
-            filled_at=request.filled_at,
-            actor=request.actor,
-            note=request.note,
-        )
+        return execute_manual_paper_session_action(paper_session_id, request)
     except PaperSessionWriteConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     except LookupError as exc:
@@ -190,7 +180,7 @@ async def pause_session_runner(
 
 
 @router.post("/{paper_session_id}/runner/step", response_model=PaperSessionResult)
-async def step_session_runner(
+def step_session_runner(
     paper_session_id: str,
     request: PaperRunnerStepRequest,
 ):

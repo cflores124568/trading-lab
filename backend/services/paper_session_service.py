@@ -474,6 +474,7 @@ def execute_paper_session_action(
     sync_candidate: bool = True,
     approved_decision_id: str | None = None,
     approved_action_index: int | None = None,
+    manual_step: bool = False,
 ) -> dict:
     session = _ensure_session_defaults(_require_paper_session(paper_session_id))
     raw_action = action.strip().lower()
@@ -485,14 +486,13 @@ def execute_paper_session_action(
     resolved_quantity = round(float(quantity or 1.0), 4)
 
     if action_key in {"lift_ask", "hit_bid"}:
-        approval_gated_open = (
-            session["status"] == PaperSessionStatus.PAUSED.value and bool(approved_decision_id)
+        runner_open_while_paused = (
+            session["status"] == PaperSessionStatus.PAUSED.value and (manual_step or bool(approved_decision_id))
         )
-        if session["status"] not in OPEN_ACTION_STATUSES and not approval_gated_open:
+        if session["status"] not in OPEN_ACTION_STATUSES and not runner_open_while_paused:
             raise ValueError("Paper session must be ready or running before you can open a position.")
 
         side = "buy" if action_key == "lift_ask" else "sell"
-        previous_status = session["status"]
         closed_trade = None
         if _has_open_position(session):
             position = _require_open_position(session)
@@ -503,8 +503,6 @@ def execute_paper_session_action(
 
         _set_session_active_orders(session, [])
         session["current_position"] = _open_position(side, execution_price, timestamp, resolved_quantity)
-        if previous_status == PaperSessionStatus.READY.value:
-            session["status"] = PaperSessionStatus.RUNNING.value
 
         summary = note or f"{_execution_label(action_key)} {_contract_phrase(resolved_quantity)} filled at {execution_price:.2f}."
         payload = {
@@ -515,7 +513,7 @@ def execute_paper_session_action(
             "entry_time": timestamp,
             "side": side,
             "quantity": resolved_quantity,
-            "status_auto_started": previous_status != session["status"],
+            "status_auto_started": False,
             "approved_decision_id": approved_decision_id,
             "closed_trade": closed_trade,
         }
