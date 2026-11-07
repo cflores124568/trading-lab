@@ -4,15 +4,16 @@ import os
 import unittest
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import ExitStack, nullcontext
+from contextlib import ExitStack, contextmanager, nullcontext
 from copy import deepcopy
 from threading import Event
 from unittest.mock import patch
 
 import pandas as pd
 
+from schemas import PaperSessionExecutionRequest
 from services import (
-    candidate_repo, candidate_service, candidate_store, db, experiment_repo,
+    backtest_repo, candidate_repo, candidate_service, candidate_store, db, experiment_repo,
     paper_runner_lease_repo as leases, paper_runner_service as runner,
     paper_session_repo, paper_session_service as sessions, paper_session_store,
 )
@@ -94,7 +95,7 @@ class _ControlCases:
         self.assertEqual(len(candidate["audit_log"]), 1)
         self.assertEqual(len(sessions.list_paper_events_any(self.session_id)), 1)
 
-    def test_both_start_paths_enforce_the_same_safety_guards(self):
+    def test_start_and_step_enforce_the_same_safety_guards(self):
         original = self.session()["runner_state"]
         blocked = (
             {"kill_switch_engaged": True},
@@ -104,13 +105,75 @@ class _ControlCases:
             {"forward_qualification": {"status": "collecting"}, "policy_mode": "approval_required"},
         )
         for state in blocked:
-            for start in (lambda: self.transition("running"), lambda: runner.start_historical_runner(self.session_id)):
+            for start in (
+                lambda: self.transition("running"),
+                lambda: runner.start_historical_runner(self.session_id),
+                lambda: runner.step_historical_runner(self.session_id),
+            ):
                 with self.subTest(state=state, start=start):
                     self.seed(**{**deepcopy(original), **state})
                     before = self.snapshots()
                     with self.assertRaises(ValueError):
                         start()
                     self.assertEqual(self.snapshots(), before)
+
+    def mock_step_bars(self, signals):
+        bars = [
+            {"time": f"2024-01-02T09:{minute:02}:00+00:00",
+             "open": 100, "high": 101, "low": 99, "close": 100, "volume": 10}
+            for minute in (31, 32)
+        ]
+        self.scope.enter_context(patch.object(runner, "get_ohlcv", return_value=pd.DataFrame()))
+        self.scope.enter_context(patch.object(runner, "_compute_strategy_signal", side_effect=signals))
+        fetch = self.scope.enter_context(patch.object(runner, "get_next_ohlcv_bar", side_effect=bars))
+        return bars, fetch
+
+    def test_step_rolls_back_failed_reversal_and_keeps_the_previous_bar(self):
+        self.seed(policy_mode="autonomous_paper")
+        bars, fetch = self.mock_step_bars([0, -1, -1])
+        execute = runner.execute_paper_session_action
+
+        def fail_after_close(*args, **kwargs):
+            result = execute(*args, **kwargs)
+            if kwargs["action"] == "flatten":
+                raise RuntimeError("interrupted between reversal fills")
+            return result
+
+        with patch.object(runner, "execute_paper_session_action", side_effect=fail_after_close):
+            with self.assertRaisesRegex(RuntimeError, "interrupted between reversal fills"):
+                runner.step_historical_runner(self.session_id, steps=2)
+
+        saved = self.session()
+        self.assertEqual(saved["last_bar_time"], bars[0]["time"])
+        self.assertEqual(saved["runner_state"]["bars_processed"], 8)
+        self.assertEqual(saved["current_position"]["side"], "buy")
+        self.assertEqual(saved["trade_log"], [])
+        self.assertEqual(saved["status"], "paused")
+        self.assertEqual(candidate_service.get_candidate_any(self.candidate_id)["lifecycle_status"], "paper_paused")
+        events = sessions.list_paper_events_any(self.session_id)
+        self.assertEqual([e["event_type"] for e in events], ["position_marked", "policy_decision", "runner_bar_advanced"])
+
+        fetch.side_effect = None
+        fetch.return_value = bars[1]
+        retried = runner.step_historical_runner(self.session_id)
+        self.assertEqual(retried["last_bar_time"], bars[1]["time"])
+        self.assertEqual(retried["current_position"]["side"], "sell")
+        self.assertEqual(len(retried["trade_log"]), 1)
+        self.assertEqual(retried["status"], "paused")
+
+    def test_manual_fill_preserves_runner_intent_and_rolls_back_with_its_audit(self):
+        request = PaperSessionExecutionRequest(action="hit_bid", price=100)
+        before = self.snapshots()
+        with patch.object(sessions, "_append_candidate_session_audit", side_effect=RuntimeError("audit interrupted")):
+            with self.assertRaisesRegex(RuntimeError, "audit interrupted"):
+                runner.execute_manual_paper_session_action(self.session_id, request)
+        self.assertEqual(self.snapshots(), before)
+
+        result = runner.execute_manual_paper_session_action(self.session_id, request)
+        self.assertEqual((result["status"], result["runner_state"]["mode"]), ("ready", "idle"))
+        self.assertEqual(result["current_position"]["side"], "sell")
+        self.assertEqual(len(result["trade_log"]), 1)
+        self.assertEqual(candidate_service.get_candidate_any(self.candidate_id)["lifecycle_status"], "paper_ready")
 
     def test_pause_and_stop_preserve_the_paper_book_and_cursor(self):
         self.transition("running")
@@ -284,13 +347,68 @@ class PostgresPaperControlTests(_ControlCases, unittest.TestCase):
         cls.storage.callback(test_pool.closeall)
         cls.storage.enter_context(patch.object(db, "_pool", test_pool))
         cls.storage.enter_context(patch.dict(os.environ, {"DATABASE_URL": cls.dsn}))
-        for repo in (candidate_repo, experiment_repo, paper_session_repo):
+        for repo in (backtest_repo, candidate_repo, experiment_repo, paper_session_repo):
             cls.storage.enter_context(patch.object(repo, "_schema_ready", False))
         with db._conn() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("CREATE TABLE backtests (backtest_id TEXT PRIMARY KEY)")
+            connection.commit()
             paper_session_repo._ensure_paper_sessions_schema(connection)
 
     def configure_storage(self):
         pass
+
+    def test_candidate_rejection_interrupts_step_between_bar_commits(self):
+        bars, fetch = self.mock_step_bars([0])
+        transaction = runner._paper_control_transaction
+        committed = Event()
+        rejected = Event()
+
+        @contextmanager
+        def wait_for_rejection(session_id):
+            with transaction(session_id):
+                yield
+            committed.set()
+            if not rejected.wait(3):
+                raise RuntimeError("test rejection timed out")
+
+        with patch.object(runner, "_paper_control_transaction", side_effect=wait_for_rejection), ThreadPoolExecutor(1) as executor:
+            step = executor.submit(runner.step_historical_runner, self.session_id, steps=2)
+            try:
+                self.assertTrue(committed.wait(2))
+                self.assertEqual(self.session()["last_bar_time"], bars[0]["time"])
+                self.reject_candidate()
+            finally:
+                rejected.set()
+            with self.assertRaisesRegex(paper_session_repo.PaperSessionWriteConflict, "after 1 bar"):
+                step.result(timeout=5)
+
+        fetch.assert_called_once()
+        stopped = self.session()
+        self.assertEqual(stopped["status"], "stopped")
+        self.assertEqual(stopped["runner_state"]["bars_processed"], 8)
+        self.assertEqual(candidate_service.get_candidate_any(self.candidate_id)["lifecycle_status"], "rejected")
+
+    def test_window_close_and_completion_roll_back_if_parity_query_fails(self):
+        import psycopg2
+
+        before = self.snapshots()
+        with patch.object(runner, "get_next_ohlcv_bar", return_value=None):
+            with patch.object(
+                runner, "_load_backtest_any",
+                side_effect=lambda _: db._read_sql("SELECT * FROM missing_parity_fixture"),
+            ):
+                with self.assertRaises(psycopg2.Error):
+                    runner.step_historical_runner(self.session_id)
+            self.assertEqual(self.snapshots(), before)
+            completed = runner.step_historical_runner(self.session_id)
+
+        self.assertEqual((completed["status"], completed["runner_state"]["mode"]), ("paused", "completed"))
+        self.assertEqual(completed["current_position"], {})
+        self.assertEqual(len(completed["trade_log"]), 1)
+        events = sessions.list_paper_events_any(self.session_id)
+        self.assertEqual([e["event_type"] for e in events], ["position_closed", "runner_completed", "runner_step"])
+        self.assertEqual(events[-1]["payload"]["completed_steps"], 0)
 
     def test_claim_rechecks_runnable_intent_and_stop_revokes_ownership(self):
         self.assertIsNone(leases.acquire_runner_lease(self.session_id, owner_id="worker"))
