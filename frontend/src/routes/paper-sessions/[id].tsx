@@ -739,8 +739,13 @@ export default function PaperSessionDetailPage() {
     }
 
     await runSessionAction("runner-step", async () => {
-      const nextSession = await stepPaperSessionRunner(paperSessionId(), { steps });
-      mutateSession(() => nextSession);
+      try {
+        const nextSession = await stepPaperSessionRunner(paperSessionId(), { steps });
+        mutateSession(() => nextSession);
+      } catch (error) {
+        await Promise.allSettled([refetchSession(), refetchEvents()]);
+        throw error;
+      }
       await Promise.all([refetchSession(), refetchEvents()]);
     });
   };
@@ -1185,7 +1190,11 @@ export default function PaperSessionDetailPage() {
                           disabled={
                             busyAction() === "runner-step" ||
                             Boolean(pendingPolicyDecision()) ||
-                            killSwitchEngaged()
+                            killSwitchEngaged() ||
+                            !["ready", "paused", "running"].includes(entry().status) ||
+                            runnerState().mode === "running" ||
+                            candidate()?.lifecycle_status === "rejected" ||
+                            forwardModeBlocked(activePolicyMode())
                           }
                           onClick={handleRunnerStep}
                           class="rounded-sm border border-stone-700 px-3 py-1.5 text-xs font-medium text-stone-100 transition-colors hover:border-stone-500 hover:bg-stone-900 disabled:cursor-not-allowed disabled:border-stone-800 disabled:text-stone-500"
