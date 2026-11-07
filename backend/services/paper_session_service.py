@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 from datetime import datetime
 
-from schemas import PaperSessionStatus
+from schemas import CandidateLifecycleStatus, PaperSessionStatus
 from services.candidate_service import (
     _append_audit,
     _db_required,
@@ -1145,7 +1145,10 @@ def _sync_candidate_paper_session(
             session_status,
             candidate.get("lifecycle_status"),
         )
-        paper_bot["status"] = _session_status_to_paper_bot_status(session_status, paper_bot.get("status"))
+        if candidate["lifecycle_status"] == CandidateLifecycleStatus.REJECTED.value:
+            paper_bot["status"] = "stopped"
+        else:
+            paper_bot["status"] = _session_status_to_paper_bot_status(session_status, paper_bot.get("status"))
     candidate["paper_bot"] = paper_bot
     candidate["updated_at"] = updated_at
     _save_candidate_any(candidate)
@@ -1476,6 +1479,8 @@ def _resolve_tick_size(symbol: str | None) -> float:
 
 
 def _session_status_to_candidate_status(session_status: str, current_status: str | None) -> str:
+    if current_status == CandidateLifecycleStatus.REJECTED.value:
+        return current_status
     if session_status == PaperSessionStatus.READY.value:
         return "paper_ready"
     if session_status == PaperSessionStatus.RUNNING.value:

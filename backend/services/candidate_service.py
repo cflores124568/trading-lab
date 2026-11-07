@@ -108,6 +108,7 @@ def promote_experiment_run_candidate(
 
     now = _now()
     existing = get_candidate_by_run_any(experiment_run_id)
+    repromoting = existing is not None and existing["lifecycle_status"] == CandidateLifecycleStatus.REJECTED.value
     if existing is None:
         candidate = _build_candidate_payload(experiment, run, actor=actor, now=now)
         candidate["audit_log"] = [
@@ -133,7 +134,7 @@ def promote_experiment_run_candidate(
             "updated_at": now,
         }
         previous_status = existing["lifecycle_status"]
-        if previous_status == CandidateLifecycleStatus.REJECTED.value:
+        if repromoting:
             candidate["lifecycle_status"] = CandidateLifecycleStatus.CANDIDATE.value
             candidate["promoted_by"] = actor
             candidate["promoted_at"] = now
@@ -162,7 +163,7 @@ def promote_experiment_run_candidate(
             ),
         )
 
-    saved = _save_candidate_any(candidate)
+    saved = _save_candidate_any(candidate, allow_rejection_change=repromoting)
     updated_run = update_experiment_run_candidate_state(
         experiment_id,
         experiment_run_id,
@@ -298,10 +299,22 @@ def reject_experiment_run_candidate(
 
 
 def update_candidate_status(candidate_id: str, status: str, *, actor: str = "local-user") -> dict:
-    candidate = _require_candidate(candidate_id)
     next_status = status.strip()
+    if next_status == CandidateLifecycleStatus.REJECTED.value:
+        from services.paper_session_service import candidate_paper_transaction
+
+        with candidate_paper_transaction(candidate_id):
+            return _update_candidate_status(candidate_id, next_status, actor=actor)
+    return _update_candidate_status(candidate_id, next_status, actor=actor)
+
+
+def _update_candidate_status(candidate_id: str, next_status: str, *, actor: str) -> dict:
+    candidate = _require_candidate(candidate_id)
+    rejecting = next_status == CandidateLifecycleStatus.REJECTED.value
 
     if next_status == candidate["lifecycle_status"]:
+        if rejecting:
+            return _stop_rejected_candidate_paper(candidate, actor=actor)
         return candidate
 
     allowed = CANDIDATE_TRANSITIONS.get(candidate["lifecycle_status"], set())
@@ -337,13 +350,26 @@ def update_candidate_status(candidate_id: str, status: str, *, actor: str = "loc
         ),
     )
 
-    saved = _save_candidate_any(candidate)
+    saved = _save_candidate_any(candidate, allow_rejection_change=rejecting)
+    if rejecting:
+        saved = _stop_rejected_candidate_paper(saved, actor=actor)
     _sync_experiment_candidate_pointer(
         saved,
-        is_candidate=next_status != CandidateLifecycleStatus.REJECTED.value,
-        promoted_at=saved["promoted_at"] if next_status != CandidateLifecycleStatus.REJECTED.value else None,
+        is_candidate=not rejecting,
+        promoted_at=saved["promoted_at"] if not rejecting else None,
     )
     return saved
+
+
+def _stop_rejected_candidate_paper(candidate: dict, *, actor: str) -> dict:
+    from services.paper_runner_service import _stop_session_for_candidate_rejection
+    from services.paper_session_service import get_paper_session_by_candidate_any
+
+    session = get_paper_session_by_candidate_any(candidate["candidate_id"])
+    if session is None:
+        return candidate
+    _stop_session_for_candidate_rejection(session, actor=actor)
+    return _require_candidate(candidate["candidate_id"])
 
 
 def add_candidate_note(candidate_id: str, body: str, *, author: str = "local-user") -> dict:
@@ -587,7 +613,7 @@ def _candidate_status_to_paper_bot_status(candidate_status: str) -> str | None:
         return PaperBotStatus.READY.value
     if candidate_status == CandidateLifecycleStatus.PAPER_RUNNING.value:
         return PaperBotStatus.PAPER_RUNNING.value
-    if candidate_status == CandidateLifecycleStatus.PAPER_PAUSED.value:
+    if candidate_status in {CandidateLifecycleStatus.PAPER_PAUSED.value, CandidateLifecycleStatus.REJECTED.value}:
         return PaperBotStatus.STOPPED.value
     return None
 
@@ -621,11 +647,16 @@ def _require_candidate(candidate_id: str) -> dict:
     return candidate
 
 
-def _save_candidate_any(candidate: dict) -> dict:
+def _save_candidate_any(candidate: dict, *, allow_rejection_change: bool = False) -> dict:
+    candidate_id = candidate["candidate_id"]
     if _db_required():
-        save_candidate_db(candidate)
-    snapshot = deepcopy(candidate)
-    after_commit(lambda: upsert_candidate_mem(snapshot["candidate_id"], snapshot))
+        save_candidate_db(candidate, allow_rejection_change=allow_rejection_change)
+        snapshot = deepcopy(candidate)
+        after_commit(lambda: upsert_candidate_mem(
+            candidate_id, snapshot, allow_rejection_change=allow_rejection_change,
+        ))
+    elif not upsert_candidate_mem(candidate_id, candidate, allow_rejection_change=allow_rejection_change):
+        raise ValueError("Candidate rejection changed. Refresh before updating it.")
     return candidate
 
 

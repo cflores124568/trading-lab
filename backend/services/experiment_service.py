@@ -19,6 +19,7 @@ from services.backtest_service import (
     prepare_backtest_frame,
 )
 from services.data_loader import get_dataset, load_from_db, normalise_interval
+from services.db import after_commit
 from services.experiment_repo import (
     list_experiment_runs as list_experiment_runs_db,
     replace_experiment_runs as replace_experiment_runs_db,
@@ -487,10 +488,14 @@ def update_experiment_run_candidate_state(
     """
     experiment = get_experiment_any(experiment_id)
     if experiment is None:
+        if not strict:
+            return None
         raise LookupError(f"Experiment '{experiment_id}' not found.")
 
     runs = list_experiment_runs(experiment_id)
     if not runs:
+        if not strict:
+            return None
         raise ValueError("This experiment does not have saved runs yet.")
 
     now = datetime.utcnow().isoformat()
@@ -516,17 +521,16 @@ def update_experiment_run_candidate_state(
             f"Experiment run '{experiment_run_id}' was not found in experiment '{experiment_id}'."
         )
 
-    replace_experiment_runs_mem(experiment_id, next_runs)
     updated_experiment = {
         **experiment,
         "updated_at": now,
     }
-    add_experiment(experiment_id, updated_experiment)
-
     if _db_required():
         replace_experiment_runs_db(experiment_id, next_runs)
         save_experiment(updated_experiment)
 
+    after_commit(lambda: replace_experiment_runs_mem(experiment_id, next_runs))
+    after_commit(lambda: add_experiment(experiment_id, updated_experiment))
     return updated_run
 
 

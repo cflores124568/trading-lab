@@ -48,7 +48,13 @@ def acquire_runner_lease(
             cur.execute(
                 """SELECT paper_session_id FROM paper_sessions
                 WHERE paper_session_id = %s AND status = 'running'
-                  AND runner_state->>'mode' = 'running' FOR UPDATE""",
+                  AND runner_state->>'mode' = 'running'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM candidates
+                      WHERE candidate_id = paper_sessions.candidate_id
+                        AND lifecycle_status = 'rejected'
+                  )
+                FOR UPDATE""",
                 [session_id],
             )
             if cur.fetchone() is None:
@@ -163,6 +169,10 @@ def list_runnable_paper_session_ids(*, limit: int = 100) -> list[str]:
         FROM paper_sessions
         WHERE status = 'running'
           AND runner_state->>'mode' = 'running'
+          AND NOT EXISTS (
+              SELECT 1 FROM candidates
+              WHERE candidate_id = paper_sessions.candidate_id AND lifecycle_status = 'rejected'
+          )
         ORDER BY updated_at ASC, paper_session_id ASC
         LIMIT %s
     """

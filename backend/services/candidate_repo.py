@@ -88,7 +88,7 @@ def _ensure_candidates_schema(conn) -> None:
         _schema_ready = True
 
 
-def save_candidate(candidate: dict) -> None:
+def save_candidate(candidate: dict, *, allow_rejection_change: bool = False) -> None:
     from services.db import _conn
 
     sql = """
@@ -135,6 +135,8 @@ def save_candidate(candidate: dict) -> None:
             notes               = EXCLUDED.notes,
             audit_log           = EXCLUDED.audit_log,
             updated_at          = EXCLUDED.updated_at
+        WHERE (candidates.lifecycle_status = 'rejected') = (EXCLUDED.lifecycle_status = 'rejected')
+           OR %s
     """
 
     with _conn() as conn:
@@ -174,8 +176,11 @@ def save_candidate(candidate: dict) -> None:
                     json.dumps(candidate.get("audit_log") or []),
                     candidate["created_at"],
                     candidate["updated_at"],
+                    allow_rejection_change,
                 ],
             )
+            if cur.rowcount == 0:
+                raise ValueError("Candidate rejection changed. Refresh before updating it.")
         conn.commit()
 
 

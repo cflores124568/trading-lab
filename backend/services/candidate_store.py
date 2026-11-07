@@ -23,7 +23,7 @@ def candidate_transaction(candidate_id: str):
             raise
 
 
-def upsert_candidate(candidate_id: str, candidate: dict) -> None:
+def upsert_candidate(candidate_id: str, candidate: dict, *, allow_rejection_change: bool = False) -> bool:
     """Keep a safe in-memory snapshot of one promoted candidate.
 
     Candidates are the handoff seam between research and whatever comes next,
@@ -34,10 +34,17 @@ def upsert_candidate(candidate_id: str, candidate: dict) -> None:
     entry["stored_at"] = datetime.utcnow().isoformat()
 
     with _store_lock:
+        existing = _candidate_store.get(candidate_id)
+        if existing and not allow_rejection_change:
+            was_rejected = existing["lifecycle_status"] == "rejected"
+            is_rejected = entry["lifecycle_status"] == "rejected"
+            if was_rejected != is_rejected:
+                return False
         _candidate_store[candidate_id] = entry
         experiment_run_id = entry.get("experiment_run_id")
         if isinstance(experiment_run_id, str) and experiment_run_id:
             _candidate_run_index[experiment_run_id] = candidate_id
+        return True
 
 
 def get_candidate(candidate_id: str) -> Optional[dict]:

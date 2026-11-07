@@ -10,7 +10,7 @@ import pandas as pd
 from services.backtest_repo import get_backtest as get_backtest_db
 from services.backtest_store import get_backtest as get_backtest_mem
 from services.candidate_store import candidate_transaction
-from schemas import PaperDecisionStatus, PaperPolicyDecision, PaperPolicyMode, PaperSessionStatus
+from schemas import CandidateLifecycleStatus, PaperDecisionStatus, PaperPolicyDecision, PaperPolicyMode, PaperSessionStatus
 from services.data_loader import normalise_interval
 from services.db import db_configured, get_next_ohlcv_bar, get_ohlcv
 from services.indicators import add_all_indicators
@@ -129,6 +129,7 @@ def _prepare_runner_start(
     poll_interval_ms: int | None = None, reset_cursor: bool = False,
     policy_mode: str | PaperPolicyMode | None = None,
 ) -> dict:
+    _require_unrejected_candidate(session)
     _validate_runner_session_status(session, allow_running=True)
     state = _ensure_runner_state(session.get("runner_state"))
     state = _apply_default_window(session, state)
@@ -208,12 +209,36 @@ def transition_paper_session_status(
         if next_status == "running":
             _prepare_runner_start(session)
         else:
+            if next_status == "ready":
+                _require_unrejected_candidate(session)
             _set_inactive_status(session, next_status, summary=summary)
         return _persist_control_transition(
             session, actor=actor, event_type="status_changed",
             summary=summary or f"Moved paper session from `{previous}` to `{next_status}`.",
             payload={"from": previous, "to": next_status},
         )
+
+
+def _stop_session_for_candidate_rejection(session: dict, *, actor: str) -> None:
+    """Stop the session while the caller holds the candidate and session locks."""
+    previous_status = session["status"]
+    if previous_status == "stopped" and session["runner_state"]["mode"] == "paused":
+        _revoke_durable_runner_lease(session["paper_session_id"])
+        return
+    _set_inactive_status(session, PaperSessionStatus.STOPPED.value)
+    _persist_control_transition(
+        session,
+        actor=actor,
+        event_type="status_changed",
+        summary="Stopped the paper session because its candidate was rejected.",
+        payload={"from": previous_status, "to": "stopped", "reason": "candidate_rejected"},
+    )
+
+
+def _require_unrejected_candidate(session: dict) -> None:
+    candidate = _require_candidate(session["candidate_id"])
+    if candidate.get("lifecycle_status") == CandidateLifecycleStatus.REJECTED.value:
+        raise ValueError("This paper session belongs to a rejected candidate.")
 
 
 def _validate_forward_qualification_mode(
@@ -290,6 +315,7 @@ def step_historical_runner(
             raise ValueError("Reset the emergency kill switch before stepping the runner.")
         if state.get("pending_decision"):
             raise ValueError("Resolve the pending policy decision before stepping the runner.")
+        _require_unrejected_candidate(session)
         state["mode"] = "paused"
         state["updated_at"] = _now()
         session["runner_state"] = state
@@ -303,6 +329,7 @@ def step_historical_runner(
             completed += 1
 
         refreshed = _ensure_session_defaults(_require_paper_session(paper_session_id))
+        _require_unrejected_candidate(refreshed)
         now = _now()
         if refreshed["status"] != PaperSessionStatus.FAILED.value:
             refreshed["status"] = PaperSessionStatus.PAUSED.value
@@ -423,6 +450,7 @@ def resolve_pending_policy_decision(
                 raise PaperSessionWriteConflict("This policy decision already has a different resolution.")
             # A retry must leave any newer pending decision and runtime state alone.
             return session
+        _require_unrejected_candidate(session)
         pending = state.get("pending_decision")
         if not pending:
             raise ValueError("This paper session has no pending policy decision.")
@@ -590,6 +618,8 @@ def _advance_one_bar_locked(
     keep_running: bool,
 ) -> tuple[dict, str]:
     session = _ensure_session_defaults(_require_paper_session(paper_session_id))
+    if not keep_running:
+        _require_unrejected_candidate(session)
     state = _ensure_runner_state(session.get("runner_state"))
     state = _apply_default_window(session, state)
     _validate_range(state.get("start_date"), state.get("end_date"))
