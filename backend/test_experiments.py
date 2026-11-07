@@ -287,6 +287,26 @@ def main() -> None:
             _require(events.status_code == 200, f"Paper event list failed: {events.text}")
             _require(len(events.json()) >= 6, "Paper session should keep creation, manual, status, and execution events.")
             print("      Paper session shell, execution loop, status, and event log all persisted.")
+
+            promotion_url = f"/api/experiments/{experiment_id}/runs/{top_run_id}/promote"
+            demoted = client.delete(promotion_url)
+            _require(demoted.status_code == 200, f"Experiment demotion failed: {demoted.text}")
+            _require(demoted.json()["is_candidate"] is False, "Demotion should clear the run's candidate flag.")
+            candidate = client.get(f"/api/candidates/{candidate_id}").json()
+            _require(candidate["lifecycle_status"] == "rejected", "Demotion should reject the linked candidate.")
+            session_url = f"/api/paper-sessions/{paper_session_id}"
+            stopped = client.get(session_url).json()
+            _require(stopped["status"] == "stopped", "Demotion should stop the linked session.")
+            _require(stopped["trade_log"] == closed.json()["trade_log"], "Demotion should preserve trade history.")
+            blocked = client.patch(f"{session_url}/status", json={"status": "ready"})
+            _require(blocked.status_code == 400, "A rejected candidate's session should not reopen.")
+
+            repromoted = client.post(promotion_url)
+            _require(repromoted.status_code == 200, f"Explicit re-promotion failed: {repromoted.text}")
+            _require(repromoted.json()["is_candidate"] is True, "Re-promotion should restore the run's candidate flag.")
+            _require(client.get(session_url).json()["status"] == "stopped", "Re-promotion should leave the runner stopped.")
+            reopened = client.patch(f"{session_url}/status", json={"status": "ready"})
+            _require(reopened.status_code == 200, f"Reopen after re-promotion failed: {reopened.text}")
     finally:
         experiment_service.load_from_db = original_loader
         experiment_service._db_required = original_db_required

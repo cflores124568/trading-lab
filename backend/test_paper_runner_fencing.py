@@ -157,6 +157,21 @@ class PaperRunnerPostgresFencingTests(unittest.TestCase):
         self.assertEqual(current["runner_state"]["mode"], "paused")
         self.assertEqual([e["event_type"] for e in paper_session_repo.list_paper_events(self.session_id)], ["runner_paused"])
 
+    def test_candidate_rejection_after_worker_read_fences_the_bar(self):
+        def next_bar(**kwargs):
+            self.outside_transaction(
+                lambda: candidate_service.update_candidate_status(self.candidate_id, "rejected")
+            )
+            return self.bar
+
+        with self.assertRaises(PaperSessionWriteConflict):
+            self.advance(next_bar=next_bar)
+        current = self.assert_no_bar_committed()
+        self.assertEqual(current["status"], "stopped")
+        self.assertIsNone(paper_runner_lease_repo.get_runner_lease(self.session_id))
+        self.assertEqual(candidate_repo.get_candidate(self.candidate_id)["lifecycle_status"], "rejected")
+        self.assertEqual([e["event_type"] for e in paper_session_repo.list_paper_events(self.session_id)], ["status_changed"])
+
     def test_kill_switch_after_worker_read_remains_engaged(self):
         def next_bar(**kwargs):
             self.outside_transaction(lambda: paper_runner_service.set_runner_kill_switch(self.session_id, engaged=True))

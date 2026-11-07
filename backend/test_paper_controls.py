@@ -70,6 +70,9 @@ class _ControlCases:
     def transition(self, status):
         return sessions.update_paper_session_status(self.session_id, status)
 
+    def reject_candidate(self):
+        return candidate_service.update_candidate_status(self.candidate_id, "rejected", actor="reviewer")
+
     def snapshots(self):
         return (
             self.session(), candidate_service.get_candidate_any(self.candidate_id),
@@ -218,6 +221,42 @@ class _ControlCases:
         self.assertEqual((result["status"], result["runner_state"]["mode"]), ("ready", "idle"))
         self.assertIsNone(result["last_bar_time"])
 
+    def test_candidate_rejection_stops_session_and_survives_later_updates(self):
+        before = self.transition("running")
+        stale_candidate = candidate_service.get_candidate_any(self.candidate_id)
+        rejected = self.reject_candidate()
+        self.assertEqual(rejected["lifecycle_status"], "rejected")
+        self.assertEqual(rejected["paper_bot"]["status"], "stopped")
+        stopped = self.session()
+        self.assertEqual((stopped["status"], stopped["runner_state"]["mode"]), ("stopped", "paused"))
+        for key in ("current_position", "active_orders", "last_bar_time", "trade_log"):
+            self.assertEqual(stopped[key], before[key])
+        events = sessions.list_paper_events_any(self.session_id)
+        self.assertEqual(events[-1]["payload"]["reason"], "candidate_rejected")
+        self.assertEqual(events[-1]["actor"], "reviewer")
+        self.reject_candidate()
+        self.assertEqual(sessions.list_paper_events_any(self.session_id), events)
+
+        with self.assertRaisesRegex(ValueError, "rejection changed"):
+            candidate_service._save_candidate_any(stale_candidate)
+        with self.assertRaisesRegex(ValueError, "rejected"):
+            self.transition("ready")
+        with self.assertRaisesRegex(ValueError, "rejected"):
+            runner.start_historical_runner(self.session_id)
+        runner.set_runner_kill_switch(self.session_id, engaged=True)
+        self.assertEqual(candidate_service.get_candidate_any(self.candidate_id)["lifecycle_status"], "rejected")
+
+    def test_rejection_rolls_back_when_session_audit_fails(self):
+        self.transition("running")
+        lease = leases.acquire_runner_lease(self.session_id, owner_id="worker") if db.db_configured() else None
+        before = self.snapshots()
+        with patch.object(runner, "_append_candidate_session_audit", side_effect=RuntimeError("audit interrupted")):
+            with self.assertRaisesRegex(RuntimeError, "audit interrupted"):
+                self.reject_candidate()
+        self.assertEqual(self.snapshots(), before)
+        if lease is not None:
+            self.assertEqual(leases.get_runner_lease(self.session_id)["lease_token"], lease["lease_token"])
+
 
 class MemoryPaperControlTests(_ControlCases, unittest.TestCase):
     def configure_storage(self):
@@ -273,6 +312,49 @@ class PostgresPaperControlTests(_ControlCases, unittest.TestCase):
                 runner.pause_historical_runner(self.session_id)
         self.assertEqual(self.snapshots(), before)
         self.assertEqual(leases.get_runner_lease(self.session_id)["lease_token"], lease["lease_token"])
+
+    def test_rejected_candidate_has_no_runnable_session_or_lease(self):
+        self.transition("running")
+        lease = leases.acquire_runner_lease(self.session_id, owner_id="worker")
+        self.assertIsNotNone(lease)
+        self.reject_candidate()
+        self.assertIsNone(leases.get_runner_lease(self.session_id))
+        # A pre-upgrade session could still contain runnable intent.
+        self.seed(status="running", mode="running")
+        self.assertNotIn(self.session_id, leases.list_runnable_paper_session_ids())
+        self.assertIsNone(leases.acquire_runner_lease(self.session_id, owner_id="stale-worker"))
+        self.reject_candidate()
+        self.assertEqual(self.session()["status"], "stopped")
+
+    def test_rejection_serializes_with_first_session_creation(self):
+        candidate = candidate_service.get_candidate_any(self.candidate_id)
+        candidate["candidate_id"] = "handoff-" + uuid.uuid4().hex
+        candidate["experiment_run_id"] = "run-" + uuid.uuid4().hex
+        candidate_id = candidate["candidate_id"]
+        candidate_service._save_candidate_any(candidate)
+        append = sessions._append_paper_event_any
+        created = Event()
+        release = Event()
+
+        def pause_create(event):
+            append(event)
+            created.set()
+            if not release.wait(3):
+                raise RuntimeError("test release timed out")
+
+        with patch.object(sessions, "_append_paper_event_any", side_effect=pause_create), ThreadPoolExecutor(2) as executor:
+            create = executor.submit(sessions.create_paper_session_for_candidate, candidate_id)
+            try:
+                self.assertTrue(created.wait(2))
+                reject = executor.submit(candidate_service.update_candidate_status, candidate_id, "rejected")
+                self.assertIsNone(sessions.get_paper_session_by_candidate_any(candidate_id))
+            finally:
+                release.set()
+            create.result(timeout=5)
+            reject.result(timeout=5)
+        self.assertEqual(sessions.get_paper_session_by_candidate_any(candidate_id)["status"], "stopped")
+        with self.assertRaisesRegex(ValueError, "Rejected candidates"):
+            sessions.create_paper_session_for_candidate(candidate_id)
 
     def test_concurrent_start_and_stop_serialize_without_partial_publication(self):
         append = runner._append_paper_event_any
