@@ -26,6 +26,25 @@ def paper_session_transaction(paper_session_id: str):
             raise
 
 
+@contextmanager
+def paper_session_transaction_for_candidate(candidate_id: str):
+    """Lock the session index and roll back edits or a newly created session."""
+    with _store_lock:
+        paper_session_id = _paper_session_candidate_index.get(candidate_id)
+        if paper_session_id is not None:
+            with paper_session_transaction(paper_session_id):
+                yield
+            return
+        try:
+            yield
+        except BaseException:
+            created_id = _paper_session_candidate_index.pop(candidate_id, None)
+            if created_id is not None:
+                _paper_session_store.pop(created_id, None)
+                _paper_event_store.pop(created_id, None)
+            raise
+
+
 def upsert_paper_session(paper_session_id: str, session: dict) -> None:
     """Keep one deep-copied runtime snapshot per candidate paper session.
 

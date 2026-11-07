@@ -4,6 +4,7 @@ import os
 import sys
 import types
 import unittest
+from contextlib import nullcontext
 from unittest.mock import patch
 
 
@@ -52,7 +53,9 @@ class PaperSessionDefaultTests(unittest.TestCase):
             "paper_bot": {"paper_bot_id": "bot-1", "status": "ready", "guardrails": {}},
         }
 
-        with patch.object(paper_session_service, "_require_candidate", return_value=candidate), patch.object(
+        with patch.object(paper_session_service, "candidate_paper_transaction", return_value=nullcontext()), patch.object(
+            paper_session_service, "_require_candidate", return_value=candidate,
+        ), patch.object(
             paper_session_service,
             "get_paper_session_by_candidate_any",
             return_value=None,

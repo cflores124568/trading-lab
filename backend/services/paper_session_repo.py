@@ -179,6 +179,28 @@ def _ensure_paper_sessions_schema(conn) -> None:
 
 
 @contextmanager
+def locked_candidate_paper_transaction(candidate_id: str):
+    """Serialize session creation and rejection, including before a session exists."""
+    from services.db import _conn, transaction
+
+    with _conn() as conn:
+        _ensure_paper_sessions_schema(conn)
+    with transaction() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                [f"paper-candidate:{candidate_id}"],
+            )
+            # Paper controls and worker writes lock the session before updating
+            # the candidate projection. Keep the same row-lock order here.
+            cur.execute("SELECT 1 FROM paper_sessions WHERE candidate_id = %s FOR UPDATE", [candidate_id])
+            cur.execute("SELECT 1 FROM candidates WHERE candidate_id = %s FOR UPDATE", [candidate_id])
+            if cur.fetchone() is None:
+                raise LookupError(f"Candidate '{candidate_id}' not found.")
+        yield
+
+
+@contextmanager
 def locked_paper_session_transaction(paper_session_id: str):
     """Serialize session controls and decision resolution across API processes."""
     from services.db import _conn, transaction

@@ -1,5 +1,6 @@
 import json
 import uuid
+from contextlib import contextmanager
 from copy import deepcopy
 from datetime import datetime
 
@@ -35,14 +36,17 @@ from services.paper_session_repo import (
     policy_decision_has_execution as policy_decision_has_execution_db,
     list_paper_events as list_paper_events_db,
     list_paper_sessions as list_paper_sessions_db,
+    locked_candidate_paper_transaction,
     save_paper_session as save_paper_session_db,
 )
+from services.candidate_store import candidate_transaction
 from services.paper_session_store import (
     append_paper_event as append_paper_event_mem,
     get_paper_session as get_paper_session_mem,
     get_paper_session_by_candidate as get_paper_session_by_candidate_mem,
     list_paper_events as list_paper_events_mem,
     list_paper_sessions as list_paper_sessions_mem,
+    paper_session_transaction_for_candidate,
     upsert_paper_session as upsert_paper_session_mem,
 )
 from services.prop_firm_eval import evaluate_prop_firm
@@ -176,18 +180,37 @@ def list_paper_events_any(paper_session_id: str) -> list[dict]:
     return list_paper_events_mem(paper_session_id)
 
 
+@contextmanager
+def candidate_paper_transaction(candidate_id: str):
+    if _db_required():
+        with locked_candidate_paper_transaction(candidate_id):
+            yield
+    else:
+        with paper_session_transaction_for_candidate(candidate_id), candidate_transaction(candidate_id):
+            yield
+
+
 def create_paper_session_for_candidate(
     candidate_id: str,
     *,
     actor: str = "local-user",
     name: str | None = None,
 ) -> dict:
-    """Create the durable paper runtime shell for one reviewed candidate.
+    """Create the durable paper runtime shell for one reviewed candidate."""
+    # Market metadata has a best-effort fallback, so query it before taking
+    # the transaction locks. A failed lookup must not roll back those locks.
+    symbol = _require_candidate(candidate_id)["symbol"]
+    tick_value = _resolve_tick_value(symbol)
+    tick_size = _resolve_tick_size(symbol)
+    with candidate_paper_transaction(candidate_id):
+        return _create_paper_session_for_candidate(
+            candidate_id, actor=actor, name=name, tick_value=tick_value, tick_size=tick_size,
+        )
 
-    The paper bot config is still the handoff stub, but this session is where
-    the real runtime state and append-only execution log will live next. I keep
-    it one-per-candidate for now so the first Phase 3 loop stays simple.
-    """
+
+def _create_paper_session_for_candidate(
+    candidate_id: str, *, actor: str, name: str | None, tick_value: float, tick_size: float,
+) -> dict:
     candidate = _require_candidate(candidate_id)
     if candidate["lifecycle_status"] == "rejected":
         raise ValueError("Rejected candidates can't create paper sessions.")
@@ -216,8 +239,8 @@ def create_paper_session_for_candidate(
         "guardrails": paper_bot.get("guardrails") or {},
         "status": _paper_bot_to_session_status(paper_bot.get("status")),
         "commission": 5.0,
-        "tick_value": _resolve_tick_value(candidate["symbol"]),
-        "tick_size": _resolve_tick_size(candidate["symbol"]),
+        "tick_value": tick_value,
+        "tick_size": tick_size,
         "spread_ticks": execution_defaults["spread_ticks"],
         "volatile_bar_threshold_ticks": execution_defaults["volatile_bar_threshold_ticks"],
         "volatile_bar_extra_ticks": execution_defaults["volatile_bar_extra_ticks"],
