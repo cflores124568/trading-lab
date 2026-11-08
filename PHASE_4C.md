@@ -30,10 +30,13 @@ Each worker loop discovers a bounded set of campaigns and advances at most one
 plan per campaign. This provides cooperative scheduling rather than allowing a
 large campaign to monopolize the process.
 
-If a process saves a trial and dies before its cursor checkpoint, the next
-owner reruns the same deterministic plan. Phase 4A fingerprint idempotency
-returns the original trial, after which the cursor advances once. Failed trials
-remain part of the durable ledger.
+The trial, its audit event, and the cursor checkpoint commit together. The
+worker checks the expected cursor and lease before publishing, then checks the
+lease again against wall-clock time while holding its row lock through commit.
+If publication rolls back, the next owner can retry the same plan. If an older
+worker already recorded the trial separately, its fingerprint lets the new
+worker advance the cursor using the saved outcome without rerunning it. Failed
+trials remain part of the durable ledger.
 
 Pausing changes durable status and revokes the active lease. The worker checks
 status and ownership before execution and again before writing the trial.
