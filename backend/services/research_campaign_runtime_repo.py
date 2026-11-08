@@ -1,12 +1,16 @@
 import json
 import uuid
-from typing import Any
+from contextlib import contextmanager
 
 from psycopg2.extras import RealDictCursor
 
 from services.research_repo import _campaign_row, _ensure_research_schema, _insert_event
 
 DEFAULT_LEASE_TTL_SECONDS = 30
+
+
+class ResearchCheckpointLost(RuntimeError):
+    """The worker no longer owns the campaign cursor it was advancing."""
 
 
 def configure_and_queue(campaign_id: str, *, search_config: dict, trial_budget: int, wall_seconds: int, progress: dict, event: dict) -> dict | None:
@@ -109,23 +113,78 @@ def start_or_get_owned_campaign(campaign_id: str, *, owner_id: str, lease_token:
             cur.execute("""UPDATE research_campaigns c SET status='running',started_at=COALESCE(started_at,NOW()),
             deadline_at=COALESCE(deadline_at,NOW()+(wall_clock_budget_seconds*INTERVAL '1 second')),updated_at=NOW()
             WHERE c.campaign_id=%s AND c.status IN ('queued','running') AND EXISTS
-            (SELECT 1 FROM research_campaign_leases l WHERE l.campaign_id=c.campaign_id AND l.owner_id=%s AND l.lease_token=%s AND l.expires_at>NOW()) RETURNING c.*""",
+            (SELECT 1 FROM research_campaign_leases l WHERE l.campaign_id=c.campaign_id AND l.owner_id=%s AND l.lease_token=%s AND l.expires_at>clock_timestamp()) RETURNING c.*""",
             [campaign_id, owner_id, lease_token]); row=cur.fetchone()
         conn.commit()
     return _campaign_row(row) if row else None
 
 
-def persist_progress(campaign_id: str, *, owner_id: str, lease_token: str, expected_index: int, progress: dict, status: str) -> bool:
+@contextmanager
+def checkpoint_transaction(campaign_id: str, *, owner_id: str, lease_token: str, expected_index: int):
+    """Fence the trial ledger and campaign cursor at the same commit."""
+    from services.db import _conn, transaction
+
+    with _conn() as conn:
+        _ensure_research_schema(conn)
+
+    with transaction() as conn:
+        with conn.cursor() as cur:
+            # Pause and requeue must serialize with the checkpoint. This lock
+            # still permits key-share locks used by trial foreign keys.
+            cur.execute(
+                """SELECT 1 FROM research_campaigns
+                WHERE campaign_id = %s AND status = 'running'
+                  AND COALESCE((search_progress->>'next_plan_index')::int, 0) = %s
+                FOR NO KEY UPDATE""",
+                [campaign_id, expected_index],
+            )
+            if cur.fetchone() is None:
+                raise ResearchCheckpointLost("Campaign status or cursor changed before checkpoint.")
+            _require_live_lease(cur, campaign_id, owner_id, lease_token)
+
+        yield
+
+        with conn.cursor() as cur:
+            # Take the lease lock after the campaign lock, as pause does.
+            # Check wall-clock expiry after any wait for the lease row.
+            cur.execute("SELECT 1 FROM research_campaign_leases WHERE campaign_id = %s FOR UPDATE", [campaign_id])
+            cur.fetchone()
+            _require_live_lease(cur, campaign_id, owner_id, lease_token)
+
+
+def _require_live_lease(cur, campaign_id: str, owner_id: str, lease_token: str) -> None:
+    cur.execute(
+        """SELECT 1 FROM research_campaign_leases
+        WHERE campaign_id = %s AND owner_id = %s AND lease_token = %s
+          AND expires_at > clock_timestamp()""",
+        [campaign_id, owner_id, lease_token],
+    )
+    if cur.fetchone() is None:
+        raise ResearchCheckpointLost("Campaign lease expired or changed before checkpoint.")
+
+
+def persist_progress(
+    campaign_id: str, *, owner_id: str, lease_token: str, expected_index: int, progress: dict, status: str,
+) -> bool:
     from services.db import _conn
+
     with _conn() as conn:
         _ensure_research_schema(conn)
         with conn.cursor() as cur:
-            cur.execute("""UPDATE research_campaigns c SET search_progress=%s::jsonb,status=%s,updated_at=NOW()
-            WHERE c.campaign_id=%s AND c.status='running' AND COALESCE((c.search_progress->>'next_plan_index')::int,0)=%s
-            AND EXISTS (SELECT 1 FROM research_campaign_leases l WHERE l.campaign_id=c.campaign_id AND l.owner_id=%s AND l.lease_token=%s AND l.expires_at>NOW())""",
-            [json.dumps(progress), status, campaign_id, expected_index, owner_id, lease_token]); ok=cur.rowcount==1
+            cur.execute(
+                """UPDATE research_campaigns c SET search_progress = %s::jsonb, status = %s, updated_at = NOW()
+                WHERE c.campaign_id = %s AND c.status = 'running'
+                  AND COALESCE((c.search_progress->>'next_plan_index')::int, 0) = %s
+                  AND EXISTS (
+                      SELECT 1 FROM research_campaign_leases l
+                      WHERE l.campaign_id = c.campaign_id AND l.owner_id = %s AND l.lease_token = %s
+                        AND l.expires_at > clock_timestamp()
+                  )""",
+                [json.dumps(progress), status, campaign_id, expected_index, owner_id, lease_token],
+            )
+            updated = cur.rowcount == 1
         conn.commit()
-    return ok
+    return updated
 
 
 def _ttl(value: int) -> int:

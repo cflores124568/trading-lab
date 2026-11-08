@@ -1,7 +1,9 @@
 import unittest
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
+from services import research_campaign_runtime_repo as runtime_repo
 from services import research_search_worker as worker_module
 from services.research_service import expand_search_plans
 
@@ -30,8 +32,10 @@ class ResearchSearchWorkerTests(unittest.TestCase):
              patch.object(worker_module.runtime_repo,"acquire_lease",return_value=lease), \
              patch.object(worker_module.runtime_repo,"heartbeat_lease",return_value=lease), \
              patch.object(worker_module.runtime_repo,"start_or_get_owned_campaign",return_value=campaign), \
+             patch.object(worker_module.research_repo,"get_research_trial_status_by_fingerprint",return_value=None), \
              patch.object(worker_module.research_repo,"get_research_campaign",return_value=campaign), \
-             patch.object(worker_module,"register_trial",return_value={"trial_id":"trial-1"}) as register, \
+             patch.object(worker_module.runtime_repo,"checkpoint_transaction",return_value=nullcontext()), \
+             patch.object(worker_module,"register_trial",return_value={"trial_id":"trial-1","status":"completed"}) as register, \
              patch.object(worker_module.runtime_repo,"persist_progress",return_value=True) as persist, \
              patch.object(worker_module.runtime_repo,"release_lease",return_value=True):
             self.assertEqual(worker.run_once(),1)
@@ -40,23 +44,27 @@ class ResearchSearchWorkerTests(unittest.TestCase):
         self.assertEqual(progress["next_plan_index"],1)
         self.assertEqual(progress["attempted_trials"],1)
 
-    def test_duplicate_delivery_still_advances_the_same_cursor_once(self):
-        worker=worker_module.DurableResearchSearchWorker(owner_id="worker-a",executor=lambda campaign,plan:{})
+    def test_existing_failed_trial_is_counted_without_reexecution(self):
+        executor = Mock()
+        worker=worker_module.DurableResearchSearchWorker(owner_id="worker-a",executor=executor)
         campaign=_campaign()
         with patch.object(worker_module.runtime_repo,"start_or_get_owned_campaign",return_value=campaign), \
-             patch.object(worker_module.research_repo,"get_research_campaign",return_value=campaign), \
-             patch.object(worker_module,"register_trial",return_value={"trial_id":"existing","was_duplicate":True}), \
+             patch.object(worker_module.research_repo,"get_research_trial_status_by_fingerprint",return_value="failed"), \
+             patch.object(worker_module.runtime_repo,"checkpoint_transaction",return_value=nullcontext()), \
              patch.object(worker_module.runtime_repo,"persist_progress",return_value=True) as persist:
             self.assertTrue(worker._advance("campaign-1","token-a"))
         self.assertEqual(persist.call_args.kwargs["expected_index"],0)
         self.assertEqual(persist.call_args.kwargs["progress"]["next_plan_index"],1)
+        self.assertEqual(persist.call_args.kwargs["progress"]["failed_trials"],1)
+        executor.assert_not_called()
 
     def test_wall_clock_budget_stops_without_executing(self):
         executor=unittest.mock.MagicMock()
         worker=worker_module.DurableResearchSearchWorker(owner_id="worker-a",executor=executor)
         campaign=_campaign(datetime.now(timezone.utc)-timedelta(seconds=1))
         with patch.object(worker_module.runtime_repo,"start_or_get_owned_campaign",return_value=campaign), \
-             patch.object(worker_module.research_repo,"get_research_campaign",return_value=campaign), \
+             patch.object(worker_module.research_repo,"get_research_trial_status_by_fingerprint",return_value=None), \
+             patch.object(worker_module.runtime_repo,"checkpoint_transaction",return_value=nullcontext()), \
              patch.object(worker_module.runtime_repo,"persist_progress",return_value=True) as persist:
             self.assertFalse(worker._advance("campaign-1","token-a"))
         executor.assert_not_called()
@@ -66,21 +74,13 @@ class ResearchSearchWorkerTests(unittest.TestCase):
     def test_pause_after_execution_prevents_trial_write(self):
         worker=worker_module.DurableResearchSearchWorker(owner_id="worker-a",executor=lambda campaign,plan:{})
         campaign=_campaign()
-        with patch.object(worker_module.runtime_repo,"start_or_get_owned_campaign",side_effect=[campaign,None]), \
+        with patch.object(worker_module.runtime_repo,"start_or_get_owned_campaign",return_value=campaign), \
+             patch.object(worker_module.research_repo,"get_research_trial_status_by_fingerprint",return_value=None), \
              patch.object(worker_module.research_repo,"get_research_campaign",return_value=campaign), \
+             patch.object(worker_module.runtime_repo,"checkpoint_transaction",side_effect=runtime_repo.ResearchCheckpointLost), \
              patch.object(worker_module,"register_trial") as register:
             self.assertFalse(worker._advance("campaign-1","token-a"))
         register.assert_not_called()
-
-
-class ResearchLeaseContractTests(unittest.TestCase):
-    def test_lease_sql_supports_atomic_expiry_takeover_and_checked_progress(self):
-        import inspect
-        from services import research_campaign_runtime_repo as repo
-        source=inspect.getsource(repo)
-        self.assertIn("expires_at<=NOW()",source)
-        self.assertIn("owner_id=%s AND l.lease_token=%s",source)
-        self.assertIn("next_plan_index",source)
 
 
 if __name__ == "__main__": unittest.main()

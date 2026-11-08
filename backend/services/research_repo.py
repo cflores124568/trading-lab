@@ -230,6 +230,21 @@ def get_research_trial(campaign_id: str, trial_id: str) -> dict | None:
             return _trial_row(row) if row is not None else None
 
 
+def get_research_trial_status_by_fingerprint(campaign_id: str, fingerprint: str) -> str | None:
+    """Read the outcome of an already recorded plan without loading its result."""
+    from services.db import _conn
+
+    with _conn() as conn:
+        _ensure_research_schema(conn)
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT status FROM research_trials WHERE campaign_id = %s AND fingerprint = %s",
+                [campaign_id, fingerprint],
+            )
+            row = cur.fetchone()
+            return row[0] if row is not None else None
+
+
 def _insert_event(cur, event: dict) -> None:
     cur.execute(
         """
