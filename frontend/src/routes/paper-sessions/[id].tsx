@@ -880,7 +880,10 @@ export default function PaperSessionDetailPage() {
                   {(action) => (
                       <button
                         type="button"
-                        disabled={busyAction() === `status-${action.status}`}
+                        disabled={
+                          busyAction() === `status-${action.status}` ||
+                          (action.status === "running" && forwardModeBlocked(activePolicyMode()))
+                        }
                         onClick={() => handleStatusChange(action.status)}
                         class={`rounded-sm transition-colors disabled:cursor-not-allowed disabled:border-stone-800 disabled:bg-stone-900 disabled:text-stone-500 ${action.tone}`}
                       >
@@ -1161,7 +1164,8 @@ export default function PaperSessionDetailPage() {
                         disabled={
                           busyAction() === "runner-start" ||
                           Boolean(pendingPolicyDecision()) ||
-                          killSwitchEngaged()
+                          killSwitchEngaged() ||
+                          forwardModeBlocked(runnerPolicyMode())
                         }
                         onClick={handleRunnerStart}
                         class="rounded-sm bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-stone-800 disabled:text-stone-500"
