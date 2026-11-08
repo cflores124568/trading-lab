@@ -1,13 +1,24 @@
+import os
 import unittest
-from contextlib import nullcontext
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack, nullcontext
+from threading import Event
 from unittest.mock import patch
 
 from schemas import (
     ResearchForwardDecisionRequest,
     ResearchForwardHandoffRequest,
 )
+from services import (
+    backtest_repo, candidate_repo, candidate_service, db, experiment_repo, paper_session_repo,
+    paper_session_store, research_repo,
+)
+from services import paper_runner_lease_repo as leases
+from services import paper_runner_service as runner
+from services import paper_session_service as sessions
+from services import research_forward_qualification_repo as qualifications
 from services import research_forward_qualification_service as service
-from services import candidate_service
 from services.paper_runner_service import _validate_forward_qualification_mode
 
 
@@ -212,6 +223,210 @@ class ResearchForwardQualificationTests(unittest.TestCase):
         )
         result = service.decide("campaign-1", "qualification-1", request)
         self.assertEqual(result["status"], "qualified")
+
+
+@unittest.skipUnless(os.environ.get("PAPER_FENCING_TEST_DSN"), "requires isolated PAPER_FENCING_TEST_DSN")
+class PostgresForwardQualificationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import psycopg2
+        from psycopg2 import pool, sql
+
+        scope = ExitStack()
+        cls.addClassCleanup(scope.close)
+        dsn = os.environ["PAPER_FENCING_TEST_DSN"]
+        schema = "forward_qualification_" + uuid.uuid4().hex
+        with psycopg2.connect(dsn) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+        test_pool = pool.ThreadedConnectionPool(
+            1, 8, dsn=dsn, options=f"-csearch_path={schema} -cstatement_timeout=5000 -clock_timeout=3000",
+        )
+        scope.callback(test_pool.closeall)
+        scope.enter_context(patch.object(db, "_pool", test_pool))
+        scope.enter_context(patch.dict(os.environ, {"DATABASE_URL": dsn}))
+        for repo in (backtest_repo, candidate_repo, experiment_repo, paper_session_repo, qualifications, research_repo):
+            scope.enter_context(patch.object(repo, "_schema_ready", False))
+        with db._conn() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("CREATE TABLE backtests (backtest_id TEXT PRIMARY KEY)")
+            connection.commit()
+            qualifications._ensure_forward_qualification_schema(connection)
+
+    def setUp(self):
+        suffix = uuid.uuid4().hex
+        self.campaign_id = "campaign-" + suffix
+        self.trial_id = "trial-" + suffix
+        self.promotion_id = "promotion-" + suffix
+        evaluation_id = "evaluation-" + suffix
+        with db._conn() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """INSERT INTO research_campaigns
+                    (campaign_id, name, symbol, interval, start_time, end_time,
+                     development_pct, validation_pct, holdout_pct, total_bar_count)
+                    VALUES (%s, 'Fixture', 'ES', '1min', '2024-01-01', '2024-01-02', 60, 20, 20, 100)""",
+                    [self.campaign_id],
+                )
+                cursor.execute(
+                    """INSERT INTO research_trials
+                    (trial_id, campaign_id, fingerprint, strategy_type, status, completed_at)
+                    VALUES (%s, %s, %s, 'ma_crossover', 'completed', NOW())""",
+                    [self.trial_id, self.campaign_id, suffix],
+                )
+                cursor.execute(
+                    """INSERT INTO research_trial_evaluations
+                    (evaluation_id, campaign_id, trial_id, evidence_fingerprint, outcome,
+                     robustness_score, score_components, gates, diagnostics, evidence)
+                    VALUES (%s, %s, %s, %s, 'research_finalist', 82, '{}', '{}', '{}', '{}')""",
+                    [evaluation_id, self.campaign_id, self.trial_id, suffix],
+                )
+                cursor.execute(
+                    """INSERT INTO research_campaign_finalists
+                    (campaign_id, trial_id, evaluation_id, frozen_validation_score,
+                     holdout_status, holdout_result, holdout_evaluated_at, frozen_by)
+                    VALUES (%s, %s, %s, 82, 'evaluated', '{"outcome":"holdout_qualified"}', NOW(), 'test')""",
+                    [self.campaign_id, self.trial_id, evaluation_id],
+                )
+                cursor.execute(
+                    """INSERT INTO research_candidate_promotions
+                    (research_candidate_id, campaign_id, trial_id, evaluation_id,
+                     validation_score, promotion_reason, promoted_by)
+                    VALUES (%s, %s, %s, %s, 82, 'Fixture', 'test')""",
+                    [self.promotion_id, self.campaign_id, self.trial_id, evaluation_id],
+                )
+            connection.commit()
+
+    def handoff(self):
+        result = service.create_handoff(self.campaign_id, self.promotion_id, _handoff_request())
+        self.qualification_id = result["qualification_id"]
+        self.session_id = result["paper_session_id"]
+        return result
+
+    def paused_handoff(self):
+        self.handoff()
+        sessions.update_paper_session_status(self.session_id, "ready")
+        runner.pause_historical_runner(self.session_id)
+
+    def reject(self):
+        return service.decide(
+            self.campaign_id, self.qualification_id,
+            ResearchForwardDecisionRequest(outcome="rejected", decision_reason="Forward evidence fell short."),
+        )
+
+    def snapshot(self):
+        return (
+            qualifications.get_qualification(self.qualification_id),
+            sessions.get_paper_session_any(self.session_id),
+            paper_session_store.get_paper_session(self.session_id),
+            research_repo.get_research_campaign(self.campaign_id)["audit_events"],
+        )
+
+    def test_failed_tag_rolls_back_rejection_evidence_and_audit(self):
+        self.paused_handoff()
+        before = self.snapshot()
+        tag = service._tag_session
+
+        def fail_after_tag(*args):
+            tag(*args)
+            raise RuntimeError("interrupted after session tag write")
+
+        with patch.object(service, "_tag_session", side_effect=fail_after_tag):
+            with self.assertRaisesRegex(RuntimeError, "interrupted after session tag write"):
+                self.reject()
+        self.assertEqual(self.snapshot(), before)
+
+        self.assertEqual(self.reject()["status"], "rejected")
+        saved = self.snapshot()
+        self.assertEqual(saved[1]["runner_state"]["forward_qualification"]["status"], "rejected")
+        with self.assertRaisesRegex(ValueError, "immutable"):
+            self.reject()
+        self.assertEqual(self.snapshot(), saved)
+
+    def test_runner_start_waits_for_rejection_and_sees_the_committed_outcome(self):
+        self.paused_handoff()
+        tagged = Event()
+        release = Event()
+        start_requested = Event()
+        tag = service._tag_session
+
+        def hold_decision(*args):
+            tag(*args)
+            tagged.set()
+            if not release.wait(3):
+                raise RuntimeError("test decision release timed out")
+
+        def start_runner():
+            start_requested.set()
+            return runner.start_historical_runner(self.session_id)
+
+        with patch.object(service, "_tag_session", side_effect=hold_decision), ThreadPoolExecutor(2) as executor:
+            reject = executor.submit(self.reject)
+            try:
+                self.assertTrue(tagged.wait(2))
+                start = executor.submit(start_runner)
+                self.assertTrue(start_requested.wait(2))
+                self.assertEqual(qualifications.get_qualification(self.qualification_id)["status"], "collecting")
+                self.assertFalse(start.done())
+            finally:
+                release.set()
+            self.assertEqual(reject.result(timeout=5)["status"], "rejected")
+            with self.assertRaisesRegex(ValueError, "Rejected forward qualifications"):
+                start.result(timeout=5)
+        self.assertEqual(sessions.get_paper_session_any(self.session_id)["status"], "paused")
+
+    def test_decision_leaves_evidence_untouched_if_runner_started_first(self):
+        self.paused_handoff()
+        runner.start_historical_runner(self.session_id)
+        before = self.snapshot()
+        with self.assertRaisesRegex(ValueError, "Pause the paper session"):
+            self.reject()
+        self.assertEqual(self.snapshot(), before)
+
+    def test_legacy_stale_tag_cannot_bypass_rejection(self):
+        self.paused_handoff()
+        self.reject()
+        for stale_tag in (None, {"status": "qualified"}):
+            with self.subTest(stale_tag=stale_tag):
+                session = sessions.get_paper_session_any(self.session_id)
+                session["runner_state"]["forward_qualification"] = stale_tag
+                sessions._save_paper_session_any(session)
+                for advance in (
+                    lambda: sessions.update_paper_session_status(self.session_id, "running"),
+                    lambda: runner.start_historical_runner(self.session_id),
+                    lambda: runner.step_historical_runner(self.session_id),
+                ):
+                    with self.assertRaisesRegex(ValueError, "Rejected forward qualifications"):
+                        advance()
+
+        session["status"] = "running"
+        session["runner_state"]["mode"] = "running"
+        sessions._save_paper_session_any(session)
+        lease = leases.acquire_runner_lease(self.session_id, owner_id="legacy-worker")
+        with patch.object(runner, "get_next_ohlcv_bar") as fetch:
+            _, outcome = runner.advance_historical_runner_worker_once(
+                self.session_id, owner_id="legacy-worker", lease_token=lease["lease_token"],
+            )
+        self.assertEqual(outcome, "not_running")
+        fetch.assert_not_called()
+
+    def test_failed_handoff_tag_requires_retry_before_runner_can_start(self):
+        with patch.object(service, "_tag_session", side_effect=RuntimeError("interrupted handoff")):
+            with self.assertRaisesRegex(RuntimeError, "interrupted handoff"):
+                self.handoff()
+        self.assertIsNone(qualifications.get_by_research_candidate(self.promotion_id))
+        candidate = candidate_service.get_candidate_by_run_any(f"research:{self.campaign_id}:{self.trial_id}")
+        session = sessions.get_paper_session_by_candidate_any(candidate["candidate_id"])
+        self.assertEqual(session["status"], "draft")
+        sessions.update_paper_session_status(session["paper_session_id"], "ready")
+        with self.assertRaisesRegex(ValueError, "Complete the forward qualification handoff"):
+            runner.start_historical_runner(session["paper_session_id"])
+
+        result = self.handoff()
+        self.assertEqual(result["paper_session_id"], session["paper_session_id"])
+        state = sessions.get_paper_session_any(self.session_id)["runner_state"]
+        self.assertEqual(state["policy_mode"], "shadow")
+        self.assertEqual(state["forward_qualification"]["status"], "collecting")
 
 
 if __name__ == "__main__":
