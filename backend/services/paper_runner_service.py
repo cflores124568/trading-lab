@@ -7,6 +7,7 @@ from threading import Event, Lock, Thread
 from typing import Any
 
 import pandas as pd
+from services import research_forward_qualification_repo
 from services.backtest_repo import _ensure_backtests_schema
 from services.backtest_repo import get_backtest as get_backtest_db
 from services.backtest_store import get_backtest as get_backtest_mem
@@ -133,7 +134,7 @@ def _prepare_runner_start(
     poll_interval_ms: int | None = None, reset_cursor: bool = False,
     policy_mode: str | PaperPolicyMode | None = None,
 ) -> dict:
-    _require_unrejected_candidate(session)
+    candidate = _require_unrejected_candidate(session)
     _validate_runner_session_status(session)
     state = _ensure_runner_state(session.get("runner_state"))
     state = _apply_default_window(session, state)
@@ -141,7 +142,9 @@ def _prepare_runner_start(
         raise ValueError("Reset the emergency kill switch before starting the runner.")
     if state.get("pending_decision"):
         raise ValueError("Resolve the pending policy decision before restarting the runner.")
-    _validate_forward_qualification_mode(state, policy_mode)
+    _validate_forward_qualification_mode(
+        state, policy_mode, paper_session_id=session["paper_session_id"], candidate=candidate,
+    )
     poll = _validate_poll_interval(
         poll_interval_ms if poll_interval_ms is not None else int(state.get("poll_interval_ms") or DEFAULT_RUNNER_POLL_INTERVAL_MS)
     )
@@ -239,18 +242,33 @@ def _stop_session_for_candidate_rejection(session: dict, *, actor: str) -> None:
     )
 
 
-def _require_unrejected_candidate(session: dict) -> None:
+def _require_unrejected_candidate(session: dict) -> dict:
     candidate = _require_candidate(session["candidate_id"])
     if candidate.get("lifecycle_status") == CandidateLifecycleStatus.REJECTED.value:
         raise ValueError("This paper session belongs to a rejected candidate.")
+    return candidate
+
+
+def _forward_qualification(state: dict, paper_session_id: str | None) -> dict:
+    if paper_session_id and _paper_storage_uses_db():
+        forward = research_forward_qualification_repo.get_by_paper_session(paper_session_id)
+        if forward is not None:
+            return forward
+    return state.get("forward_qualification") or {}
 
 
 def _validate_forward_qualification_mode(
     state: dict,
     requested_mode: str | PaperPolicyMode | None,
+    *,
+    paper_session_id: str | None = None,
+    candidate: dict | None = None,
 ) -> None:
-    forward = dict(state.get("forward_qualification") or {})
+    forward = _forward_qualification(state, paper_session_id)
     if not forward:
+        snapshot = (candidate or {}).get("experiment_snapshot") or {}
+        if snapshot.get("source_kind") == "alpha_lab":
+            raise ValueError("Complete the forward qualification handoff before using the paper runner.")
         return
     status = forward.get("status")
     if status == "rejected":
@@ -362,8 +380,8 @@ def _validate_manual_step(session: dict) -> dict:
         raise ValueError("Reset the emergency kill switch before stepping the runner.")
     if state.get("pending_decision"):
         raise ValueError("Resolve the pending policy decision before stepping the runner.")
-    _require_unrejected_candidate(session)
-    _validate_forward_qualification_mode(state, None)
+    candidate = _require_unrejected_candidate(session)
+    _validate_forward_qualification_mode(state, None, paper_session_id=session_id, candidate=candidate)
     return state
 
 
@@ -602,6 +620,8 @@ def advance_historical_runner_worker_once(
                 session = _ensure_session_defaults(_require_paper_session(paper_session_id))
                 state = _ensure_runner_state(session.get("runner_state"))
                 if session.get("status") != PaperSessionStatus.RUNNING.value or state.get("mode") != "running":
+                    return session, "not_running"
+                if _forward_qualification(state, paper_session_id).get("status") == "rejected":
                     return session, "not_running"
                 return _advance_one_bar_locked(
                     paper_session_id,

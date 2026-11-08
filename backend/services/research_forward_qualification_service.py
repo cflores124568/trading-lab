@@ -1,4 +1,5 @@
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 from schemas import ResearchForwardDecisionRequest, ResearchForwardHandoffRequest
@@ -11,10 +12,11 @@ from services.candidate_service import (
     create_paper_bot_from_candidate,
     create_research_candidate_handoff,
 )
+from services.paper_session_repo import locked_paper_session_transaction
 from services.paper_session_service import (
+    _require_paper_session,
     _save_paper_session_any,
     create_paper_session_for_candidate,
-    get_paper_session_any,
     list_paper_events_any,
 )
 from services.research_service import _event
@@ -42,8 +44,9 @@ def create_handoff(
 
     existing = research_forward_qualification_repo.get_by_research_candidate(research_candidate_id)
     if existing is not None:
-        _tag_session(existing)
-        return existing
+        with _locked_qualification(existing) as (current, session):
+            _tag_session(current, session)
+            return current
 
     candidate = create_research_candidate_handoff(
         campaign,
@@ -94,9 +97,14 @@ def create_handoff(
         },
         created_at=now,
     )
-    stored, _ = research_forward_qualification_repo.create_qualification(qualification, event)
-    _tag_session(stored)
-    return stored
+    with locked_paper_session_transaction(session["paper_session_id"]):
+        session = _require_paper_session(session["paper_session_id"])
+        _require_inactive_session(session, "initializing forward qualification")
+        stored, _ = research_forward_qualification_repo.create_qualification(qualification, event)
+        if stored["paper_session_id"] != session["paper_session_id"]:
+            raise ValueError("Forward qualification already links to a different paper session.")
+        _tag_session(stored, session)
+        return stored
 
 
 def get_for_research_candidate(campaign_id: str, research_candidate_id: str) -> dict | None:
@@ -108,12 +116,20 @@ def get_for_research_candidate(campaign_id: str, research_candidate_id: str) -> 
 
 def refresh(campaign_id: str, qualification_id: str, *, actor: str) -> dict:
     qualification = _require_qualification(campaign_id, qualification_id)
+    with _locked_qualification(qualification) as (current, session):
+        stored = _refresh_evidence(current, session, actor=actor)
+        _tag_session(stored, session)
+        return stored
+
+
+def _refresh_evidence(qualification: dict, session: dict, *, actor: str) -> dict:
     if qualification["status"] != "collecting":
         raise ValueError("Terminal forward qualifications are immutable.")
-    evidence, diagnostics, gates = _collect_evidence(qualification)
+    qualification_id = qualification["qualification_id"]
+    evidence, diagnostics, gates = _collect_evidence(qualification, session)
     now = datetime.now(timezone.utc)
     event = _event(
-        campaign_id=campaign_id,
+        campaign_id=qualification["campaign_id"],
         event_type="forward_evidence_refreshed",
         actor=actor,
         summary=f"Refreshed forward evidence for qualification {qualification_id}.",
@@ -130,7 +146,6 @@ def refresh(campaign_id: str, qualification_id: str, *, actor: str) -> dict:
     )
     if stored is None:
         raise ValueError("Forward qualification is no longer collecting evidence.")
-    _tag_session(stored)
     return stored
 
 
@@ -139,50 +154,46 @@ def decide(
     qualification_id: str,
     request: ResearchForwardDecisionRequest,
 ) -> dict:
-    qualification = refresh(campaign_id, qualification_id, actor=request.actor)
-    session = get_paper_session_any(qualification["paper_session_id"])
-    if session is None:
-        raise LookupError("The forward paper session no longer exists.")
-    if session["status"] == "running":
-        raise ValueError("Pause the paper session before recording a terminal qualification decision.")
-    if request.outcome == "qualified":
-        if not all(qualification["gates"].values()):
-            raise ValueError("Every forward evidence gate must pass before qualification.")
-        if qualification["approval_required"] and not request.approved:
-            raise ValueError("This qualification requires explicit operator approval.")
+    qualification = _require_qualification(campaign_id, qualification_id)
+    with _locked_qualification(qualification) as (current, session):
+        _require_inactive_session(session, "recording a terminal qualification decision")
+        current = _refresh_evidence(current, session, actor=request.actor)
+        if request.outcome == "qualified":
+            if not all(current["gates"].values()):
+                raise ValueError("Every forward evidence gate must pass before qualification.")
+            if current["approval_required"] and not request.approved:
+                raise ValueError("This qualification requires explicit operator approval.")
 
-    now = datetime.now(timezone.utc)
-    event = _event(
-        campaign_id=campaign_id,
-        event_type=f"forward_{request.outcome}",
-        actor=request.actor,
-        summary=f"Recorded forward-paper outcome {request.outcome} for qualification {qualification_id}.",
-        payload={
-            "qualification_id": qualification_id,
-            "candidate_id": qualification["candidate_id"],
-            "paper_session_id": qualification["paper_session_id"],
-            "reason": request.decision_reason.strip(),
-        },
-        created_at=now,
-    )
-    stored = research_forward_qualification_repo.decide(
-        qualification_id,
-        outcome=request.outcome,
-        actor=request.actor,
-        decided_at=now,
-        reason=request.decision_reason.strip(),
-        event=event,
-    )
-    if stored is None:
-        raise ValueError("Forward qualification already has a terminal outcome.")
-    _tag_session(stored)
-    return stored
+        now = datetime.now(timezone.utc)
+        reason = request.decision_reason.strip()
+        event = _event(
+            campaign_id=campaign_id,
+            event_type=f"forward_{request.outcome}",
+            actor=request.actor,
+            summary=f"Recorded forward-paper outcome {request.outcome} for qualification {qualification_id}.",
+            payload={
+                "qualification_id": qualification_id,
+                "candidate_id": current["candidate_id"],
+                "paper_session_id": current["paper_session_id"],
+                "reason": reason,
+            },
+            created_at=now,
+        )
+        stored = research_forward_qualification_repo.decide(
+            qualification_id,
+            outcome=request.outcome,
+            actor=request.actor,
+            decided_at=now,
+            reason=reason,
+            event=event,
+        )
+        if stored is None:
+            raise ValueError("Forward qualification already has a terminal outcome.")
+        _tag_session(stored, session)
+        return stored
 
 
-def _collect_evidence(qualification: dict) -> tuple[dict, dict, dict]:
-    session = get_paper_session_any(qualification["paper_session_id"])
-    if session is None:
-        raise LookupError("The forward paper session no longer exists.")
+def _collect_evidence(qualification: dict, session: dict) -> tuple[dict, dict, dict]:
     state = dict(session.get("runner_state") or {})
     scorecard = dict(state.get("shadow_scorecard") or {})
     shadow_observations = int(scorecard.get("total_decisions") or 0)
@@ -244,10 +255,20 @@ def _require_qualification(campaign_id: str, qualification_id: str) -> dict:
     return qualification
 
 
-def _tag_session(qualification: dict) -> None:
-    session = get_paper_session_any(qualification["paper_session_id"])
-    if session is None:
-        return
+@contextmanager
+def _locked_qualification(qualification: dict):
+    # Runner controls and qualification writes share the session row lock.
+    with locked_paper_session_transaction(qualification["paper_session_id"]):
+        current = _require_qualification(qualification["campaign_id"], qualification["qualification_id"])
+        yield current, _require_paper_session(current["paper_session_id"])
+
+
+def _require_inactive_session(session: dict, action: str) -> None:
+    if session["status"] == "running" or (session.get("runner_state") or {}).get("mode") == "running":
+        raise ValueError(f"Pause the paper session before {action}.")
+
+
+def _tag_session(qualification: dict, session: dict) -> None:
     state = dict(session.get("runner_state") or {})
     state["policy_mode"] = "shadow" if not state.get("bars_processed") else state.get("policy_mode", "shadow")
     state["forward_qualification"] = {
@@ -259,5 +280,6 @@ def _tag_session(qualification: dict) -> None:
             "minimum_forward_observations", "minimum_forward_decisions"
         )),
     }
-    session["runner_state"] = state
-    _save_paper_session_any(session)
+    if state != session.get("runner_state"):
+        session["runner_state"] = state
+        _save_paper_session_any(session)

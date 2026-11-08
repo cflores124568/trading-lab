@@ -1,4 +1,5 @@
 import unittest
+from contextlib import nullcontext
 from unittest.mock import patch
 
 from schemas import (
@@ -99,6 +100,8 @@ class ResearchForwardQualificationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "holdout-rejected"):
             service.create_handoff("campaign-1", "research-candidate-1", _handoff_request())
 
+    @patch.object(service, "locked_paper_session_transaction", return_value=nullcontext())
+    @patch.object(service, "_require_paper_session")
     @patch.object(service, "_tag_session")
     @patch.object(service.research_forward_qualification_repo, "create_qualification")
     @patch.object(service, "create_paper_session_for_candidate")
@@ -111,7 +114,7 @@ class ResearchForwardQualificationTests(unittest.TestCase):
     @patch.object(service.research_evaluation_repo, "get_research_candidate_promotion")
     def test_explicit_handoff_creates_a_draft_paper_seam(
         self, get_promotion, get_campaign, get_trial, get_finalist, _get_existing,
-        create_candidate, create_bot, create_session, create_qualification, tag_session,
+        create_candidate, create_bot, create_session, create_qualification, tag_session, require_session, _lock,
     ):
         get_promotion.return_value = {
             "research_candidate_id": "research-candidate-1",
@@ -128,6 +131,7 @@ class ResearchForwardQualificationTests(unittest.TestCase):
         }
         create_candidate.return_value = {"candidate_id": "candidate-1"}
         create_session.return_value = {"paper_session_id": "paper-1", "status": "draft"}
+        require_session.return_value = create_session.return_value
         create_qualification.side_effect = lambda value, _event: (value, True)
 
         result = service.create_handoff("campaign-1", "research-candidate-1", _handoff_request())
@@ -135,12 +139,11 @@ class ResearchForwardQualificationTests(unittest.TestCase):
         create_bot.assert_called_once_with("candidate-1", actor="operator")
         self.assertEqual(result["status"], "collecting")
         self.assertEqual(result["paper_session_id"], "paper-1")
-        tag_session.assert_called_once_with(result)
+        tag_session.assert_called_once_with(result, require_session.return_value)
 
     @patch.object(service, "list_paper_events_any")
-    @patch.object(service, "get_paper_session_any")
-    def test_evidence_compares_behavior_costs_and_risk_blocks(self, get_session, list_events):
-        get_session.return_value = {
+    def test_evidence_compares_behavior_costs_and_risk_blocks(self, list_events):
+        session = {
             "paper_session_id": "paper-1",
             "status": "paused",
             "runner_state": {
@@ -157,7 +160,7 @@ class ResearchForwardQualificationTests(unittest.TestCase):
             {"event_type": "risk_blocked"},
         ]
 
-        evidence, diagnostics, gates = service._collect_evidence(_qualification())
+        evidence, diagnostics, gates = service._collect_evidence(_qualification(), session)
 
         self.assertEqual(evidence["actionable_rate"], 0.2)
         self.assertEqual(diagnostics["execution_cost"]["average_commission_per_trade"], 5.0)
@@ -184,10 +187,11 @@ class ResearchForwardQualificationTests(unittest.TestCase):
 
     @patch.object(service, "_tag_session")
     @patch.object(service.research_forward_qualification_repo, "decide")
-    @patch.object(service, "get_paper_session_any")
-    @patch.object(service, "refresh")
+    @patch.object(service, "_refresh_evidence")
+    @patch.object(service, "_locked_qualification", return_value=nullcontext((_qualification(), {"status": "paused"})))
+    @patch.object(service, "_require_qualification", return_value=_qualification())
     def test_qualification_requires_gates_and_explicit_approval(
-        self, refresh, get_session, decide, _tag_session
+        self, _require, _lock, refresh, decide, _tag_session
     ):
         refresh.return_value = _qualification(gates={
             "minimum_forward_observations": True,
@@ -195,12 +199,12 @@ class ResearchForwardQualificationTests(unittest.TestCase):
             "expected_actionable_rate": True,
             "risk_block_rate": True,
         })
-        get_session.return_value = {"status": "paused"}
         request = ResearchForwardDecisionRequest(
             outcome="qualified", decision_reason="Forward evidence is acceptable.", actor="operator"
         )
         with self.assertRaisesRegex(ValueError, "explicit operator approval"):
             service.decide("campaign-1", "qualification-1", request)
+        decide.assert_not_called()
 
         request.approved = True
         decide.side_effect = lambda _id, **kwargs: _qualification(

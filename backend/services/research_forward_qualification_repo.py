@@ -125,7 +125,9 @@ def get_by_research_candidate(research_candidate_id: str) -> dict | None:
 
 
 def get_by_paper_session(paper_session_id: str) -> dict | None:
-    return _get_one("paper_session_id", paper_session_id)
+    # Paper can run before Alpha Lab is initialized. Never bootstrap its
+    # schema from inside a runner transaction.
+    return _get_one("paper_session_id", paper_session_id, initialize_schema=False)
 
 
 def refresh_evidence(
@@ -189,14 +191,20 @@ def decide(
     return _row(row) if row is not None else None
 
 
-def _get_one(column: str, value: str) -> dict | None:
+def _get_one(column: str, value: str, *, initialize_schema: bool = True) -> dict | None:
     from services.db import _conn
 
     allowed = {"qualification_id", "research_candidate_id", "paper_session_id"}
     if column not in allowed:
         raise ValueError("Unsupported forward qualification lookup.")
     with _conn() as conn:
-        _ensure_forward_qualification_schema(conn)
+        if initialize_schema:
+            _ensure_forward_qualification_schema(conn)
+        elif not _schema_ready:
+            with conn.cursor() as cur:
+                cur.execute("SELECT to_regclass('research_forward_qualifications')")
+                if cur.fetchone()[0] is None:
+                    return None
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(f"SELECT * FROM research_forward_qualifications WHERE {column} = %s", [value])
             row = cur.fetchone()
