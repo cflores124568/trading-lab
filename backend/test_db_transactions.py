@@ -65,6 +65,21 @@ class DatabaseTransactionTests(unittest.TestCase):
         self.connection.commit.assert_not_called()
         publish.assert_not_called()
 
+    def test_savepoint_failure_preserves_only_outer_publication(self):
+        publish_outer = MagicMock()
+        publish_nested = MagicMock()
+        with db.transaction():
+            db.after_commit(publish_outer)
+            with self.assertRaisesRegex(ValueError, "nested work failed"):
+                with db.savepoint():
+                    db.after_commit(publish_nested)
+                    raise ValueError("nested work failed")
+            publish_outer.assert_not_called()
+        publish_outer.assert_called_once()
+        publish_nested.assert_not_called()
+        self.connection.commit.assert_called_once()
+        self.connection.rollback.assert_not_called()
+
     def test_delayed_memory_publication_cannot_replace_a_newer_committed_version(self):
         session_id = "mirror-" + uuid.uuid4().hex
         old = {"paper_session_id": session_id, "_state_version": 1, "status": "running"}

@@ -68,6 +68,29 @@ def transaction() -> Generator:
         publish()
 
 
+@contextmanager
+def savepoint() -> Generator:
+    """Recover from one operation failure while keeping the outer transaction locks."""
+    scope = _transaction.get()
+    if scope is None or scope.rollback_requested:
+        raise RuntimeError("A savepoint requires a healthy database transaction.")
+
+    pending_callbacks = len(scope.after_commit)
+    with scope.cursor() as cursor:
+        cursor.execute("SAVEPOINT nested_work")
+        try:
+            yield
+            if scope.rollback_requested:
+                raise RuntimeError("A database operation failed inside the savepoint.")
+            cursor.execute("RELEASE SAVEPOINT nested_work")
+        except Exception:
+            cursor.execute("ROLLBACK TO SAVEPOINT nested_work")
+            scope.rollback_requested = False
+            del scope.after_commit[pending_callbacks:]
+            cursor.execute("RELEASE SAVEPOINT nested_work")
+            raise
+
+
 def after_commit(publish: Callable[[], None]) -> None:
     """Publish a memory mirror only after the enclosing transaction succeeds."""
     scope = _transaction.get()
