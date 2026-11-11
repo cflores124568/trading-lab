@@ -75,12 +75,17 @@ import {
   findJumpTarget,
   getReplayIndexFromProgress,
   getReplayProgress,
-  sanitizeReplayMetrics,
   simulateReplaySession,
   type ReplayAction,
   type ReplaySizingMode,
 } from "../services/replaySimulator";
-import { getReplaySessionStatus } from "../services/replaySessionState";
+import {
+  captureReplaySnapshot,
+  getReplaySaveState,
+  getReplaySessionStatus,
+  restoreReplayReview,
+  type ReplaySnapshot,
+} from "../services/replaySessionState";
 import {
   defaultPriceChartIndicatorSettings,
   type PriceChartIndicatorSettings,
@@ -759,7 +764,8 @@ export default function ReplayLabPage() {
   const [rulesExpanded, setRulesExpanded] = createSignal(true);
 
   const [isReplayActive, setIsReplayActive] = createSignal(false);
-  const [isReviewMode, setIsReviewMode] = createSignal(false);
+  const [reviewSnapshot, setReviewSnapshot] = createSignal<ReplaySnapshot | null>(null);
+  const isReviewMode = () => reviewSnapshot() !== null;
   const [autoPauseOnPass, setAutoPauseOnPass] = createSignal(true);
   const [speed, setSpeed] = createSignal(8);
   const [currentIndex, setCurrentIndex] = createSignal(0);
@@ -890,7 +896,7 @@ export default function ReplayLabPage() {
       hydrateSizingControls(savedSizing);
       setSpeed(8);
       setIsReplayActive(false);
-      setIsReviewMode(existing.status === "review");
+      setReviewSnapshot(restoreReplayReview(existing));
       setCurrentIndex(existing.current_bar_index);
       setReplayActions(
         existing.actions.map((action) => ({
@@ -1007,7 +1013,7 @@ export default function ReplayLabPage() {
       setStartDate(start ?? "");
       setEndDate(end ?? "");
       setIsReplayActive(false);
-      setIsReviewMode(false);
+      setReviewSnapshot(null);
       setSpeed(8);
       setCurrentIndex(0);
       setReplayActions([]);
@@ -1767,7 +1773,7 @@ export default function ReplayLabPage() {
     batch(() => {
       const executionDefaults = defaultExecutionConfigForSymbol(selectedSymbol.symbol);
       setIsReplayActive(false);
-      setIsReviewMode(false);
+      setReviewSnapshot(null);
       setSpeed(8);
       setCurrentIndex(0);
       setReplayActions([]);
@@ -1842,7 +1848,7 @@ export default function ReplayLabPage() {
       volatile_bar_extra_ticks: config.volatileBarExtraTicks,
       resting_fill_mode: config.restingFillMode,
       current_bar_index: replayIndex(),
-      status: isAccountBreached() ? "breached" : replayStatus(),
+      ...getReplaySaveState(session, replayStatus(), reviewSnapshot()),
       actions: replayActions().map((action) => ({
         id: action.id,
         type: action.type,
@@ -1854,13 +1860,6 @@ export default function ReplayLabPage() {
         order_id: action.orderId,
         bracket_role: action.bracketRole,
       })),
-      active_order: session.activeOrder ? { ...session.activeOrder } : null,
-      active_orders: session.activeOrders.map((order) => ({ ...order })),
-      execution_events: session.executionEvents.map((event) => ({ ...event })),
-      trades: session.trades,
-      metrics: sanitizeReplayMetrics(session.metrics),
-      prop_firm_eval: session.propEvaluation,
-      equity_curve: session.equityCurve,
     };
   };
 
@@ -2474,7 +2473,9 @@ export default function ReplayLabPage() {
                           type="button"
                           class="app-button-secondary"
                           onClick={() => {
-                            setIsReviewMode(true);
+                            const session = replaySession();
+                            if (!session) return;
+                            setReviewSnapshot(captureReplaySnapshot(session, isAccountBreached() ? "breached" : "review"));
                             setBannerNotice("Review mode unlocked. The trade log is frozen, but you can inspect the full session now.");
                           }}
                         >
@@ -2516,7 +2517,7 @@ export default function ReplayLabPage() {
                                 setBannerNotice(null);
                                 setBannerError(null);
                                 setIsReplayActive(false);
-                                setIsReviewMode(false);
+                                setReviewSnapshot(null);
                                 setCurrentIndex(0);
                                 setReplayActions([]);
                                 setBracketStopPrice("");

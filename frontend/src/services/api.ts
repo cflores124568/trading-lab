@@ -1052,6 +1052,7 @@ export interface ReplaySessionPayload {
   resting_fill_mode?: "touch" | "penetrate" | "touch_plus_1_bar";
   current_bar_index: number;
   status: string;
+  review_unlocked?: boolean;
   actions: ReplaySessionAction[];
   active_order?: Record<string, unknown> | null;
   active_orders?: Record<string, unknown>[];
