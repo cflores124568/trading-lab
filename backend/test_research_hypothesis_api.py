@@ -5,6 +5,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from main import app
+from services.research_hypothesis_repo import HypothesisExecutionConflict
 
 
 def _attempt(status="accepted"):
@@ -85,6 +86,18 @@ class ResearchHypothesisApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("statically accepted", response.json()["detail"])
+
+    def test_execution_in_progress_returns_conflict(self):
+        with TestClient(app) as client, patch(
+            "routers.research_campaigns.research_hypothesis_service.execute_hypothesis",
+            side_effect=HypothesisExecutionConflict("This hypothesis is already executing."),
+        ):
+            response = client.post(
+                "/api/research-campaigns/campaign-1/hypotheses/attempt-1/execute",
+                json={"actor": "reviewer"},
+            )
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("already executing", response.json()["detail"])
 
 
 if __name__ == "__main__":

@@ -65,10 +65,12 @@ strategy_type + normalized strategy_params + inherited execution_config + random
 
 Compilation does not execute the trial. Execution requires a separate explicit
 operator call to the hypothesis execution route, and queued or running
-campaigns fail closed until paused. The result is registered through the normal
-Phase 4A terminal-trial contract, so successful and failed executions remain
-visible and duplicate delivery remains idempotent. The immutable
-`research_hypothesis_trial_links` table records provenance.
+campaigns fail closed until paused. Execution uses the assumptions saved in the
+compiled contract. One request owns an attempt through a PostgreSQL transaction
+lock. A concurrent request receives a conflict, and retries after commit return
+the linked trial. The terminal trial, provenance link, and audit events commit
+together. A previously saved trial without a link is reported as a conflict
+because its execution assumptions cannot be verified.
 
 Validation, finalist freezing, sealed holdout evaluation, and human finalist
 review continue to use the Phase 4B and 4D contracts. No hypothesis route can

@@ -2,6 +2,7 @@ import hashlib
 import json
 import math
 import uuid
+from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any
 
@@ -12,8 +13,10 @@ from schemas import (
     ResearchTrialCreate,
 )
 from services import research_hypothesis_repo, research_repo
+from services.db import savepoint
+from services.research_hypothesis_repo import HypothesisExecutionConflict
 from services.research_search_worker import execute_search_plan
-from services.research_service import register_trial
+from services.research_service import register_trial, trial_fingerprint
 
 
 NEAR_DUPLICATE_DISTANCE = 0.10
@@ -184,49 +187,68 @@ def execute_hypothesis(
     *,
     executor=execute_search_plan,
 ) -> dict:
-    campaign = research_repo.get_research_campaign(campaign_id)
-    if campaign is None:
-        raise LookupError(f"Research campaign '{campaign_id}' not found.")
-    if campaign["status"] in {"queued", "running"}:
-        raise ValueError("Pause the campaign worker before executing a reviewed hypothesis.")
-    attempt = research_hypothesis_repo.get_attempt(campaign_id, attempt_id)
-    if attempt is None:
-        raise LookupError(f"Research hypothesis attempt '{attempt_id}' not found.")
-    if attempt.get("trial_id"):
-        return attempt
-    if attempt["status"] != "accepted" or not attempt.get("compiled_trial"):
-        raise ValueError("Only statically accepted hypotheses can be executed.")
+    with research_hypothesis_repo.execution_transaction(attempt_id):
+        campaign = research_repo.get_research_campaign(campaign_id, event_limit=1)
+        if campaign is None:
+            raise LookupError(f"Research campaign '{campaign_id}' not found.")
+        attempt = research_hypothesis_repo.get_attempt(campaign_id, attempt_id)
+        if attempt is None:
+            raise LookupError(f"Research hypothesis attempt '{attempt_id}' not found.")
+        if attempt.get("trial_id"):
+            return attempt
+        if attempt["status"] != "accepted" or not attempt.get("compiled_trial"):
+            raise ValueError("Only statically accepted hypotheses can be executed.")
+        _require_inactive_campaign(campaign["status"])
 
-    contract = attempt["compiled_trial"]
-    try:
-        result = executor(campaign, {
-            "strategy_type": contract["strategy_type"],
-            "strategy_params": contract["strategy_params"],
-        })
-        trial_request = ResearchTrialCreate(
-            **contract, status="completed", result=result, created_by=request.actor
+        contract = attempt["compiled_trial"]
+        fingerprint = trial_fingerprint(campaign_id=campaign_id, **contract)
+        if research_repo.get_research_trial_status_by_fingerprint(campaign_id, fingerprint) is not None:
+            raise HypothesisExecutionConflict(
+                "An unlinked trial already exists for this hypothesis. Its execution settings cannot be verified."
+            )
+        trial_request = _run_compiled_trial(campaign, contract, request.actor, executor)
+
+        # A campaign may have been queued while the backtest was computing.
+        _require_inactive_campaign(research_hypothesis_repo.lock_campaign_status(campaign_id))
+        trial = register_trial(campaign_id, trial_request)
+        if trial.get("was_duplicate"):
+            raise HypothesisExecutionConflict("A conflicting trial was recorded while this hypothesis was executing.")
+        now = datetime.now(timezone.utc)
+        event = _event(
+            campaign_id,
+            "hypothesis_trial_executed",
+            request.actor,
+            f"Executed reviewed hypothesis {attempt_id} as terminal research trial {trial['trial_id']}.",
+            {"hypothesis_attempt_id": attempt_id, "trial_id": trial["trial_id"], "trial_status": trial["status"]},
+            now,
         )
+        linked_id = research_hypothesis_repo.link_trial(
+            attempt_id, trial["trial_id"], actor=request.actor, executed_at=now, event=event,
+        )
+        if linked_id != trial["trial_id"]:
+            raise HypothesisExecutionConflict("This hypothesis was linked to another trial while executing.")
+        return {**attempt, "trial_id": linked_id}
+
+
+def _require_inactive_campaign(status: str) -> None:
+    if status in {"queued", "running"}:
+        raise ValueError("Pause the campaign worker before executing a reviewed hypothesis.")
+
+
+def _run_compiled_trial(campaign: dict, contract: dict, actor: str, executor) -> ResearchTrialCreate:
+    try:
+        # A failed market-data query must leave the attempt lock and the
+        # enclosing transaction usable for recording the failed trial.
+        with savepoint():
+            result = executor(campaign, deepcopy(contract))
+            return ResearchTrialCreate(**contract, status="completed", result=result, created_by=actor)
     except Exception as exc:
-        trial_request = ResearchTrialCreate(
+        return ResearchTrialCreate(
             **contract,
             status="failed",
             error=(str(exc) or exc.__class__.__name__)[:4000],
-            created_by=request.actor,
+            created_by=actor,
         )
-    trial = register_trial(campaign_id, trial_request)
-    now = datetime.now(timezone.utc)
-    event = _event(
-        campaign_id,
-        "hypothesis_trial_executed",
-        request.actor,
-        f"Executed reviewed hypothesis {attempt_id} as terminal research trial {trial['trial_id']}.",
-        {"hypothesis_attempt_id": attempt_id, "trial_id": trial["trial_id"], "trial_status": trial["status"]},
-        now,
-    )
-    research_hypothesis_repo.link_trial(
-        attempt_id, trial["trial_id"], actor=request.actor, executed_at=now, event=event
-    )
-    return research_hypothesis_repo.get_attempt(campaign_id, attempt_id)
 
 
 def validate_and_normalize(strategy_primitive: str, params: dict[str, Any]) -> tuple[dict[str, Any] | None, list[str]]:

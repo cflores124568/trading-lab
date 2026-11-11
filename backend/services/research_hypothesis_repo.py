@@ -1,4 +1,5 @@
 import json
+from contextlib import contextmanager
 from threading import Lock
 from typing import Any
 
@@ -7,6 +8,10 @@ from psycopg2.extras import RealDictCursor
 
 _schema_lock = Lock()
 _schema_ready = False
+
+
+class HypothesisExecutionConflict(RuntimeError):
+    """The attempt is already running or has a conflicting trial."""
 
 
 def configure_budget(campaign_id: str, *, hypothesis_budget: int, trial_budget: int, event: dict) -> dict | None:
@@ -238,6 +243,39 @@ def list_attempts(campaign_id: str, *, limit: int, offset: int, status: str | No
                 params,
             )
             return [_attempt_row(row) for row in cur.fetchall()]
+
+
+@contextmanager
+def execution_transaction(attempt_id: str):
+    """Give one request ownership until its trial and link commit or roll back."""
+    from services.db import _conn, transaction
+    from services.research_repo import _ensure_research_schema
+
+    with _conn() as conn:
+        _ensure_research_schema(conn)
+        _ensure_schema(conn)
+    with transaction() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT pg_try_advisory_xact_lock(hashtextextended(%s, 0))",
+                [f"hypothesis-execution:{attempt_id}"],
+            )
+            if not cur.fetchone()[0]:
+                raise HypothesisExecutionConflict("This hypothesis is already executing. Retry after it finishes.")
+        yield
+
+
+def lock_campaign_status(campaign_id: str) -> str:
+    """Hold the current campaign status stable through trial publication."""
+    from services.db import _conn
+
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT status FROM research_campaigns WHERE campaign_id = %s FOR SHARE", [campaign_id])
+            row = cur.fetchone()
+    if row is None:
+        raise LookupError(f"Research campaign '{campaign_id}' not found.")
+    return row[0]
 
 
 def link_trial(attempt_id: str, trial_id: str, *, actor: str, executed_at, event: dict) -> str:

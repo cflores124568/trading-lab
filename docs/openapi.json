@@ -10221,6 +10221,9 @@
             },
             "description": "Successful Response"
           },
+          "409": {
+            "description": "Hypothesis execution is in progress or has a conflicting trial."
+          },
           "422": {
             "content": {
               "application/json": {

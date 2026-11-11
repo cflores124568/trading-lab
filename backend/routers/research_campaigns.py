@@ -171,12 +171,15 @@ async def get_research_hypothesis(campaign_id: str, attempt_id: str):
 @router.post(
     "/{campaign_id}/hypotheses/{attempt_id}/execute",
     response_model=ResearchHypothesisAttemptResult,
+    responses={409: {"description": "Hypothesis execution is in progress or has a conflicting trial."}},
 )
-async def execute_research_hypothesis(
+def execute_research_hypothesis(
     campaign_id: str, attempt_id: str, request: ResearchHypothesisExecuteRequest
 ):
     try:
         return research_hypothesis_service.execute_hypothesis(campaign_id, attempt_id, request)
+    except research_hypothesis_service.HypothesisExecutionConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except ValueError as exc:

@@ -110,7 +110,10 @@ def execute_search_plan(campaign: dict, plan: dict) -> dict:
     info=load_from_db(campaign["symbol"],campaign["interval"],development["start_time"].isoformat(),development["end_time"].isoformat())
     dataset=get_dataset(info["dataset_id"])
     if dataset is None: raise RuntimeError("Development dataset disappeared before execution.")
-    config=(campaign.get("search_config") or {}).get("execution_config") or {}
+    if "execution_config" in plan:
+        config = plan["execution_config"]
+    else:
+        config = (campaign.get("search_config") or {}).get("execution_config") or {}
     rules=PropFirmRules(name="Alpha Lab discovery",daily_loss_limit=None,max_drawdown=1,profit_target=1,consistency_rule=False)
     request=BacktestRequest(dataset_id=info["dataset_id"],strategy=Strategy(type=plan["strategy_type"],params=plan["strategy_params"]),
         prop_firm_rules=rules,initial_balance=float(config.get("initial_balance",100000)),position_size=config["position_size"] if "position_size" in config else 1,
