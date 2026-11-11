@@ -45,6 +45,7 @@ def _ensure_replay_sessions_schema(conn) -> None:
                     resting_fill_mode TEXT NOT NULL DEFAULT 'touch',
                     current_bar_index INTEGER NOT NULL DEFAULT 0,
                     status            TEXT NOT NULL DEFAULT 'active',
+                    review_unlocked   BOOLEAN NOT NULL DEFAULT FALSE,
                     actions           JSONB NOT NULL,
                     active_order      JSONB,
                     active_orders     JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -59,6 +60,7 @@ def _ensure_replay_sessions_schema(conn) -> None:
                 """
             )
             cur.execute("ALTER TABLE replay_sessions ADD COLUMN IF NOT EXISTS source_backtest JSONB")
+            cur.execute("ALTER TABLE replay_sessions ADD COLUMN IF NOT EXISTS review_unlocked BOOLEAN NOT NULL DEFAULT FALSE")
             cur.execute(
                 "ALTER TABLE replay_sessions ADD COLUMN IF NOT EXISTS tick_size DOUBLE PRECISION NOT NULL DEFAULT 0.25"
             )
@@ -122,13 +124,13 @@ def save_replay_session(result: dict) -> None:
             tick_size, position_size, sizing_mode, risk_per_trade_pct,
             max_position_size, stop_loss_ticks, stop_loss_atr, atr_period,
             spread_ticks, volatile_bar_threshold_ticks,
-            volatile_bar_extra_ticks, resting_fill_mode, current_bar_index, status, actions,
+            volatile_bar_extra_ticks, resting_fill_mode, current_bar_index, status, review_unlocked, actions,
             active_order, active_orders, execution_events, trades, metrics, prop_firm_eval,
             equity_curve, created_at, updated_at
         )
         VALUES (
             %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s,
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb,
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb,
             %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
             %s::jsonb, %s, %s
         )
@@ -156,6 +158,7 @@ def save_replay_session(result: dict) -> None:
             resting_fill_mode = EXCLUDED.resting_fill_mode,
             current_bar_index = EXCLUDED.current_bar_index,
             status            = EXCLUDED.status,
+            review_unlocked   = EXCLUDED.review_unlocked,
             actions           = EXCLUDED.actions,
             active_order      = EXCLUDED.active_order,
             active_orders     = EXCLUDED.active_orders,
@@ -197,6 +200,7 @@ def save_replay_session(result: dict) -> None:
                     result.get("resting_fill_mode", "touch"),
                     result["current_bar_index"],
                     result["status"],
+                    result.get("review_unlocked", False),
                     json.dumps(result["actions"]),
                     json.dumps(result.get("active_order")),
                     json.dumps(result.get("active_orders") or []),
@@ -263,6 +267,7 @@ def _row_to_result(row) -> dict:
         "resting_fill_mode": row.get("resting_fill_mode") or "touch",
         "current_bar_index": int(row["current_bar_index"]),
         "status": row["status"],
+        "review_unlocked": bool(row.get("review_unlocked", False)),
         "actions": _maybe_json(row["actions"]),
         "active_order": _maybe_json(row.get("active_order")) if hasattr(row, "get") else None,
         "active_orders": _maybe_json(row.get("active_orders")) or [],

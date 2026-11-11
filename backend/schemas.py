@@ -214,6 +214,7 @@ class ReplaySessionBase(BaseModel):
     resting_fill_mode: str = Field(default="touch")
     current_bar_index: int = Field(default=0, ge=0)
     status: str = Field(default="active")
+    review_unlocked: bool = False
     actions: List[ReplayAction] = Field(default_factory=list)
     active_order: Optional[dict[str, Any]] = None
     active_orders: List[dict[str, Any]] = Field(default_factory=list)
@@ -222,6 +223,12 @@ class ReplaySessionBase(BaseModel):
     metrics: PerformanceMetrics
     prop_firm_eval: PropFirmEvaluation
     equity_curve: List[float] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _restore_legacy_review(self):
+        if self.status == "review":
+            self.review_unlocked = True
+        return self
 
     @model_validator(mode="after")
     def _validate_replay_sizing(self):

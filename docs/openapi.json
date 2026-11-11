@@ -3679,6 +3679,11 @@
             "title": "Resting Fill Mode",
             "type": "string"
           },
+          "review_unlocked": {
+            "default": false,
+            "title": "Review Unlocked",
+            "type": "boolean"
+          },
           "risk_per_trade_pct": {
             "anyOf": [
               {
@@ -3925,6 +3930,11 @@
             "default": "touch",
             "title": "Resting Fill Mode",
             "type": "string"
+          },
+          "review_unlocked": {
+            "default": false,
+            "title": "Review Unlocked",
+            "type": "boolean"
           },
           "risk_per_trade_pct": {
             "anyOf": [
@@ -4344,6 +4354,11 @@
             "default": "touch",
             "title": "Resting Fill Mode",
             "type": "string"
+          },
+          "review_unlocked": {
+            "default": false,
+            "title": "Review Unlocked",
+            "type": "boolean"
           },
           "risk_per_trade_pct": {
             "anyOf": [

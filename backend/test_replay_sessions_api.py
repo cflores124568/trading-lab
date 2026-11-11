@@ -1,4 +1,4 @@
-"""Replay sizing API contracts, isolated from live storage and app startup."""
+"""Replay session API contracts, isolated from live storage and app startup."""
 import unittest
 from copy import deepcopy
 from unittest.mock import patch
@@ -11,7 +11,7 @@ from services.replay_session_store import delete_replay_session
 from test_replay_sessions import _payload
 
 
-class ReplaySizingApiTests(unittest.TestCase):
+class ReplaySessionApiTests(unittest.TestCase):
     def setUp(self):
         app = FastAPI()
         app.include_router(replay_sessions.router, prefix="/api/replay-sessions")
@@ -61,6 +61,32 @@ class ReplaySizingApiTests(unittest.TestCase):
         self.assertEqual(created["sizing_mode"], "fixed")
         self.assertIsNone(created["risk_per_trade_pct"])
         self.assertIsNone(created["stop_loss_ticks"])
+
+    def test_breached_review_survives_reopening_and_saving_an_earlier_cursor(self):
+        payload = _payload(status="breached", current_bar_index=3)
+        payload["prop_firm_eval"]["drawdown_breached"] = True
+        created = self.create(dict(payload, review_unlocked=True))
+        url = f'/api/replay-sessions/{created["replay_session_id"]}'
+        loaded = self.client.get(url)
+        self.assertEqual(loaded.status_code, 200, loaded.text)
+        self.assertEqual(loaded.json(), created)
+
+        updated = self.client.put(url, json=dict(payload, current_bar_index=0))
+        self.assertEqual(updated.status_code, 200, updated.text)
+        reloaded = self.client.get(url).json()
+        self.assertEqual(reloaded, updated.json())
+        self.assertEqual(reloaded["current_bar_index"], 0)
+        self.assertEqual(reloaded["status"], "breached")
+        self.assertTrue(reloaded["review_unlocked"])
+        self.assertTrue(reloaded["prop_firm_eval"]["drawdown_breached"])
+
+        restarted = self.client.put(url, json=_payload(status="paused", review_unlocked=False))
+        self.assertEqual(restarted.status_code, 200, restarted.text)
+        self.assertFalse(restarted.json()["review_unlocked"])
+
+    def test_legacy_review_status_restores_review_access(self):
+        self.assertTrue(self.create(_payload(status="review"))["review_unlocked"])
+        self.assertFalse(self.create(_payload(status="breached"))["review_unlocked"])
 
     def test_invalid_sizing_returns_422_before_persistence(self):
         for fields in (

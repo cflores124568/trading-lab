@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS replay_sessions (
     atr_period        INTEGER NOT NULL DEFAULT 14,
     current_bar_index INTEGER NOT NULL DEFAULT 0,
     status            TEXT NOT NULL DEFAULT 'active',
+    review_unlocked   BOOLEAN NOT NULL DEFAULT FALSE,
     actions           JSONB NOT NULL,
     trades            JSONB NOT NULL,
     metrics           JSONB NOT NULL,
@@ -150,6 +151,9 @@ CREATE TABLE IF NOT EXISTS replay_sessions (
 
 ALTER TABLE replay_sessions
     ADD COLUMN IF NOT EXISTS source_backtest JSONB;
+
+ALTER TABLE replay_sessions
+    ADD COLUMN IF NOT EXISTS review_unlocked BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE INDEX IF NOT EXISTS replay_sessions_updated_at_idx
     ON replay_sessions (updated_at DESC);

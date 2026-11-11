@@ -76,6 +76,8 @@ async def update_replay_session(replay_session_id: str, request: ReplaySessionUp
         "created_at": existing["created_at"],
         "updated_at": datetime.utcnow().isoformat(),
     }
+    if "review_unlocked" not in request.model_fields_set and request.status in {"breached", "completed"}:
+        result["review_unlocked"] = bool(existing.get("review_unlocked")) or existing["status"] == "review"
 
     upsert_replay_session(replay_session_id, result)
 

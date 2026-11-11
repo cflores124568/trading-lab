@@ -106,10 +106,11 @@ class ReplaySizingSchemaTests(unittest.TestCase):
 
 
 class ReplayPersistenceTests(unittest.TestCase):
-    def test_save_and_hydrate_risk_settings_trades_and_metrics(self):
+    def test_save_and_hydrate_risk_settings_and_breached_review(self):
         payload = _payload(
             sizing_mode="risk_percent", risk_per_trade_pct=0.1,
             max_position_size=3, stop_loss_atr=1.5, atr_period=21,
+            status="breached", review_unlocked=True,
             trades=[{
                 "trade_id": 0, "entry_time": "2026-10-22T12:00:00",
                 "exit_time": "2026-10-22T12:01:00", "side": "buy",
@@ -121,6 +122,7 @@ class ReplayPersistenceTests(unittest.TestCase):
         )
         payload["metrics"].update(avg_r_multiple=-1, total_r=-1, r_profit_factor=0,
                                   risk_budget_exceeded_trades=1)
+        payload["prop_firm_eval"]["drawdown_breached"] = True
         result = ReplaySessionResult(**payload, replay_session_id="test-risk-roundtrip",
                                      created_at="2026-10-22T12:00:00", updated_at="2026-10-22T12:01:00").model_dump(mode="json")
         conn = MagicMock()
@@ -153,7 +155,8 @@ class ReplayPersistenceTests(unittest.TestCase):
         with patch.object(repo, "_schema_ready", False):
             repo._ensure_replay_sessions_schema(conn)
         statements = [call.args[0] for call in conn.cursor.return_value.__enter__.return_value.execute.call_args_list]
-        for column in ("sizing_mode", "risk_per_trade_pct", "max_position_size", "stop_loss_ticks", "stop_loss_atr", "atr_period"):
+        for column in ("sizing_mode", "risk_per_trade_pct", "max_position_size", "stop_loss_ticks",
+                       "stop_loss_atr", "atr_period", "review_unlocked"):
             self.assertTrue(any(f"ADD COLUMN IF NOT EXISTS {column} " in sql for sql in statements), column)
         self.assertFalse(any("DROP " in sql or "DELETE " in sql for sql in statements))
 
